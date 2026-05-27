@@ -372,42 +372,63 @@ const DW = (() => {
 
   // ── ChatTTSText：念指定文字 ──────────────────────────
   const _doSpeakText = text => {
-    if(!ws||ws.readyState!==WebSocket.OPEN) return;
-    console.log('[DW] _doSpeakText 发送文本:', text.substring(0,50)+'...');
+    if(!text) return;
+    console.log('[DW] _doSpeakText 使用浏览器语音合成:', text.substring(0,50)+'...');
+
+    stopAudio();
+    window.speechSynthesis.cancel();
+
     const hint = $('dw-tts-hint');
     hint.textContent = '正在朗读…';
     setSub(text);
     setStatus('朗读中…');
     setWave(true, false);
-    const chunks_text = [];
-    const MAX = 100;
-    for(let i=0;i<text.length;i+=MAX) chunks_text.push(text.slice(i,i+MAX));
-    chunks_text.forEach((part, idx) => {
-      const isFirst = idx===0;
-      ws.send(encode(500, JSON.stringify({
-        start: isFirst,
-        content: part,
-        end: false
-      }), sid));
-    });
-    ws.send(encode(500, JSON.stringify({start:false,content:'',end:true}), sid));
-    resetAutoFlush();
-    setTimeout(()=>{ hint.textContent=''; }, 3000);
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'zh-CN';
+    utter.rate = 1.0;
+    utter.pitch = 1.1;
+    utter.volume = 1;
+
+    const setVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => v.lang==='zh-CN' && v.name.includes('Xiaoxiao'))
+        || voices.find(v => v.lang==='zh-CN')
+        || voices.find(v => v.lang.startsWith('zh'));
+      if(preferred) utter.voice = preferred;
+    };
+    setVoice();
+    window.speechSynthesis.onvoiceschanged = setVoice;
+
+    utter.onstart = () => {
+      console.log('[DW] 浏览器语音开始播放');
+      setStatus('朗读中…');
+      setWave(true, false);
+    };
+    utter.onend = () => {
+      console.log('[DW] 浏览器语音播放完成');
+      setStatus('朗读完成');
+      setWave(false, false);
+      hint.textContent = '';
+      setTimeout(() => {
+        if(state==='listening'){ setStatus('正在聆听…'); setListening(true); }
+      }, 1500);
+    };
+    utter.onerror = (e) => {
+      console.log('[DW] 浏览器语音错误:', e.error);
+      hint.textContent = '朗读出错: ' + e.error;
+      setWave(false, false);
+    };
+
+    window.speechSynthesis.speak(utter);
   };
 
   const speakText = () => {
     const input = $('dw-tts-input');
     const text = input.value.trim();
     if(!text){ $('dw-tts-hint').textContent='请先输入要朗读的文字'; return; }
-    if(!ws||ws.readyState!==WebSocket.OPEN){ $('dw-tts-hint').textContent='请先打开助理连接'; return; }
-    console.log('[DW] speakText 用户输入:', text.substring(0,50)+'...  asrEnded=', asrEnded);
-    if(!asrEnded){
-      // 用户正在说话，等 ASREnded 再发
-      pendingTTS = text;
-      $('dw-tts-hint').textContent='等待用户说话结束后朗读…';
-    } else {
-      _doSpeakText(text);
-    }
+    console.log('[DW] speakText 用户输入:', text.substring(0,50)+'...');
+    _doSpeakText(text);
   };
 
   // ── 公开方法 ─────────────────────────────────────────
@@ -415,6 +436,7 @@ const DW = (() => {
     const m=$('dw-modal'); m.style.display='flex';
     setSub(''); setStatus('正在连接…'); setDot(false); setWave(false,false);
     $('dw-tapbtn').style.display='none';
+    $('dw-tts-area').style.display='block';
     sid=uuid(); seq=2; chunks=[]; asrEnded=true; pendingTTS=null;
     if(autoFlushTimer){clearTimeout(autoFlushTimer);autoFlushTimer=null;}
 
@@ -434,6 +456,7 @@ const DW = (() => {
       try{ ws.send(encode(102,'{}',sid)); setTimeout(()=>{ try{ws.send(encode(2,'{}',null)); setTimeout(()=>ws?.close(),300);}catch(_){}},300); }catch(_){}
     }
     stopMic(); stopAudio(); ws=null; state='idle'; setWave(false,false); setDot(false);
+    window.speechSynthesis.cancel();
     $('dw-tts-area').style.display='none';
     $('dw-tts-hint').textContent='';
   };
