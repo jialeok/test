@@ -188,8 +188,6 @@ const DW = (() => {
   let ws, sid, seq=2, state='idle';
   let micStream, audioCtx, srcNode, processor;
   let chunks=[], queue=[], playing=false;
-  let asrEnded=true; // 初始允许发 TTS，未说话时视为已结束
-  let pendingTTS=null; // 等待 ASREnded 后才发的文字
 
   // DOM 引用
   const $ = id => document.getElementById(id);
@@ -276,23 +274,18 @@ const DW = (() => {
   // ── 音频播放队列 ──────────────────────────────────────
   const flushAudio = () => {
     if(!chunks.length)return;
-    console.log('[DW] flushAudio 刷新音频, chunks数量:', chunks.length);
     const tot=chunks.reduce((s,c)=>s+c.byteLength,0), merged=new Uint8Array(tot); let o=0;
     chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;}); chunks=[];
-    const blob = new Blob([merged],{type:'audio/ogg; codecs=opus'});
-    console.log('[DW] 创建音频 Blob, 大小:', blob.size);
-    queue.push(URL.createObjectURL(blob));
+    queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
     playNext();
   };
   const playNext = () => {
     if(playing||!queue.length)return; playing=true;
     const url=queue.shift(), a=new Audio(url);
-    const done=(err)=>{URL.revokeObjectURL(url);playing=false; if(err)console.log('[DW] 音频播放错误:',err); playNext();};
-    a.onended=()=>done();
-    a.onerror=(e)=>{console.log('[DW] Audio onerror:',a.error);done(a.error);};
-    a.play().then(()=>{console.log('[DW] 音频开始播放');}).catch(e=>{console.log('[DW] play() rejected:',e);done(e);});
+    const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
+    a.onended=done; a.onerror=done; a.play().catch(done);
   };
-  const stopAudio = () => { queue=[]; chunks=[]; playing=false; if(autoFlushTimer){clearTimeout(autoFlushTimer);autoFlushTimer=null;} };
+  const stopAudio = () => { queue=[]; chunks=[]; playing=false; };
 
   // ── 麦克风 ───────────────────────────────────────────
   const _startMic = async () => {
@@ -324,52 +317,33 @@ const DW = (() => {
   // ── WS 消息处理 ──────────────────────────────────────
   const sanitize = s => s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 
-  let autoFlushTimer = null;
-  const resetAutoFlush = () => {
-    if(autoFlushTimer) clearTimeout(autoFlushTimer);
-    autoFlushTimer = setTimeout(() => {
-      if(chunks.length>0){
-        console.log('[DW] 超时自动刷新音频，chunks:',chunks.length);
-        flushAudio();
-      }
-    }, 3000);
-  };
-
   const onMsg = evt => {
     if(!(evt.data instanceof ArrayBuffer))return;
     const {msgType,eid,payload}=parseFrame(evt.data);
-    console.log('[DW] onMsg msgType='+msgType+' eid='+eid+' payloadLen='+(payload?payload.byteLength:0));
     if(msgType===9&&payload){
       let j={}; try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
-      if(eid===50){  // ConnectionStarted
+      if(eid===50){
         setStatus('连接成功，初始化中…');
         ws.send(encode(100, JSON.stringify({
           tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
           dialog:{bot_name:'助理',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
         }), sid));
-      } else if(eid===150){ // SessionStarted
+      } else if(eid===150){
         state='listening'; setStatus('点击下方开始说话');
         $('dw-tapbtn').style.display='flex';
         $('dw-tts-area').style.display='block';
-      } else if(eid===350){ // TTSSentenceStart
+      } else if(eid===350){
         const t=j.text||''; if(t)setSub(t);
         state='speaking'; setStatus('助理正在说话…');
         setListening(false); setWave(true,false);
-      } else if(eid===351){ flushAudio(); if(autoFlushTimer) clearTimeout(autoFlushTimer);
-      } else if(eid===359){ flushAudio(); if(autoFlushTimer) clearTimeout(autoFlushTimer); state='listening'; setStatus('正在聆听…'); setListening(true);
-      } else if(eid===559){ flushAudio(); if(autoFlushTimer) clearTimeout(autoFlushTimer); state='listening'; setStatus('朗读完成'); setTimeout(()=>{setStatus('正在聆听…');setListening(true);},1500);
-      } else if(eid===450){ stopAudio(); asrEnded=false; // 用户开始说话
-      } else if(eid===459){ asrEnded=true; // ASREnded：用户说话结束，可以发 TTS
-        if(pendingTTS){ _doSpeakText(pendingTTS); pendingTTS=null; }
+      } else if(eid===351){ flushAudio();
+      } else if(eid===359){ flushAudio(); state='listening'; setStatus('正在聆听…'); setListening(true);
+      } else if(eid===450){ stopAudio();
       } else if(eid===451){ const t=(j.results||[]).map(r=>r.text).join(''); if(t){setStatus('我听到：'+t);setSub(t);}
       } else if(eid===153||eid===599){ setStatus('连接出错，请重试'); }
     }
-    if(msgType===11&&payload){
-      console.log('[DW] 收到音频数据, 大小:', payload.byteLength);
-      chunks.push(payload);
-      resetAutoFlush();
-    }
+    if(msgType===11&&payload) chunks.push(payload);
   };
 
   // ── ChatTTSText：念指定文字 ──────────────────────────
@@ -389,15 +363,13 @@ const DW = (() => {
       || voices.find(v => v.lang.startsWith('zh'));
     if(preferred) utter.voice = preferred;
 
-    utter.onstart = () => { console.log('[DW] SpeechSynthesis 开始播放'); setStatus('朗读中…'); setWave(true, false); };
+    utter.onstart = () => { setStatus('朗读中…'); setWave(true, false); };
     utter.onend = () => {
-      console.log('[DW] SpeechSynthesis 播放完成');
       setStatus('朗读完成'); setWave(false, false);
       $('dw-tts-hint').textContent = '';
       setTimeout(() => { if(state==='listening'){ setStatus('正在聆听…'); setListening(true); } }, 1500);
     };
     utter.onerror = (e) => {
-      console.log('[DW] SpeechSynthesis 错误:', e.error);
       $('dw-tts-hint').textContent = '朗读出错: ' + e.error;
       setWave(false, false);
     };
@@ -405,26 +377,8 @@ const DW = (() => {
     window.speechSynthesis.speak(utter);
   };
 
-  const _speakEdge = async text => {
-    const resp = await fetch(TTS_PROXY_URL + '/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text.substring(0, 500) })
-    });
-    if(!resp.ok) throw new Error('Edge TTS returned ' + resp.status);
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = new Audio(url);
-    return new Promise((resolve, reject) => {
-      a.onended = () => { URL.revokeObjectURL(url); resolve(); };
-      a.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio play failed')); };
-      a.play().catch(reject);
-    });
-  };
-
   const _doSpeakText = async text => {
     if(!text) return;
-    console.log('[DW] _doSpeakText 开始朗读:', text.substring(0, 50) + '...');
 
     stopAudio();
     window.speechSynthesis.cancel();
@@ -437,15 +391,27 @@ const DW = (() => {
 
     if(TTS_PROXY_URL){
       try{
-        await _speakEdge(text);
-        console.log('[DW] Edge TTS 播放完成');
+        await fetch(TTS_PROXY_URL + '/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text.substring(0, 500) })
+        }).then(async resp => {
+          if(!resp.ok) throw new Error('TTS returned ' + resp.status);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = new Audio(url);
+          await new Promise((resolve, reject) => {
+            a.onended = () => { URL.revokeObjectURL(url); resolve(); };
+            a.onerror = () => { URL.revokeObjectURL(url); reject(new Error('play failed')); };
+            a.play().catch(reject);
+          });
+        });
         setStatus('朗读完成');
         setWave(false, false);
         hint.textContent = '';
         setTimeout(() => { if(state==='listening'){ setStatus('正在聆听…'); setListening(true); } }, 1500);
         return;
       }catch(e){
-        console.log('[DW] Edge TTS 失败，回退到 SpeechSynthesis:', e.message);
         $('dw-tts-hint').textContent = '云端朗读失败，切换到本地语音…';
       }
     }
@@ -457,7 +423,6 @@ const DW = (() => {
     const input = $('dw-tts-input');
     const text = input.value.trim();
     if(!text){ $('dw-tts-hint').textContent='请先输入要朗读的文字'; return; }
-    console.log('[DW] speakText 用户输入:', text.substring(0,50)+'...');
     _doSpeakText(text);
   };
 
@@ -467,17 +432,15 @@ const DW = (() => {
     setSub(''); setStatus('正在连接…'); setDot(false); setWave(false,false);
     $('dw-tapbtn').style.display='none';
     $('dw-tts-area').style.display='block';
-    sid=uuid(); seq=2; chunks=[]; asrEnded=true; pendingTTS=null;
-    if(autoFlushTimer){clearTimeout(autoFlushTimer);autoFlushTimer=null;}
+    sid=uuid(); seq=2; chunks=[];
 
     const u=new URL(WS_URL);
     u.searchParams.set('session_id','dw_'+Date.now());
-    console.log('[DW] 连接 WebSocket:', u.toString());
     ws=new WebSocket(u.toString()); ws.binaryType='arraybuffer';
-    ws.onopen    = () => { console.log('[DW] WebSocket 已连接'); ws.send(encode(1,'{}',null)); };
+    ws.onopen    = () => ws.send(encode(1,'{}',null));
     ws.onmessage = onMsg;
-    ws.onerror   = (e) => { console.log('[DW] WebSocket error'); setStatus('连接失败，请检查网络'); };
-    ws.onclose   = e  => { console.log('[DW] WebSocket 关闭, code:', e.code); stopMic(); setStatus('已断开 ('+e.code+')'); state='idle'; setWave(false,false); setDot(false); };
+    ws.onerror   = () => setStatus('连接失败，请检查网络');
+    ws.onclose   = e  => { stopMic(); setStatus('已断开 ('+e.code+')'); state='idle'; setWave(false,false); setDot(false); };
   };
 
   const close = () => {
@@ -486,9 +449,6 @@ const DW = (() => {
       try{ ws.send(encode(102,'{}',sid)); setTimeout(()=>{ try{ws.send(encode(2,'{}',null)); setTimeout(()=>ws?.close(),300);}catch(_){}},300); }catch(_){}
     }
     stopMic(); stopAudio(); ws=null; state='idle'; setWave(false,false); setDot(false);
-    window.speechSynthesis.cancel();
-    $('dw-tts-area').style.display='none';
-    $('dw-tts-hint').textContent='';
   };
 
   // 补一个 dotpulse 动画
