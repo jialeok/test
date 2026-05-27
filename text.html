@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>豆包语音助理组件 Demo</title>
+<style>
+  body {
+    min-height: 100vh;
+    background: #f4f4f8;
+    font-family: -apple-system, 'PingFang SC', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-size: 16px;
+  }
+  .page-placeholder {
+    text-align: center;
+    color: #999;
+  }
+  .page-placeholder h2 { font-size: 20px; margin-bottom: 8px; color: #555; }
+</style>
+</head>
+<body>
+
+<!-- 你的页面内容（随便放什么） -->
+<div class="page-placeholder">
+  <h2>你的业务页面</h2>
+  <p>右下角有悬浮语音助理按钮 👇</p>
+</div>
+
+<!-- ══════════════════════════════════════════
+  豆包实时语音助理组件
+  使用方法：把下面这一整块复制到任意页面底部
+  需要自定义时只改"组件配置"那几行
+════════════════════════════════════════════ -->
+
+<!-- 1. 悬浮按钮 -->
+<button id="dw-btn" onclick="DW.open()" title="语音助理" style="
+  position:fixed; bottom:28px; right:24px; z-index:8888;
+  width:56px; height:56px; border-radius:50%; border:none; padding:0;
+  background:linear-gradient(135deg,#5b4fff,#9b59f5);
+  box-shadow:0 4px 20px rgba(91,79,255,.55);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; cursor:pointer;
+  animation:dw-pulse 3s ease-in-out infinite;
+">
+  <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:22px;color:#fff;line-height:1">smart_toy</span>
+  <span style="font-size:9px;color:rgba(255,255,255,.9);font-weight:600;line-height:1">助理</span>
+</button>
+
+<!-- 2. Modal -->
+<div id="dw-modal" onclick="if(event.target===this)DW.close()" style="
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:flex-end; justify-content:center;
+">
+  <div style="
+    width:100%; max-width:480px;
+    background:#fff; border-radius:24px 24px 0 0;
+    box-shadow:0 -8px 40px rgba(0,0,0,.18); overflow:hidden;
+    animation:dw-slideup .25s cubic-bezier(.34,1.1,.64,1);
+  ">
+    <!-- 头部 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:linear-gradient(160deg,#f0eeff,#fff);border-bottom:1px solid rgba(91,79,255,.08)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#5b4fff,#9b59f5);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 12px rgba(91,79,255,.4)">
+          <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:20px;color:#fff;line-height:1">smart_toy</span>
+        </div>
+        <div>
+          <div style="font-weight:800;font-size:15px;color:#0e0e12" id="dw-name">智能助理</div>
+          <div style="font-size:11px;color:#6b6b80;display:flex;align-items:center;gap:4px">
+            <span id="dw-dot" style="width:6px;height:6px;border-radius:50%;background:#d0d0da;display:inline-block;flex-shrink:0"></span>
+            <span id="dw-status">正在连接…</span>
+          </div>
+        </div>
+      </div>
+      <button onclick="DW.close()" style="width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.06);cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:18px;color:#6b6b80;line-height:1">close</span>
+      </button>
+    </div>
+
+    <!-- 字幕 -->
+    <div style="padding:14px 18px 0">
+      <div id="dw-sub" style="min-height:56px;padding:12px 14px;background:#f4f4f8;border-radius:16px;font-size:14px;color:#0e0e12;line-height:1.65;word-break:break-all;border:1.5px solid transparent;transition:all .3s">
+        <span style="color:#9999aa;font-style:italic">等待对话开始…</span>
+      </div>
+    </div>
+
+    <!-- 波形 -->
+    <div style="display:flex;align-items:center;justify-content:center;gap:5px;height:52px" id="dw-wave">
+      <div class="dw-bar"></div><div class="dw-bar"></div><div class="dw-bar"></div>
+      <div class="dw-bar"></div><div class="dw-bar"></div><div class="dw-bar"></div>
+      <div class="dw-bar"></div>
+    </div>
+
+    <!-- 点击说话按钮 -->
+    <div style="padding:0 18px 12px;display:flex;flex-direction:column;gap:10px">
+      <button id="dw-tapbtn" onclick="DW._startMic()" style="
+        display:none;align-items:center;justify-content:center;gap:8px;
+        background:linear-gradient(135deg,#5b4fff,#9b59f5);color:#fff;
+        border-radius:24px;padding:14px;font-size:15px;font-weight:700;
+        cursor:pointer;border:none;width:100%;
+        box-shadow:0 6px 20px rgba(91,79,255,.4);
+      ">
+        <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:20px;line-height:1">mic</span>
+        点击开始说话
+      </button>
+      <div style="text-align:center;font-size:12px;color:#aaa">直接说话，助理会实时回应</div>
+    </div>
+
+    <!-- 朗读指定文字 -->
+    <div id="dw-tts-area" style="display:none;padding:0 18px 20px;border-top:1px solid rgba(91,79,255,.08);padding-top:14px">
+      <div style="font-size:12px;color:#9999aa;margin-bottom:8px;font-weight:600;letter-spacing:.5px">📢 让助理念这段文字</div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="dw-tts-input" placeholder="输入要朗读的内容…" style="
+          flex:1;border:1.5px solid rgba(91,79,255,.2);border-radius:14px;
+          padding:10px 12px;font-size:14px;font-family:inherit;color:#0e0e12;
+          background:#faf9ff;resize:none;height:64px;outline:none;
+          transition:border-color .2s;line-height:1.5;
+        " onfocus="this.style.borderColor='rgba(91,79,255,.5)'"
+           onblur="this.style.borderColor='rgba(91,79,255,.2)'"
+        ></textarea>
+        <button id="dw-tts-btn" onclick="DW.speakText()" style="
+          width:44px;height:44px;border-radius:50%;border:none;flex-shrink:0;
+          background:linear-gradient(135deg,#5b4fff,#9b59f5);
+          color:#fff;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 4px 14px rgba(91,79,255,.4);
+          transition:opacity .2s,transform .15s;
+        " onmousedown="this.style.transform='scale(.92)'" onmouseup="this.style.transform='scale(1)'">
+          <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:20px;line-height:1">volume_up</span>
+        </button>
+      </div>
+      <div id="dw-tts-hint" style="font-size:11px;color:#aaa;margin-top:6px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. 样式 & 图标 -->
+<style>
+@font-face {
+  font-family:'Material Icons Round';
+  font-display:block;
+  src:url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff2) format('woff2');
+}
+@keyframes dw-pulse {
+  0%,100%{box-shadow:0 4px 20px rgba(91,79,255,.55),0 0 0 0 rgba(91,79,255,.4)}
+  50%    {box-shadow:0 4px 20px rgba(91,79,255,.55),0 0 0 12px rgba(91,79,255,0)}
+}
+@keyframes dw-slideup {
+  from{transform:translateY(100%);opacity:.5}
+  to  {transform:translateY(0);opacity:1}
+}
+@keyframes dw-wave {
+  0%,100%{transform:scaleY(.2);opacity:.4}
+  50%    {transform:scaleY(1);opacity:1}
+}
+.dw-bar {
+  width:4px;height:28px;border-radius:3px;transform-origin:bottom;
+  background:linear-gradient(to top,#5b4fff,#9b59f5);
+  transform:scaleY(.2);opacity:.4;
+  transition:background .3s;
+}
+.dw-bar.active { animation:dw-wave 1.1s ease-in-out infinite; }
+.dw-bar.active:nth-child(1){animation-delay:0s}
+.dw-bar.active:nth-child(2){animation-delay:.14s}
+.dw-bar.active:nth-child(3){animation-delay:.28s}
+.dw-bar.active:nth-child(4){animation-delay:.42s}
+.dw-bar.active:nth-child(5){animation-delay:.56s}
+.dw-bar.active:nth-child(6){animation-delay:.70s}
+.dw-bar.active:nth-child(7){animation-delay:.84s}
+.dw-bar.green { background:linear-gradient(to top,#00c48c,#00e6a8) !important; }
+</style>
+
+<!-- 4. 核心逻辑 -->
+<script>
+const DW = (() => {
+  // ── 组件配置（按需修改这里）──────────────────────────
+  const WS_URL       = 'wss://doubao-ws-proxy.onrender.com/proxy';
+  const SYSTEM_PROMPT= window._doubaoSystemPrompt || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
+  const SPEAKER      = window._doubaoSpeaker      || 'zh_female_vv_jupiter_bigtts';
+  const BOT_NAME     = '智能助理'; // 显示在 Modal 头部的名字
+  // ────────────────────────────────────────────────────
+
+  let ws, sid, seq=2, state='idle';
+  let micStream, audioCtx, srcNode, processor;
+  let chunks=[], queue=[], playing=false;
+  let asrEnded=true; // 初始允许发 TTS，未说话时视为已结束
+  let pendingTTS=null; // 等待 ASREnded 后才发的文字
+
+  // DOM 引用
+  const $ = id => document.getElementById(id);
+
+  const setStatus = t => { $('dw-status').textContent = t; };
+  const setDot    = on => {
+    const d = $('dw-dot');
+    d.style.background = on ? '#00c48c' : '#d0d0da';
+    d.style.animation  = on ? 'dw-dotpulse 1.2s ease-in-out infinite' : 'none';
+  };
+  const setSub = t => {
+    const el = $('dw-sub');
+    el.textContent = t || '';
+    if (!t) el.innerHTML = '<span style="color:#9999aa;font-style:italic">等待对话开始…</span>';
+    el.style.borderColor    = t ? 'transparent' : 'transparent';
+  };
+  const setWave = (active, green) => {
+    document.querySelectorAll('.dw-bar').forEach(b => {
+      b.classList.toggle('active', active);
+      b.classList.toggle('green', !!green);
+    });
+  };
+  const setListening = on => {
+    setDot(on);
+    setWave(on, on); // 聆听时绿色，说话时紫色由调用方决定
+    $('dw-sub').style.borderColor = on ? 'rgba(0,196,140,.2)' : 'transparent';
+    $('dw-sub').style.background  = on ? 'rgba(0,196,140,.04)' : '#f4f4f8';
+  };
+
+  // ── 二进制协议 ────────────────────────────────────────
+  const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r=Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
+  });
+
+  const encode = (eid, payload, sessionId) => {
+    const hdr  = new Uint8Array([0x11,0x14,0x10,0x00]);
+    const parts = [];
+    const eb = new ArrayBuffer(4); new DataView(eb).setUint32(0,eid,false); parts.push(new Uint8Array(eb));
+    if (sessionId) {
+      const sb = new TextEncoder().encode(sessionId);
+      const sl = new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
+      parts.push(new Uint8Array(sl)); parts.push(sb);
+    }
+    const pb = typeof payload==='string' ? new TextEncoder().encode(payload) : new Uint8Array(payload);
+    const pl = new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
+    parts.push(new Uint8Array(pl)); parts.push(pb);
+    const tot = parts.reduce((s,p)=>s+p.byteLength, hdr.byteLength);
+    const out = new Uint8Array(tot); let o=0;
+    out.set(hdr,o); o+=hdr.byteLength;
+    parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});
+    return out.buffer;
+  };
+
+  const encodeAudio = pcm => {
+    const hdr = new Uint8Array([0x11,0x25,0x00,0x00]);
+    seq++;
+    const sq=new ArrayBuffer(4); new DataView(sq).setInt32(0,seq,false);
+    const ev=new ArrayBuffer(4); new DataView(ev).setUint32(0,200,false);
+    const sb=sid?new TextEncoder().encode(sid):new Uint8Array(0);
+    const sl=new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
+    const pb=new Uint8Array(pcm);
+    const pl=new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
+    const tot=4+4+4+4+sb.byteLength+4+pb.byteLength;
+    const out=new Uint8Array(tot); let o=0;
+    [hdr,new Uint8Array(sq),new Uint8Array(ev),new Uint8Array(sl),sb,new Uint8Array(pl),pb]
+      .forEach(p=>{out.set(p,o);o+=p.byteLength;});
+    return out.buffer;
+  };
+
+  const parseFrame = buf => {
+    const dv=new DataView(buf);
+    const hSz=(dv.getUint8(0)&0x0f)*4, msgType=(dv.getUint8(1)>>4)&0x0f, flags=dv.getUint8(1)&0x0f;
+    let o=hSz;
+    if(msgType===15)o+=4;
+    if(flags&0x03)o+=4;
+    let eid=0; if(flags&0x04){eid=dv.getUint32(o,false);o+=4;}
+    let sessId=null;
+    if(o+4<=buf.byteLength){const sl=dv.getUint32(o,false);if(sl>0&&sl<200&&o+4+sl<=buf.byteLength){o+=4;sessId=new TextDecoder().decode(new Uint8Array(buf,o,sl));o+=sl;}}
+    let payload=null;
+    if(o+4<=buf.byteLength){const pl=dv.getUint32(o,false);o+=4;if(pl>0&&o+pl<=buf.byteLength)payload=buf.slice(o,o+pl);}
+    return {msgType,eid,payload};
+  };
+
+  // ── 音频播放队列 ──────────────────────────────────────
+  const flushAudio = () => {
+    if(!chunks.length)return;
+    const tot=chunks.reduce((s,c)=>s+c.byteLength,0), merged=new Uint8Array(tot); let o=0;
+    chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;}); chunks=[];
+    queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
+    playNext();
+  };
+  const playNext = () => {
+    if(playing||!queue.length)return; playing=true;
+    const url=queue.shift(), a=new Audio(url);
+    const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
+    a.onended=done; a.onerror=done; a.play().catch(done);
+  };
+  const stopAudio = () => { queue=[]; chunks=[]; playing=false; };
+
+  // ── 麦克风 ───────────────────────────────────────────
+  const _startMic = async () => {
+    $('dw-tapbtn').style.display='none';
+    setStatus('正在聆听…');
+    setListening(true);
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+      audioCtx  = new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+      srcNode   = audioCtx.createMediaStreamSource(micStream);
+      processor = audioCtx.createScriptProcessor(512,1,1);
+      processor.onaudioprocess = e => {
+        if(!ws||ws.readyState!==WebSocket.OPEN)return;
+        const f32=e.inputBuffer.getChannelData(0), i16=new Int16Array(f32.length);
+        f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
+        ws.send(encodeAudio(i16.buffer));
+      };
+      srcNode.connect(processor); processor.connect(audioCtx.destination);
+    } catch(e) { setStatus('麦克风错误: '+(e.name||e.message)); }
+  };
+  const stopMic = () => {
+    try{processor?.disconnect();}catch(_){}
+    try{srcNode?.disconnect();}catch(_){}
+    try{audioCtx?.close();}catch(_){}
+    micStream?.getTracks().forEach(t=>t.stop()); micStream=srcNode=processor=audioCtx=null;
+  };
+
+  // ── WS 消息处理 ──────────────────────────────────────
+  const sanitize = s => s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
+
+  const onMsg = evt => {
+    if(!(evt.data instanceof ArrayBuffer))return;
+    const {msgType,eid,payload}=parseFrame(evt.data);
+    if(msgType===9&&payload){
+      let j={}; try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
+      if(eid===50){  // ConnectionStarted
+        setStatus('连接成功，初始化中…');
+        ws.send(encode(100, JSON.stringify({
+          tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
+          dialog:{bot_name:'助理',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+        }), sid));
+      } else if(eid===150){ // SessionStarted
+        state='listening'; setStatus('点击下方开始说话');
+        $('dw-tapbtn').style.display='flex';
+        $('dw-tts-area').style.display='block';
+      } else if(eid===350){ // TTSSentenceStart
+        const t=j.text||''; if(t)setSub(t);
+        state='speaking'; setStatus('助理正在说话…');
+        setListening(false); setWave(true,false);
+      } else if(eid===351){ flushAudio();
+      } else if(eid===359){ flushAudio(); state='listening'; setStatus('正在聆听…'); setListening(true);
+      } else if(eid===450){ stopAudio(); asrEnded=false; // 用户开始说话
+      } else if(eid===459){ asrEnded=true; // ASREnded：用户说话结束，可以发 TTS
+        if(pendingTTS){ _doSpeakText(pendingTTS); pendingTTS=null; }
+      } else if(eid===451){ const t=(j.results||[]).map(r=>r.text).join(''); if(t){setStatus('我听到：'+t);setSub(t);}
+      } else if(eid===153||eid===599){ setStatus('连接出错，请重试'); }
+    }
+    if(msgType===11&&payload) chunks.push(payload);
+  };
+
+  // ── ChatTTSText：念指定文字 ──────────────────────────
+  const _doSpeakText = text => {
+    if(!ws||ws.readyState!==WebSocket.OPEN) return;
+    const hint = $('dw-tts-hint');
+    hint.textContent = '正在朗读…';
+    setSub(text);
+    setStatus('朗读中…');
+    setWave(true, false);
+    // 分三包：start → (可选中间包) → end
+    const chunks_text = [];
+    const MAX = 100;
+    for(let i=0;i<text.length;i+=MAX) chunks_text.push(text.slice(i,i+MAX));
+    chunks_text.forEach((part, idx) => {
+      const isFirst = idx===0, isLast = idx===chunks_text.length-1;
+      ws.send(encode(500, JSON.stringify({
+        start: isFirst,
+        content: part,
+        end: isLast && chunks_text.length>1 ? false : isLast
+      }), sid));
+    });
+    // 如果只有一包需特殊处理
+    if(chunks_text.length===1){
+      ws.send(encode(500, JSON.stringify({start:false,content:'',end:true}), sid));
+    }
+    setTimeout(()=>{ hint.textContent=''; }, 3000);
+  };
+
+  const speakText = () => {
+    const input = $('dw-tts-input');
+    const text = input.value.trim();
+    if(!text){ $('dw-tts-hint').textContent='请先输入要朗读的文字'; return; }
+    if(!ws||ws.readyState!==WebSocket.OPEN){ $('dw-tts-hint').textContent='请先打开助理连接'; return; }
+    if(!asrEnded){
+      // 用户正在说话，等 ASREnded 再发
+      pendingTTS = text;
+      $('dw-tts-hint').textContent='等待用户说话结束后朗读…';
+    } else {
+      _doSpeakText(text);
+    }
+  };
+
+  // ── 公开方法 ─────────────────────────────────────────
+  const open = () => {
+    const m=$('dw-modal'); m.style.display='flex';
+    setSub(''); setStatus('正在连接…'); setDot(false); setWave(false,false);
+    $('dw-tapbtn').style.display='none';
+    sid=uuid(); seq=2; chunks=[]; asrEnded=true; pendingTTS=null;
+
+    const u=new URL(WS_URL);
+    u.searchParams.set('session_id','dw_'+Date.now());
+    ws=new WebSocket(u.toString()); ws.binaryType='arraybuffer';
+    ws.onopen    = () => { ws.send(encode(1,'{}',null)); };
+    ws.onmessage = onMsg;
+    ws.onerror   = () => setStatus('连接失败，请检查网络');
+    ws.onclose   = e  => { stopMic(); setStatus('已断开 ('+e.code+')'); state='idle'; setWave(false,false); setDot(false); };
+  };
+
+  const close = () => {
+    $('dw-modal').style.display='none';
+    if(ws&&ws.readyState===WebSocket.OPEN){
+      try{ ws.send(encode(102,'{}',sid)); setTimeout(()=>{ try{ws.send(encode(2,'{}',null)); setTimeout(()=>ws?.close(),300);}catch(_){}},300); }catch(_){}
+    }
+    stopMic(); stopAudio(); ws=null; state='idle'; setWave(false,false); setDot(false);
+    $('dw-tts-area').style.display='none';
+    $('dw-tts-hint').textContent='';
+  };
+
+  // 补一个 dotpulse 动画
+  const style=document.createElement('style');
+  style.textContent='@keyframes dw-dotpulse{0%,100%{opacity:.5;transform:scale(.7)}50%{opacity:1;transform:scale(1.1)}}';
+  document.head.appendChild(style);
+
+  return { open, close, _startMic, speakText };
+})();
+</script>
+<!-- ══ 豆包语音助理组件 结束 ══ -->
+
+</body>
+</html>
