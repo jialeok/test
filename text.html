@@ -356,22 +356,18 @@ const DW = (() => {
     setSub(text);
     setStatus('朗读中…');
     setWave(true, false);
-    // 分三包：start → (可选中间包) → end
     const chunks_text = [];
     const MAX = 100;
     for(let i=0;i<text.length;i+=MAX) chunks_text.push(text.slice(i,i+MAX));
     chunks_text.forEach((part, idx) => {
-      const isFirst = idx===0, isLast = idx===chunks_text.length-1;
+      const isFirst = idx===0;
       ws.send(encode(500, JSON.stringify({
         start: isFirst,
         content: part,
-        end: isLast && chunks_text.length>1 ? false : isLast
+        end: false
       }), sid));
     });
-    // 如果只有一包需特殊处理
-    if(chunks_text.length===1){
-      ws.send(encode(500, JSON.stringify({start:false,content:'',end:true}), sid));
-    }
+    ws.send(encode(500, JSON.stringify({start:false,content:'',end:true}), sid));
     setTimeout(()=>{ hint.textContent=''; }, 3000);
   };
 
