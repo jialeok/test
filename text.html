@@ -496,16 +496,10 @@ const onMsg=evt=>{
     } else if(eid===359){
       flushAudio();
       state='listening';
-      setStatus('按住🎤继续说话，或直接输入…');
+      setStatus('按住🎤说话，或直接输入…');
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
-      // 播报结束后发结尾话术
-      setTimeout(()=>{
-        if(state==='listening'){
-          sendChatTTS('还有什么可以帮您的吗？','(结尾)');
-        }
-      },300);
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
@@ -552,13 +546,10 @@ let pttReady=false;
 let waitingForFinalASR=false; // 标记：已发EndASR，等待最终识别结果
 
 // 提前初始化麦克风，避免按下时异步延迟
-let pttFrameCount=0; // 本次按键发送的音频帧数
-
 function initMic(){
   navigator.mediaDevices.getUserMedia({audio:true,video:false}).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
-    logEvt('🎤麦克风',0,'AudioContext状态: '+audioCtx.state+' 采样率: '+audioCtx.sampleRate);
     srcNode=audioCtx.createMediaStreamSource(stream);
     processor=audioCtx.createScriptProcessor(512,1,1);
     processor.onaudioprocess=e=>{
@@ -566,7 +557,6 @@ function initMic(){
       const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
       f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
       ws.send(encodeAudio(i16.buffer));
-      pttFrameCount++;
     };
     srcNode.connect(processor);processor.connect(audioCtx.destination);
     setStatus('按住🎤说话，或直接输入…');
@@ -575,24 +565,19 @@ function initMic(){
 
 function pttStart(){
   if(state==='speaking'){
+    // 播报中按键：打断当前播报
     stopAudio();
     logEvt('→客户端',515,'ClientInterrupt');
     ws.send(encode(515,JSON.stringify({}),sid));
   }
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  // AudioContext可能被浏览器挂起，需要resume
-  if(audioCtx&&audioCtx.state==='suspended'){
-    audioCtx.resume().then(()=>logEvt('🎤麦克风',0,'AudioContext已resume'));
-  }
   pendingRAG=null;
   waitingForFinalASR=false;
-  pttFrameCount=0;
   pttReady=true;
   $('pttBtn').classList.add('pressing');
   setStatus('🎤 正在录音，松开发送…');
   setWave(true,true);
   resetFlow();litFlow(0);
-  logEvt('🎤麦克风',0,'开始录音 AudioContext状态: '+(audioCtx?audioCtx.state:'未初始化'));
 }
 
 function pttEnd(){
@@ -600,16 +585,12 @@ function pttEnd(){
   pttReady=false;
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
-  // 关键诊断：打印本次发送了多少帧
-  logEvt('🎤麦克风',0,'录音结束，共发送音频帧: '+pttFrameCount+'帧 ('+(pttFrameCount*512/16000*1000).toFixed(0)+'ms)');
-  if(pttFrameCount===0){
-    setStatus('⚠️ 未采集到音频，请检查麦克风权限');
-    return;
-  }
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
+    // push_to_talk模式：服务端收到EndASR后会返回最终451(is_interim=false)
+    // 标记等待状态，由451处理器负责触发RAG，不用超时兜底
     waitingForFinalASR=true;
   }
 }
