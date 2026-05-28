@@ -410,18 +410,17 @@ function applyRAGUI(result){
 }
 
 function flushPendingRAG(){
+  if(!ws||ws.readyState!==WebSocket.OPEN) return;
   if(!pendingRAG){
-    // 没命中知识库，恢复状态提示
-    setStatus('未找到相关记录，按住🎤重新说或直接输入…');
+    // 没命中知识库，500 播报兜底话术
+    sendChatTTS('对不起，没找到相关内容。','(兜底)');
     return;
   }
   const ragText=pendingRAG;
   pendingRAG=null;
-  if(ws&&ws.readyState===WebSocket.OPEN){
-    // 先发过渡话术再播报结果
-    sendChatTTS('好的，稍等我查一下～','(过渡)');
-    setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
-  }
+  // 先发过渡话术再播报结果
+  sendChatTTS('好的，稍等我查一下～','(过渡)');
+  setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
 }
 
 // 用 ChatTTSText(500) 流式发送文本
