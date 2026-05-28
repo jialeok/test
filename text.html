@@ -471,7 +471,7 @@ const onMsg=evt=>{
       setStatus('初始化会话…');
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
+        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}}, // 必须传extra否则服务端报42000020
         dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
@@ -571,11 +571,10 @@ function initMic(){
 
 function pttStart(){
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  // 如果正在播报，必须等服务端359确认结束后才能录音
-  // resume() 已移入 _doPttStart，确保在 pttReady=true 之前完成
+  // 如果正在播报，等359后自动开始（resume已移入_doPttStart，确保在pttReady=true前完成）
   if(state==='speaking'){
     setStatus('播报结束后自动开始录音…');
-    pendingPTT=true; // 标记：等359来了再开始录音
+    pendingPTT=true;
     return;
   }
   _doPttStart();
@@ -598,8 +597,8 @@ function _doPttStart(){
     logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无'));
   };
 
-  // 必须等 resume() 完成后再设 pttReady，否则 AudioContext 仍处于 suspended
-  // 状态时 onaudioprocess 不触发，导致0帧音频发出，服务端不回451
+  // 必须等resume()完成后再设pttReady=true
+  // 否则AudioContext仍suspended时onaudioprocess不触发，0帧送出，服务端不回451
   if(audioCtx&&audioCtx.state==='suspended'){
     audioCtx.resume().then(()=>{
       logEvt('🎤麦克风',0,'AudioContext已resume');
@@ -625,7 +624,7 @@ function pttEnd(){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
     waitingForFinalASR=true;
-    // 5秒内若未收到451/459，自动解除等待
+    // 5秒内若未收到451/459，自动解除等待，避免永久卡死
     clearAsrTimeout();
     asrTimeoutTimer=setTimeout(()=>{
       if(waitingForFinalASR){
