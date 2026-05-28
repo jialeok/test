@@ -398,8 +398,16 @@ function matchQuery(text){
     if(text.includes(name)){
       if(text.includes('今天')) return{name,date:TODAY};
       if(text.includes('昨天')) return{name,date:YESTERDAY};
-      // 没有明确时间词，默认查今天
-      return{name,date:TODAY};
+      // 尝试解析"X月X日"或"X月X号"格式
+      const mdMatch=text.match(/(\d{1,2})[月](\d{1,2})[日号]/);
+      if(mdMatch){
+        const year=new Date().getFullYear();
+        const month=String(mdMatch[1]).padStart(2,'0');
+        const day=String(mdMatch[2]).padStart(2,'0');
+        return{name,date:year+'-'+month+'-'+day};
+      }
+      // 没有任何时间词：不兜底TODAY，返回null走兜底话术
+      return null;
     }
   }
   return null;
@@ -446,6 +454,10 @@ function flushPendingRAG(){
   }
   const ragText=pendingRAG;
   pendingRAG=null;
+  // 先发 515 打断服务端正在跑的 LLM→TTS 流水线（502残音根因）
+  logEvt('→客户端',515,'ClientInterrupt (flushPendingRAG，打断502残音)');
+  ws.send(encode(515,JSON.stringify({}),sid));
+  stopAudio(); // 同步清掉本地音频队列
   // 先发过渡话术，等服务端 TTSEnded 后再发查询结果，彻底避免竞态
   // 用 _pendingQueryText 挂起，在 TTSEnded(359) 里消费
   sendChatTTS('好的，稍等我查一下～','(过渡)');
