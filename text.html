@@ -493,7 +493,7 @@ const onMsg=evt=>{
     } else if(eid===359){
       flushAudio();
       state='listening';
-      setStatus('按住🎤说话，或直接输入…');
+      setStatus('按住🎤继续说话，或直接输入…');
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
@@ -549,7 +549,7 @@ function initMic(){
     audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 采样率:'+audioCtx.sampleRate);
     srcNode=audioCtx.createMediaStreamSource(stream);
-    processor=audioCtx.createScriptProcessor(512,1,1);
+    processor=audioCtx.createScriptProcessor(320,1,1);
     processor.onaudioprocess=e=>{
       if(!pttReady||!ws||ws.readyState!==WebSocket.OPEN)return;
       const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
