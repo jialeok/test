@@ -191,6 +191,7 @@
   <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
     <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">实时事件流（最新在上）</span>
     <button onclick="evtLog=[];$('evtLog').textContent=''" style="font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">清空</button>
+    <button id="copyBtn" onclick="copyLog()" style="font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">复制</button>
   </div>
   <pre id="evtLog" style="flex:1;margin:0 14px 14px;padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
 </div>
@@ -224,6 +225,7 @@ const KB_GROUPS = [
 let ws, sid, seq=2, state='idle';
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false;
+let pttTimer=null;
 
 // ══ DOM ══════════════════════════════════════════════════
 const $= id=>document.getElementById(id);
@@ -399,11 +401,18 @@ function applyRAGUI(result){
 }
 
 function flushPendingRAG(){
-  if(!pendingRAG)return;
+  if(pttTimer){clearTimeout(pttTimer);pttTimer=null;}
+  if(!pendingRAG){
+    // 没命中知识库，恢复状态提示
+    setStatus('按住🎤说话，或直接输入…');
+    return;
+  }
   const ragText=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    sendChatTTS(ragText,'(收到459后发送)');
+    // 先发过渡话术再播报结果
+    sendChatTTS('好的，稍等我查一下～','(过渡)');
+    setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
   }
 }
 
@@ -414,6 +423,26 @@ function sendChatTTS(ttsText, note=''){
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
   showRagCard('✅ TTS已发送(500)！切换「RAG详情」tab查看');
   setStatus('TTS已发送，等待播报…');
+}
+
+// ══ 复制日志 ═════════════════════════════════════════════
+function copyLog(){
+  const text=evtLog.slice().reverse().join('\n');
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn=$('copyBtn');
+    const orig=btn.textContent;
+    btn.textContent='✅ 已复制';
+    btn.style.color='var(--accent)';
+    setTimeout(()=>{btn.textContent=orig;btn.style.color='';},1500);
+  }).catch(()=>{
+    // 降级方案
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);
+    $('copyBtn').textContent='✅ 已复制';
+    setTimeout(()=>{ $('copyBtn').textContent='复制'; },1500);
+  });
 }
 
 // ══ 事件日志（调试用）════════════════════════════════════
@@ -484,10 +513,15 @@ const onMsg=evt=>{
       const t=(j.results||[]).map(r=>r.text).join('');
       if(t){
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
-        const result=lookupRAG(t);
-        if(result){ applyRAGUI(result); pendingRAG=result.text; }
+        // 只取最终结果（is_interim=false）
+        const finals=(j.results||[]).filter(r=>!r.is_interim);
+        if(finals.length){
+          const result=lookupRAG(t);
+          if(result){ applyRAGUI(result); pendingRAG=result.text; }
+        }
       }
     } else if(eid===459){
+      // keep_alive模式回459，push_to_talk模式不回，两种都兼容
       flushPendingRAG();
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
@@ -546,8 +580,14 @@ function pttEnd(){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
   }
-  // push_to_talk模式服务端不回459，400发出后直接触发RAG
-  setTimeout(()=>{ flushPendingRAG(); },300);
+  // push_to_talk模式服务端不回459，等451识别结果后再触发
+  // 用超时兜底：2秒后如果还在识别中，说明没有识别结果，恢复状态
+  pttTimer=setTimeout(()=>{
+    if(state==='listening'&&status==='识别中…'){
+      flushPendingRAG();
+      if(!pendingRAG) setStatus('按住🎤说话，或直接输入…');
+    }
+  },2000);
 }
 
 function stopMic(){
