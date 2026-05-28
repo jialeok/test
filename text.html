@@ -225,7 +225,6 @@ const KB_GROUPS = [
 let ws, sid, seq=2, state='idle';
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false;
-let pttTimer=null;
 
 // ══ DOM ══════════════════════════════════════════════════
 const $= id=>document.getElementById(id);
@@ -401,10 +400,9 @@ function applyRAGUI(result){
 }
 
 function flushPendingRAG(){
-  if(pttTimer){clearTimeout(pttTimer);pttTimer=null;}
   if(!pendingRAG){
     // 没命中知识库，恢复状态提示
-    setStatus('按住🎤说话，或直接输入…');
+    setStatus('未找到相关记录，按住🎤重新说或直接输入…');
     return;
   }
   const ragText=pendingRAG;
@@ -513,15 +511,24 @@ const onMsg=evt=>{
       const t=(j.results||[]).map(r=>r.text).join('');
       if(t){
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
-        // 只取最终结果（is_interim=false）
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         if(finals.length){
+          // 拿到最终识别结果，更新pendingRAG
           const result=lookupRAG(t);
           if(result){ applyRAGUI(result); pendingRAG=result.text; }
+          else { pendingRAG=null; }
+          // push_to_talk模式：收到最终451即可触发，无需等459
+          if(waitingForFinalASR){
+            waitingForFinalASR=false;
+            flushPendingRAG();
+          }
         }
       }
     } else if(eid===459){
-      // keep_alive模式回459，push_to_talk模式不回，两种都兼容
+      // keep_alive模式才会收到459，兼容处理
+      if(waitingForFinalASR){
+        waitingForFinalASR=false;
+      }
       flushPendingRAG();
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
@@ -542,6 +549,7 @@ const onMsg=evt=>{
 
 // ══ Push-to-Talk 麦克风 ══════════════════════════════════
 let pttReady=false;
+let waitingForFinalASR=false; // 标记：已发EndASR，等待最终识别结果
 
 // 提前初始化麦克风，避免按下时异步延迟
 function initMic(){
@@ -562,12 +570,20 @@ function initMic(){
 }
 
 function pttStart(){
-  if(state==='speaking')return;
+  if(state==='speaking'){
+    // 播报中按键：打断当前播报
+    stopAudio();
+    logEvt('→客户端',515,'ClientInterrupt');
+    ws.send(encode(515,JSON.stringify({}),sid));
+  }
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
+  pendingRAG=null;
+  waitingForFinalASR=false;
   pttReady=true;
   $('pttBtn').classList.add('pressing');
   setStatus('🎤 正在录音，松开发送…');
   setWave(true,true);
+  resetFlow();litFlow(0);
 }
 
 function pttEnd(){
@@ -579,15 +595,10 @@ function pttEnd(){
   if(ws&&ws.readyState===WebSocket.OPEN){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
+    // push_to_talk模式：服务端收到EndASR后会返回最终451(is_interim=false)
+    // 标记等待状态，由451处理器负责触发RAG，不用超时兜底
+    waitingForFinalASR=true;
   }
-  // push_to_talk模式服务端不回459，等451识别结果后再触发
-  // 用超时兜底：2秒后如果还在识别中，说明没有识别结果，恢复状态
-  pttTimer=setTimeout(()=>{
-    if(state==='listening'&&status==='识别中…'){
-      flushPendingRAG();
-      if(!pendingRAG) setStatus('按住🎤说话，或直接输入…');
-    }
-  },2000);
 }
 
 function stopMic(){
