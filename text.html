@@ -370,8 +370,6 @@ const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 
 let pendingRAG = null; // 语音路径：等 459 再发
-// RAG路径已发出的500包数，每个359到来-1，归零时才发102
-let ragTTSPending = 0;
 
 function matchQuery(text){
   const m=text.match(/(?:查|帮我查|帮忙查|查一下|查询)(.{1,4}?)(今天|昨天)(的|的工作|遇到什么|做了什么|工作|情况|计划)?/);
@@ -418,8 +416,7 @@ function flushPendingRAG(){
   const ragText=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    // 两包都算入计数：过渡话 + 查询结果，最后一个359归零才发102
-    ragTTSPending = 2;
+    // 先发过渡话术再播报结果
     sendChatTTS('好的，稍等我查一下～','(过渡)');
     setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
   }
@@ -528,21 +525,13 @@ const onMsg=evt=>{
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
+      // ── 播报完毕：静默刷新会话，保持连接活跃，防止空闲超时断线 ──
+      _refreshSession();
       if(pendingPTT){
         // 用户在播报期间按了按钮，现在自动开始录音
         _doPttStart();
       } else {
         setStatus('按住🎤说话，或直接输入…');
-      }
-      // 只有 RAG 路径发的500全部播完（计数归零）才发102，开场白/闲聊不发
-      if(ragTTSPending > 0){
-        ragTTSPending--;
-        if(ragTTSPending === 0){
-          if(ws&&ws.readyState===WebSocket.OPEN){
-            logEvt('→客户端',102,'FinishSession (RAG全部播完)');
-            ws.send(encode(102,JSON.stringify({}),sid));
-          }
-        }
       }
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
@@ -570,17 +559,28 @@ const onMsg=evt=>{
         waitingForFinalASR=false;
       }
       flushPendingRAG();
+    } else if(eid===553){
+      // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
+      if(pendingRAGAfter553){
+        const ttsText=pendingRAGAfter553;
+        pendingRAGAfter553=null;
+        sendChatTTS(ttsText,'(收到553后发送)');
+        litFlow(3);
+      }
     } else if(eid===152){
-      // SessionFinished ack，复用WS连接，用新sid重建session
-      logEvt('←服务端',152,'SessionFinished，准备重建session');
-      sid=uuid();globalSeq=0;
-      const sessionPayload={
-        tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
-      };
-      logEvt('→客户端',100,'StartSession (重建)');
-      ws.send(encode(100,JSON.stringify(sessionPayload),sid));
+      // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
+      if(_refreshPending){
+        _refreshPending = false;
+        sid = uuid(); // 新会话用新 session id
+        const sessionPayload={
+          tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+        };
+        logEvt('→客户端',100,'StartSession (静默刷新)');
+        ws.send(encode(100,JSON.stringify(sessionPayload),sid));
+        // 注意：不发 SayHello，静默重连用户无感知
+      }
     } else if(eid===153||eid===599){
       const errMsg=j.error||JSON.stringify(j);
       logEvt('←错误',eid,errMsg);
@@ -589,6 +589,19 @@ const onMsg=evt=>{
   }
   if(msgType===11&&payload)chunks.push(payload);
 };
+
+// ══ 会话静默刷新（防空闲断线）════════════════════════════
+// 播报结束后：发 FinishSession → 收到 152 后立刻重发 StartSession
+// WebSocket 连接不断，用户按下按钮时连接已就绪，零等待
+let _refreshPending = false;
+function _refreshSession(){
+  if(!ws||ws.readyState!==WebSocket.OPEN) return;
+  if(_refreshPending) return;
+  _refreshPending = true;
+  logEvt('→客户端',102,'FinishSession (静默刷新)');
+  ws.send(encode(102,JSON.stringify({}),sid));
+  // 收到 SessionFinished(152) 后重新 StartSession，在 onMsg 里处理
+}
 
 // ══ Push-to-Talk 麦克风 ══════════════════════════════════
 let pttReady=false;
@@ -759,6 +772,8 @@ function stopMic(){
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
 
+let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
+
 function sendText(){
   const el=$('textInput');
   const text=el.value.trim();
@@ -773,12 +788,12 @@ function sendText(){
   const result=lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    // RAG命中：直接走500，不发501，避免触发LLM(502路径)
-    ragTTSPending = 2;
-    sendChatTTS('好的，稍等我查一下～','(过渡)');
-    setTimeout(()=>{ sendChatTTS(result.text,'(查询结果)'); },800);
+    // 先发 501 建立对话上下文，收到 553 确认后再发 500
+    pendingRAGAfter553 = result.text;
+    logEvt('→客户端',501,'ChatTextQuery (触发上下文): '+text);
+    ws.send(encode(501,JSON.stringify({content:text}),sid));
+    setStatus('等待服务端确认…');
   } else {
-    // 没命中RAG，走正常对话(501)
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
     setStatus('等待回复…');
@@ -797,8 +812,17 @@ function initWS(){
     ws.send(encode(1,'{}',null));
   };
   ws.onmessage=onMsg;
-  ws.onerror=()=>{setConnStatus(false,'连接失败');setStatus('连接失败，请刷新重试');};
-  ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('连接断开('+e.code+')，2秒后自动重连…');state='idle';setWave(false,false);setTimeout(initWS,2000);};
+  ws.onerror=()=>{setConnStatus(false,'连接失败');setStatus('连接失败，正在重连…'); setTimeout(initWS, 2000); };
+  ws.onclose=e=>{
+    stopMic();
+    setConnStatus(false,'已断开');
+    state='idle';
+    setWave(false,false);
+    _refreshPending = false;
+    logEvt('⚠️断线',0,'code='+e.code+' 3秒后自动重连…');
+    setStatus('连接断开，3秒后自动重连…');
+    setTimeout(initWS, 3000); // 自动重连，用户无需刷新
+  };
 }
 
 // ══ PTT 按钮事件（document级别，手机更可靠）════════════
