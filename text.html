@@ -493,16 +493,10 @@ const onMsg=evt=>{
     } else if(eid===359){
       flushAudio();
       state='listening';
-      setStatus('按住🎤继续说话，或直接输入…');
+      setStatus('按住🎤说话，或直接输入…');
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
-      // 播报结束后发结尾话术
-      setTimeout(()=>{
-        if(state==='listening'){
-          sendChatTTS('还有什么可以帮您的吗？','(结尾)');
-        }
-      },300);
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
