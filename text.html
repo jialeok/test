@@ -453,11 +453,14 @@ const onMsg=evt=>{
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
     } else if(eid===150){
-      state='listening';setStatus('连接就绪，按住🎤说话');
+      state='listening';setStatus('连接就绪，初始化麦克风…');
       litFlow(0);
+      initMic(); // 提前申请麦克风权限，避免按下时延迟
       // 发开场白
-      logEvt('→客户端',300,'SayHello');
-      ws.send(encode(300,JSON.stringify({content:'老板好，小勤在线！想了解哪位小伙伴的工作，报个名字就行～'}),sid));
+      setTimeout(()=>{
+        logEvt('→客户端',300,'SayHello');
+        ws.send(encode(300,JSON.stringify({content:'老板好，小勤在线！想了解哪位小伙伴的工作，报个名字就行～'}),sid));
+      },500);
     } else if(eid===350){
       const t=j.text||'';if(t)setSub(t,true);
       state='speaking';setStatus('助理正在说话…');
@@ -504,37 +507,47 @@ const onMsg=evt=>{
 };
 
 // ══ Push-to-Talk 麦克风 ══════════════════════════════════
-function pttStart(){
-  if(state==='speaking')return; // 播报中不允许打断
-  if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  $('pttBtn').classList.add('pressing');
-  setStatus('🎤 正在录音，松开发送…');
-  setWave(true,true);
+let pttReady=false;
+
+// 提前初始化麦克风，避免按下时异步延迟
+function initMic(){
   navigator.mediaDevices.getUserMedia({audio:true,video:false}).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
     srcNode=audioCtx.createMediaStreamSource(stream);
     processor=audioCtx.createScriptProcessor(512,1,1);
     processor.onaudioprocess=e=>{
-      if(!ws||ws.readyState!==WebSocket.OPEN)return;
+      if(!pttReady||!ws||ws.readyState!==WebSocket.OPEN)return;
       const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
       f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
       ws.send(encodeAudio(i16.buffer));
     };
     srcNode.connect(processor);processor.connect(audioCtx.destination);
-  }).catch(e=>{setStatus('麦克风错误: '+(e.name||e.message));pttEnd();});
+    setStatus('按住🎤说话，或直接输入…');
+  }).catch(e=>{setStatus('麦克风权限错误: '+(e.name||e.message));});
+}
+
+function pttStart(){
+  if(state==='speaking')return;
+  if(!ws||ws.readyState!==WebSocket.OPEN)return;
+  pttReady=true;
+  $('pttBtn').classList.add('pressing');
+  setStatus('🎤 正在录音，松开发送…');
+  setWave(true,true);
 }
 
 function pttEnd(){
+  if(!pttReady)return;
+  pttReady=false;
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
-  // 发送音频结束信号
+  setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
   }
-  stopMic();
-  setStatus('识别中…');
+  // push_to_talk模式服务端不回459，400发出后直接触发RAG
+  setTimeout(()=>{ flushPendingRAG(); },300);
 }
 
 function stopMic(){
