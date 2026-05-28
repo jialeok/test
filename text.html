@@ -203,14 +203,7 @@
   <div class="kb-list" id="kbList"></div>
 </div>
 
-<!-- Tab3: 事件日志 -->
-<div class="tab-content" id="tab3">
-  <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">实时事件流（最新在上）</span>
-    <button onclick="evtLog=[];$('evtLog').textContent=''" style="font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">清空</button>
-  </div>
-  <pre id="evtLog" style="flex:1;margin:0 14px 14px;padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
-</div>
+<!-- Tab2: RAG详情 -->
 <div class="tab-content" id="tab2">
   <div id="detailPane" style="flex:1;display:flex;flex-direction:column">
     <div class="empty-state">
@@ -218,6 +211,15 @@
       触发一次 RAG 查询<br>这里会显示发给豆包<br>的完整 Payload
     </div>
   </div>
+</div>
+
+<!-- Tab3: 事件日志 -->
+<div class="tab-content" id="tab3">
+  <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">实时事件流（最新在上）</span>
+    <button onclick="evtLog=[];$('evtLog').textContent=''" style="font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">清空</button>
+  </div>
+  <pre id="evtLog" style="flex:1;margin:0 14px 14px;padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
 </div>
 
 <script>
@@ -496,6 +498,17 @@ const onMsg=evt=>{
       }
     } else if(eid===459){
       flushPendingRAG();
+    } else if(eid===553){
+      // ChatTextQueryConfirmed：文字query已被服务端确认，现在发 502 打断模型
+      if(pendingRAGAfter553){
+        const payload=pendingRAGAfter553;
+        pendingRAGAfter553=null;
+        logEvt('→客户端',502,'ChatRAGText (收到553后发送)');
+        ws.send(encode(502,JSON.stringify(payload),sid));
+        showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
+        setStatus('RAG已发送，等待播报…');
+        litFlow(3);
+      }
     } else if(eid===153||eid===599){
       const errMsg=j.error||JSON.stringify(j);
       logEvt('←错误',eid,errMsg);
@@ -541,6 +554,8 @@ function stopMic(){
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
 
+let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
+
 function sendText(){
   const el=$('textInput');
   const text=el.value.trim();
@@ -554,17 +569,13 @@ function sendText(){
 
   const result=lookupRAG(text);
   if(result){
-    // 文字输入时，502 必须在语音 ASR 的 459 之后才能生效，文字路径没有 459。
-    // 正确做法：把知识库内容直接拼进 501 的 content，让模型朗读知识。
     applyRAGUI(result);
-    const{rec}=result;
-    const knowledge=rec.items.map(it=>it.section+'：'+it.content).join('；');
-    const injected=`请根据以下知识库内容，口语化地播报给用户（不超过3句话）：${knowledge}`;
-    logEvt('→客户端',501,'ChatTextQuery (RAG注入): '+injected.substring(0,40)+'…');
-    ws.send(encode(501,JSON.stringify({content:injected}),sid));
-    showRagCard('✅ 知识已注入501，等待播报…');
-    setStatus('等待播报…');
-    litFlow(3);
+    // 先发 501，等收到 553(ChatTextQueryConfirmed) 后立刻发 502
+    pendingRAGAfter553 = result.payload;
+    logEvt('→客户端',501,'ChatTextQuery: '+text+' (等553后发502)');
+    ws.send(encode(501,JSON.stringify({content:text}),sid));
+    showRagCard('已发送501，等待服务端确认(553)…');
+    setStatus('等待服务端确认…');
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
