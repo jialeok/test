@@ -504,6 +504,7 @@ const onMsg=evt=>{
       }
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
+      clearAsrTimeout();
       const t=(j.results||[]).map(r=>r.text).join('');
       if(t){
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
@@ -522,6 +523,7 @@ const onMsg=evt=>{
       }
     } else if(eid===459){
       // keep_alive模式才会收到459，兼容处理
+      clearAsrTimeout();
       if(waitingForFinalASR){
         waitingForFinalASR=false;
       }
@@ -569,12 +571,8 @@ function initMic(){
 
 function pttStart(){
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  // 手机浏览器AudioContext可能被挂起，必须resume
-  if(audioCtx&&audioCtx.state==='suspended'){
-    audioCtx.resume().then(()=>logEvt('🎤麦克风',0,'AudioContext已resume'));
-  }
   // 如果正在播报，必须等服务端359确认结束后才能录音
-  // 不在这里发515，避免打断后服务端状态混乱导致后续音频被忽略
+  // resume() 已移入 _doPttStart，确保在 pttReady=true 之前完成
   if(state==='speaking'){
     setStatus('播报结束后自动开始录音…');
     pendingPTT=true; // 标记：等359来了再开始录音
@@ -590,13 +588,31 @@ function _doPttStart(){
   pendingRAG=null;
   waitingForFinalASR=false;
   pttFrameCount=0;
-  pttReady=true;
-  $('pttBtn').classList.add('pressing');
-  setStatus('🎤 正在录音，松开发送…');
-  setWave(true,true);
-  resetFlow();litFlow(0);
-  logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无'));
+
+  const doStart=()=>{
+    pttReady=true;
+    $('pttBtn').classList.add('pressing');
+    setStatus('🎤 正在录音，松开发送…');
+    setWave(true,true);
+    resetFlow();litFlow(0);
+    logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无'));
+  };
+
+  // 必须等 resume() 完成后再设 pttReady，否则 AudioContext 仍处于 suspended
+  // 状态时 onaudioprocess 不触发，导致0帧音频发出，服务端不回451
+  if(audioCtx&&audioCtx.state==='suspended'){
+    audioCtx.resume().then(()=>{
+      logEvt('🎤麦克风',0,'AudioContext已resume');
+      doStart();
+    });
+  } else {
+    doStart();
+  }
 }
+
+// ASR超时保护：防止服务端不回451时永远卡在「识别中」
+let asrTimeoutTimer=null;
+function clearAsrTimeout(){ if(asrTimeoutTimer){clearTimeout(asrTimeoutTimer);asrTimeoutTimer=null;} }
 
 function pttEnd(){
   if(!pttReady)return;
@@ -609,6 +625,15 @@ function pttEnd(){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
     waitingForFinalASR=true;
+    // 5秒内若未收到451/459，自动解除等待
+    clearAsrTimeout();
+    asrTimeoutTimer=setTimeout(()=>{
+      if(waitingForFinalASR){
+        waitingForFinalASR=false;
+        logEvt('🎤麦克风',0,'ASR超时，未收到451，自动重置');
+        setStatus('识别超时，请重试（可能未录到声音）…');
+      }
+    },5000);
   }
 }
 
