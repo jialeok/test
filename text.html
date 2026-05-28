@@ -472,7 +472,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -504,22 +504,14 @@ const onMsg=evt=>{
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         if(finals.length){
-          // 拿到最终识别结果，更新pendingRAG
+          // keep_alive模式：451 is_interim=false只更新pendingRAG，等459再触发
           const result=lookupRAG(t);
           if(result){ applyRAGUI(result); pendingRAG=result.text; }
           else { pendingRAG=null; }
-          // push_to_talk模式：收到最终451即可触发，无需等459
-          if(waitingForFinalASR){
-            waitingForFinalASR=false;
-            flushPendingRAG();
-          }
         }
       }
     } else if(eid===459){
-      // keep_alive模式才会收到459，兼容处理
-      if(waitingForFinalASR){
-        waitingForFinalASR=false;
-      }
+      // keep_alive模式：服务端检测到说话结束，触发RAG
       flushPendingRAG();
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
@@ -549,7 +541,7 @@ function initMic(){
     audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 采样率:'+audioCtx.sampleRate);
     srcNode=audioCtx.createMediaStreamSource(stream);
-    processor=audioCtx.createScriptProcessor(320,1,1);
+    processor=audioCtx.createScriptProcessor(512,1,1);
     processor.onaudioprocess=e=>{
       if(!pttReady||!ws||ws.readyState!==WebSocket.OPEN)return;
       const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
@@ -590,12 +582,8 @@ function pttEnd(){
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
   logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*512/16000*1000).toFixed(0)+'ms');
+  // keep_alive模式：松开停止发音频，服务端VAD自动检测说话结束，会回459
   setStatus('识别中…');
-  if(ws&&ws.readyState===WebSocket.OPEN){
-    logEvt('→客户端',400,'EndASR');
-    ws.send(encode(400,JSON.stringify({}),sid));
-    waitingForFinalASR=true;
-  }
 }
 
 function stopMic(){
