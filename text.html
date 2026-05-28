@@ -153,7 +153,7 @@
     <div class="flow-arrow" id="fa2">→</div>
     <div class="flow-node" id="fn-search">检索</div>
     <div class="flow-arrow" id="fa3">→</div>
-    <div class="flow-node" id="fn-rag">502</div>
+    <div class="flow-node" id="fn-rag">500</div>
     <div class="flow-arrow" id="fa4">→</div>
     <div class="flow-node" id="fn-reply">播报</div>
   </div>
@@ -293,38 +293,34 @@ function renderKB(matchedKey){
 }
 renderKB(null);
 
-// ══ RAG详情渲染 ═══════════════════════════════════════════
-function renderDetail(query,rec,ragArr){
+// ══ RAG详情渲染（500版本）════════════════════════════════
+function renderDetail500(query,rec,text){
   $('detailPane').innerHTML=`
     <div class="detail-body">
       <div><div class="detail-label">请求事件</div>
-        <div class="detail-value">ID: <span style="color:var(--accent)">502</span>  ChatRAGText<br>协议: <span style="color:var(--accent2)">WebSocket 二进制帧</span></div></div>
+        <div class="detail-value">ID: <span style="color:var(--accent)">500</span>  ChatTTSText<br>协议: <span style="color:var(--accent2)">WebSocket 二进制帧</span></div></div>
       <div><div class="detail-label">检索参数</div>
         <div class="detail-value">姓名: <span style="color:var(--warn)">${query.name}</span><br>日期: <span style="color:var(--warn)">${query.date}</span></div></div>
       <div><div class="detail-label">发送给豆包的 Payload</div>
         <div class="code-block"><span class="k">{</span>
-  <span class="n">"external_rag"</span><span class="k">:</span>
-    <span class="s">JSON.stringify</span>(<span class="k">[{</span>
-      <span class="n">"title"</span><span class="k">:</span> <span class="v">"${ragArr[0].title}"</span>,
-      <span class="n">"content"</span><span class="k">:</span> <span class="v">"${ragArr[0].content.substring(0,40)}…"</span>
-    <span class="k">}]</span>)
+  <span class="n">"start"</span><span class="k">:</span> <span class="v">true</span>,
+  <span class="n">"content"</span><span class="k">:</span> <span class="s">"${text.substring(0,50).replace(/"/g,'&quot;')}…"</span>,
+  <span class="n">"end"</span><span class="k">:</span> <span class="v">false</span>
 <span class="k">}</span></div></div>
-      <div><div class="detail-label">content 完整内容</div>
-        <div class="detail-value" style="font-size:11px;line-height:1.8">${ragArr[0].content}</div></div>
+      <div><div class="detail-label">完整播报文本</div>
+        <div class="detail-value" style="font-size:11px;line-height:1.8">${text}</div></div>
       <div><div class="detail-label">豆包处理流程</div>
         <div class="detail-value" style="font-size:12px;line-height:2">
-          <span style="color:var(--accent)">1.</span> 收到 external_rag<br>
-          <span style="color:var(--accent)">2.</span> 总结 + 口语化改写<br>
-          <span style="color:var(--accent)">3.</span> TTS 转语音流式播报<br>
-          <span style="color:var(--accent)">4.</span> TTSSentenceStart (350)<br>
-          <span style="color:var(--accent)">5.</span> TTSResponse (352) 流式返回
+          <span style="color:var(--accent)">1.</span> 收到 ChatTTSText<br>
+          <span style="color:var(--accent)">2.</span> 直接 TTS 合成，<span style="color:var(--warn)">不经过 LLM</span><br>
+          <span style="color:var(--accent)">3.</span> TTSSentenceStart (350)<br>
+          <span style="color:var(--accent)">4.</span> TTSResponse (352) 流式返回
         </div></div>
-      <div><div class="detail-label">注意事项</div>
+      <div><div class="detail-label">与502的区别</div>
         <div class="detail-value" style="font-size:12px;line-height:2;color:var(--muted)">
-          • external_rag 是 <span style="color:var(--warn)">JSON数组字符串</span><br>
-          • 总长度 ≤ <span style="color:var(--warn)">4000 字符</span><br>
-          • 需在 ASREnded (459) 之后发送<br>
-          • 不触发模型自身闲聊回复
+          • 500: <span style="color:var(--accent)">直接播报</span>，内容100%来自知识库<br>
+          • 502: 经LLM改写，可能答非所问<br>
+          • 500 适合知识库答案明确的场景
         </div></div>
     </div>`;
 }
@@ -406,14 +402,14 @@ function lookupRAG(text){
   if(!query)return null;
   const rec=KB_GROUPS.find(r=>r.name===query.name&&r.date===query.date);
   if(!rec)return null;
-  const content=rec.items.map(it=>it.section+'：'+it.content).join('；');
-  const ragArr=[{title:rec.name+' '+rec.date+' 工作日报',content}];
-  return{query,rec,ragArr,payload:{external_rag:JSON.stringify(ragArr)}};
+  const content=rec.items.map(it=>it.section+'：'+it.content).join('。');
+  const text=rec.name+'，'+rec.date+'的工作日报。'+content+'。';
+  return{query,rec,text};
 }
 
 // 更新UI（不影响发送时机）
 function applyRAGUI(result){
-  const{query,rec,ragArr}=result;
+  const{query,rec}=result;
   stopAudio();
   litFlow(1);
   showRagCard('意图识别：查 '+query.name+' · '+query.date);
@@ -424,27 +420,35 @@ function applyRAGUI(result){
     setTimeout(()=>{
       litFlow(3);
       showRagCard('知识库已就绪，等待发送…');
-      renderDetail(query,rec,ragArr);
+      renderDetail500(query,rec,result.text);
     },200);
   },200);
 }
 
 function flushPendingRAG(){
   if(!pendingRAG)return;
-  const payload=pendingRAG;
+  const text=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    logEvt('→客户端',502,'ChatRAGText (收到459后发送)');
-    ws.send(encode(502,JSON.stringify(payload),sid));
-    showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
-    setStatus('RAG已发送，等待播报…');
+    sendChatTTS(text,'(收到459后发送)');
   }
+}
+
+// 用 ChatTTSText(500) 流式发送文本
+function sendChatTTS(text, note=''){
+  logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+text.substring(0,30)+'…');
+  // 第一包：start=true
+  ws.send(encode(500,JSON.stringify({start:true,content:text,end:false}),sid));
+  // 结束包：end=true
+  ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
+  showRagCard('✅ TTS已发送(500)！切换「RAG详情」tab查看');
+  setStatus('TTS已发送，等待播报…');
 }
 
 // ══ 事件日志（调试用）════════════════════════════════════
 const EID_NAMES={50:'ConnectionStarted',150:'SessionStarted',153:'SessionFailed',
   350:'TTSSentenceStart',351:'TTSSentenceEnd',352:'TTSResponse',359:'TTSEnded',
-  450:'ASRInfo',451:'ASRResponse',459:'ASREnded',
+  450:'ASRInfo',451:'ASRResponse',459:'ASREnded',500:'ChatTTSText',
   550:'ChatResponse',553:'ChatTextQueryConfirmed',559:'ChatEnded',599:'Error'};
 let evtLog=[];
 function logEvt(dir,eid,note=''){
@@ -504,21 +508,12 @@ const onMsg=evt=>{
       if(t){
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
         const result=lookupRAG(t);
-        if(result){ applyRAGUI(result); pendingRAG=result.payload; }
+        if(result){ applyRAGUI(result); pendingRAG=result.text; }
       }
     } else if(eid===459){
       flushPendingRAG();
     } else if(eid===553){
-      // ChatTextQueryConfirmed：文字query已被服务端确认，现在发 502 打断模型
-      if(pendingRAGAfter553){
-        const payload=pendingRAGAfter553;
-        pendingRAGAfter553=null;
-        logEvt('→客户端',502,'ChatRAGText (收到553后发送)');
-        ws.send(encode(502,JSON.stringify(payload),sid));
-        showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
-        setStatus('RAG已发送，等待播报…');
-        litFlow(3);
-      }
+      // ChatTextQueryConfirmed ack，500模式下无需处理
     } else if(eid===153||eid===599){
       const errMsg=j.error||JSON.stringify(j);
       logEvt('←错误',eid,errMsg);
@@ -580,12 +575,8 @@ function sendText(){
   const result=lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    // 文字RAG：直接发 502，不发 501，不触发模型推理，内容完全来自知识库
-    pendingRAGAfter553 = null; // 清掉，不走553路径
-    logEvt('→客户端',502,'ChatRAGText (文字直发)');
-    ws.send(encode(502,JSON.stringify(result.payload),sid));
-    showRagCard('✅ RAG已发送(502)，等待播报…');
-    setStatus('等待播报…');
+    pendingRAGAfter553 = null;
+    sendChatTTS(result.text,'(文字直发)');
     litFlow(3);
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
