@@ -531,6 +531,11 @@ const onMsg=evt=>{
       } else {
         setStatus('按住🎤说话，或直接输入…');
       }
+      // 播报完毕，主动发FinishSession收尾，避免session僵尸导致idle超时断线
+      if(ws&&ws.readyState===WebSocket.OPEN){
+        logEvt('→客户端',102,'FinishSession');
+        ws.send(encode(102,JSON.stringify({}),sid));
+      }
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       clearAsrTimeout();
@@ -565,6 +570,17 @@ const onMsg=evt=>{
         sendChatTTS(ttsText,'(收到553后发送)');
         litFlow(3);
       }
+    } else if(eid===152){
+      // SessionFinished ack，复用WS连接，用新sid重建session
+      logEvt('←服务端',152,'SessionFinished，准备重建session');
+      sid=uuid();globalSeq=0;
+      const sessionPayload={
+        tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+      };
+      logEvt('→客户端',100,'StartSession (重建)');
+      ws.send(encode(100,JSON.stringify(sessionPayload),sid));
     } else if(eid===153||eid===599){
       const errMsg=j.error||JSON.stringify(j);
       logEvt('←错误',eid,errMsg);
@@ -784,7 +800,7 @@ function initWS(){
   };
   ws.onmessage=onMsg;
   ws.onerror=()=>{setConnStatus(false,'连接失败');setStatus('连接失败，请刷新重试');};
-  ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('已断开('+e.code+')，刷新重连');state='idle';setWave(false,false);};
+  ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('连接断开('+e.code+')，2秒后自动重连…');state='idle';setWave(false,false);setTimeout(initWS,2000);};
 }
 
 // ══ PTT 按钮事件（document级别，手机更可靠）════════════
