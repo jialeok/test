@@ -441,10 +441,10 @@ function copyLog(){
 }
 
 // ══ 事件日志（调试用）════════════════════════════════════
-const EID_NAMES={50:'ConnectionStarted',150:'SessionStarted',153:'SessionFailed',
+const EID_NAMES={50:'ConnectionStarted',150:'SessionStarted',152:'SessionFinished',153:'SessionFailed',154:'UsageResponse',
   350:'TTSSentenceStart',351:'TTSSentenceEnd',352:'TTSResponse',359:'TTSEnded',
   450:'ASRInfo',451:'ASRResponse',459:'ASREnded',500:'ChatTTSText',
-  550:'ChatResponse',553:'ChatTextQueryConfirmed',559:'ChatEnded',599:'Error'};
+  515:'ClientInterrupt',550:'ChatResponse',553:'ChatTextQueryConfirmed',559:'ChatEnded',599:'Error'};
 let evtLog=[];
 function logEvt(dir,eid,note=''){
   const name=EID_NAMES[eid]||'eid='+eid;
@@ -637,6 +637,11 @@ function _doPttStart(){
     setStatus('🎤 正在录音，松开发送…');
     setWave(true,true);
     resetFlow();litFlow(0);
+    // push_to_talk模式：每次按下先发 ClientInterrupt(515)，告知服务端上一轮结束，准备接收新音频
+    if(ws&&ws.readyState===WebSocket.OPEN){
+      logEvt('→客户端',515,'ClientInterrupt');
+      ws.send(encode(515,JSON.stringify({}),sid));
+    }
     logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无')+' 采样率:'+(audioCtx?audioCtx.sampleRate:'?'));
   };
   if(audioCtx&&audioCtx.state==='suspended'){
