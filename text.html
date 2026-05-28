@@ -461,6 +461,22 @@ function logEvt(dir,eid,note=''){
 const onMsg=evt=>{
   if(!(evt.data instanceof ArrayBuffer))return;
   const{msgType,eid,payload}=parseFrame(evt.data);
+  // msgType=15 是错误帧，单独处理
+  if(msgType===15){
+    let errMsg='unknown';
+    try{
+      // 错误帧结构: header(4) + errorCode(4) + payloadSize(4) + payload
+      const dv=new DataView(evt.data);
+      const errCode=dv.getUint32(4,false);
+      const pLen=dv.getUint32(8,false);
+      if(pLen>0&&12+pLen<=evt.data.byteLength){
+        errMsg=new TextDecoder().decode(evt.data.slice(12,12+pLen));
+      }
+      logEvt('←错误帧',599,'code='+errCode+' '+errMsg);
+    }catch(ex){logEvt('←错误帧',599,'解析失败:'+ex.message);}
+    setStatus('服务端错误，请重试');
+    return;
+  }
   // 记录所有服务端事件（msgType===9 是 JSON 事件，11 是音频帧）
   if(msgType===9){logEvt('←服务端',eid);}
   else if(msgType===11){logEvt('←音频帧',352,'(TTSResponse binary)');}
@@ -598,8 +614,13 @@ function initMic(){
         audioBytesSent+=i16.byteLength;
         audioFramesSent++;
         pttFrameCount++;
-        // 第1帧打印详细信息，便于诊断
-        if(audioFramesSent===1) logEvt('🎤麦克风',0,'第1帧 pcmBytes='+i16.byteLength+' frameBytes='+frame.byteLength+' rms='+rms.toFixed(4)+' bufAmnt='+ws.bufferedAmount);
+        // 第1帧：打印前20字节hex，验证帧格式有没有被代理篡改
+        if(audioFramesSent===1){
+          const bytes=new Uint8Array(frame,0,Math.min(20,frame.byteLength));
+          const hex=Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ');
+          logEvt('🎤麦克风',0,'第1帧 hex='+hex+' pcmBytes='+i16.byteLength+' rms='+rms.toFixed(4));
+          // 期望: 11 25 00 00 [seq4字节] [ev=200即c8000000 4字节] [sid_size4字节] ...
+        }
         // 每10帧打一次日志，包含音量和发送量
         if(audioFramesSent%10===0) logEvt('🎤麦克风',0,'已发'+audioFramesSent+'帧/'+audioBytesSent+'bytes rms='+rms.toFixed(4)+' bufAmnt='+ws.bufferedAmount);
       }catch(ex){
