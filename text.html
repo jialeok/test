@@ -160,10 +160,7 @@
 
 <!-- 底部输入栏（微信风格，固定在底部）-->
 <div class="bottom-bar">
-  <button class="ptt-btn" id="pttBtn"
-    onmousedown="pttStart()" onmouseup="pttEnd()" ontouchstart="event.preventDefault();pttStart()" ontouchend="event.preventDefault();pttEnd()">
-    🎤
-  </button>
+  <button class="ptt-btn" id="pttBtn">🎤</button>
   <textarea id="textInput" placeholder="输入问题…" rows="1"
     onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText()}"
     oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"
@@ -496,10 +493,16 @@ const onMsg=evt=>{
     } else if(eid===359){
       flushAudio();
       state='listening';
-      setStatus('按住🎤说话，或直接输入…');
+      setStatus('按住🎤继续说话，或直接输入…');
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
+      // 播报结束后发结尾话术
+      setTimeout(()=>{
+        if(state==='listening'){
+          sendChatTTS('还有什么可以帮您的吗？','(结尾)');
+        }
+      },300);
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
@@ -543,13 +546,14 @@ const onMsg=evt=>{
 
 // ══ Push-to-Talk 麦克风 ══════════════════════════════════
 let pttReady=false;
-let waitingForFinalASR=false; // 标记：已发EndASR，等待最终识别结果
+let waitingForFinalASR=false;
+let pttFrameCount=0;
 
-// 提前初始化麦克风，避免按下时异步延迟
 function initMic(){
   navigator.mediaDevices.getUserMedia({audio:true,video:false}).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 采样率:'+audioCtx.sampleRate);
     srcNode=audioCtx.createMediaStreamSource(stream);
     processor=audioCtx.createScriptProcessor(512,1,1);
     processor.onaudioprocess=e=>{
@@ -557,6 +561,7 @@ function initMic(){
       const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
       f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
       ws.send(encodeAudio(i16.buffer));
+      pttFrameCount++;
     };
     srcNode.connect(processor);processor.connect(audioCtx.destination);
     setStatus('按住🎤说话，或直接输入…');
@@ -564,20 +569,25 @@ function initMic(){
 }
 
 function pttStart(){
+  if(!ws||ws.readyState!==WebSocket.OPEN)return;
   if(state==='speaking'){
-    // 播报中按键：打断当前播报
     stopAudio();
     logEvt('→客户端',515,'ClientInterrupt');
     ws.send(encode(515,JSON.stringify({}),sid));
   }
-  if(!ws||ws.readyState!==WebSocket.OPEN)return;
+  // 手机浏览器AudioContext可能被挂起，必须resume
+  if(audioCtx&&audioCtx.state==='suspended'){
+    audioCtx.resume().then(()=>logEvt('🎤麦克风',0,'AudioContext已resume'));
+  }
   pendingRAG=null;
   waitingForFinalASR=false;
+  pttFrameCount=0;
   pttReady=true;
   $('pttBtn').classList.add('pressing');
   setStatus('🎤 正在录音，松开发送…');
   setWave(true,true);
   resetFlow();litFlow(0);
+  logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无'));
 }
 
 function pttEnd(){
@@ -585,12 +595,11 @@ function pttEnd(){
   pttReady=false;
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
+  logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*512/16000*1000).toFixed(0)+'ms');
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
-    // push_to_talk模式：服务端收到EndASR后会返回最终451(is_interim=false)
-    // 标记等待状态，由451处理器负责触发RAG，不用超时兜底
     waitingForFinalASR=true;
   }
 }
@@ -649,6 +658,18 @@ function initWS(){
   ws.onerror=()=>{setConnStatus(false,'连接失败');setStatus('连接失败，请刷新重试');};
   ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('已断开('+e.code+')，刷新重连');state='idle';setWave(false,false);};
 }
+
+// ══ PTT 按钮事件（document级别，手机更可靠）════════════
+(function(){
+  const btn = document.getElementById('pttBtn');
+  // 鼠标（PC）
+  btn.addEventListener('mousedown', function(e){ e.preventDefault(); pttStart(); });
+  document.addEventListener('mouseup', function(){ pttEnd(); });
+  // 触摸（手机）- 监听在document上，手指滑出按钮也能触发松开
+  btn.addEventListener('touchstart', function(e){ e.preventDefault(); pttStart(); }, {passive:false});
+  document.addEventListener('touchend', function(e){ pttEnd(); }, {passive:true});
+  document.addEventListener('touchcancel', function(e){ pttEnd(); }, {passive:true});
+})();
 
 initWS();
 </script>
