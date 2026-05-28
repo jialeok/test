@@ -222,8 +222,8 @@ const KB_GROUPS = [
 let ws, sid, globalSeq=0, state='idle'; // globalSeq: 与服务端autoAssignedSequence完全同步，每发一帧+1
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false;
-let _greetingDone = false;  // 开场白是否已播完，防止循环重复
-let _isGreeting = false;    // 当前正在播开场白，TTSEnded 时跳过刷新
+let _greetingDone = false; // 防止静默刷新后重复播开场白
+let _isGreeting   = false; // 开场白播出中，TTSEnded时跳过刷新，断循环
 
 // ══ DOM ══════════════════════════════════════════════════
 const $= id=>document.getElementById(id);
@@ -411,14 +411,16 @@ function applyRAGUI(result){
 
 function flushPendingRAG(){
   if(!pendingRAG){
+    // 没命中知识库，恢复状态提示
     setStatus('未找到相关记录，按住🎤重新说或直接输入…');
     return;
   }
   const ragText=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    // 合并为一条 TTS，避免两次 start/end 导致服务端状态冲突
-    sendChatTTS('好的，稍等我查一下～' + ragText,'(过渡+查询结果)');
+    // 先发过渡话术再播报结果
+    sendChatTTS('好的，稍等我查一下～','(过渡)');
+    setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
   }
 }
 
@@ -509,10 +511,10 @@ const onMsg=evt=>{
       state='listening';setStatus('连接就绪，初始化麦克风…');
       litFlow(0);
       initMic(); // 提前申请麦克风权限，避免按下时延迟
-      // 仅首次连接发开场白；静默刷新后的 SessionStarted 跳过
+      // 仅首次发开场白，静默刷新后的 SessionStarted 跳过
       if(!_greetingDone){
         _greetingDone = true;
-        _isGreeting = true;
+        _isGreeting   = true;
         setTimeout(()=>{
           logEvt('→客户端',300,'SayHello');
           ws.send(encode(300,JSON.stringify({content:'老板好，小勤在线！想了解哪位小伙伴的工作，报个名字就行～'}),sid));
@@ -529,14 +531,15 @@ const onMsg=evt=>{
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
-      // 开场白播完：标记结束，不触发刷新（避免 SessionStarted → SayHello 无限循环）
       if(_isGreeting){
+        // 开场白播完：清标记，不触发刷新，避免 SessionStarted→SayHello 死循环
         _isGreeting = false;
         setStatus('按住🎤说话，或直接输入…');
       } else {
-        // 正常播报结束：静默刷新会话，保持连接活跃，防止空闲超时断线
+        // ── 播报完毕：静默刷新会话，保持连接活跃，防止空闲超时断线 ──
         _refreshSession();
         if(pendingPTT){
+          // 用户在播报期间按了按钮，现在自动开始录音
           _doPttStart();
         } else {
           setStatus('按住🎤说话，或直接输入…');
@@ -829,7 +832,7 @@ function initWS(){
     setWave(false,false);
     _refreshPending = false;
     _greetingDone = false; // 重连后允许重新播开场白
-    _isGreeting = false;
+    _isGreeting   = false;
     logEvt('⚠️断线',0,'code='+e.code+' 3秒后自动重连…');
     setStatus('连接断开，3秒后自动重连…');
     setTimeout(initWS, 3000); // 自动重连，用户无需刷新
