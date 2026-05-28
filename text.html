@@ -370,7 +370,8 @@ const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 
 let pendingRAG = null; // 语音路径：等 459 再发
-let ragTTSPlaying = false; // 只有 RAG路径的查询结果500发出后才为true，收到359且为true时才发102
+// RAG路径已发出的500包数，每个359到来-1，归零时才发102
+let ragTTSPending = 0;
 
 function matchQuery(text){
   const m=text.match(/(?:查|帮我查|帮忙查|查一下|查询)(.{1,4}?)(今天|昨天)(的|的工作|遇到什么|做了什么|工作|情况|计划)?/);
@@ -417,12 +418,10 @@ function flushPendingRAG(){
   const ragText=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    // 先发过渡话术再播报结果
+    // 两包都算入计数：过渡话 + 查询结果，最后一个359归零才发102
+    ragTTSPending = 2;
     sendChatTTS('好的，稍等我查一下～','(过渡)');
-    setTimeout(()=>{
-      ragTTSPlaying = true; // 标记：这是RAG查询结果，播完后才发102
-      sendChatTTS(ragText,'(查询结果)');
-    },800);
+    setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
   }
 }
 
@@ -535,12 +534,14 @@ const onMsg=evt=>{
       } else {
         setStatus('按住🎤说话，或直接输入…');
       }
-      // 只有 RAG 查询结果播完才发102，开场白/闲聊不发，避免重复开场白
-      if(ragTTSPlaying){
-        ragTTSPlaying = false;
-        if(ws&&ws.readyState===WebSocket.OPEN){
-          logEvt('→客户端',102,'FinishSession (RAG播完)');
-          ws.send(encode(102,JSON.stringify({}),sid));
+      // 只有 RAG 路径发的500全部播完（计数归零）才发102，开场白/闲聊不发
+      if(ragTTSPending > 0){
+        ragTTSPending--;
+        if(ragTTSPending === 0){
+          if(ws&&ws.readyState===WebSocket.OPEN){
+            logEvt('→客户端',102,'FinishSession (RAG全部播完)');
+            ws.send(encode(102,JSON.stringify({}),sid));
+          }
         }
       }
     } else if(eid===450){stopAudio();setSub('',false);
@@ -574,7 +575,7 @@ const onMsg=evt=>{
       if(pendingRAGAfter553){
         const ttsText=pendingRAGAfter553;
         pendingRAGAfter553=null;
-        ragTTSPlaying = true; // 标记：这是RAG查询结果，播完后才发102
+        ragTTSPending = 1; // 只发一包，播完即发102
         sendChatTTS(ttsText,'(收到553后发送)');
         litFlow(3);
       }
