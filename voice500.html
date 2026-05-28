@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>豆包RAG语音 Demo</title>
+<title>语音智询 VoiQ</title>
 <style>
   :root {
     --bg:#0d0f14; --panel:#13161e; --border:#1f2433;
@@ -106,7 +106,7 @@
 
 <header>
   <div class="logo-dot"></div>
-  <h1>豆包实时语音 × RAG</h1>
+  <h1>语音智询 VoiQ</h1>
   <div class="conn-badge">
     <span class="conn-dot" id="connDot"></span>
     <span id="connStatus">未连接</span>
@@ -151,9 +151,10 @@
 
   <!-- 快捷chip -->
   <div class="hints">
-    <div class="hint-chip" onclick="fillAndSend('查小张今天的工作')">查小张今天工作</div>
-    <div class="hint-chip" onclick="fillAndSend('查小张昨天遇到什么问题')">小张昨天问题</div>
-    <div class="hint-chip" onclick="fillAndSend('查李四今天的工作')">查李四今天</div>
+    <div class="hint-chip" onclick="fillAndSend('查小张今天的工作')">小张今天</div>
+    <div class="hint-chip" onclick="fillAndSend('查小张昨天的工作')">小张昨天</div>
+    <div class="hint-chip" onclick="fillAndSend('查小张前天的工作')">小张前天</div>
+    <div class="hint-chip" onclick="fillAndSend('查李四今天的工作')">李四今天</div>
     <div class="hint-chip" onclick="fillText('今天天气怎么样')">天气（非RAG）</div>
   </div>
 </div>
@@ -200,19 +201,24 @@ const SYSTEM_PROMPT = '你是一个亲切的智能助理，请简短口语化地
 const SPEAKER     = 'zh_female_vv_jupiter_bigtts';
 
 // ══ 知识库数据 ════════════════════════════════════════════
-// 动态获取今天/昨天日期，避免写死
-function getTodayStr(){
-  const d=new Date();
+// 工具函数：获取相对今天偏移N天的日期字符串
+function getDateStr(offsetDays=0){
+  const d=new Date();d.setDate(d.getDate()+offsetDays);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
-function getYesterdayStr(){
-  const d=new Date();d.setDate(d.getDate()-1);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-}
-const TODAY=getTodayStr();
-const YESTERDAY=getYesterdayStr();
+const TODAY     = getDateStr(0);
+const YESTERDAY = getDateStr(-1);
+const DAY_BEFORE= getDateStr(-2); // 前天
+
+// 姓名别名映射：任意写法 → KB_GROUPS 中的标准 name
+// 新增别名直接在这里加，查询逻辑不用改
+const NAME_ALIAS = {
+  '小张':'小张', '张工':'小张', '大张':'小张', '张三':'小张',
+  '小李':'李四', '李工':'李四', '老李':'李四', '李四':'李四',
+};
 
 const KB_GROUPS = [
+  // ── 小张 ──────────────────────────────────────────────
   { name:'小张', date:TODAY, items:[
     { section:'做了什么', content:'完成了客户A的需求评审，写了接口文档，代码提交了两个模块' },
     { section:'遇到的问题', content:'后端接口文档缺失，已跟后端老李沟通确认，正在补文档' },
@@ -223,6 +229,12 @@ const KB_GROUPS = [
     { section:'遇到的问题', content:'服务器权限不足，已申请运维开通' },
     { section:'明日计划',  content:'完成接口开发，准备联调' },
   ]},
+  { name:'小张', date:DAY_BEFORE, items:[
+    { section:'做了什么', content:'完成了模块A的单元测试，修复了2个遗留bug，提交了代码评审' },
+    { section:'遇到的问题', content:'测试环境不稳定，偶发超时，已提交运维排查' },
+    { section:'明日计划',  content:'参加需求评审会议，搭建测试环境' },
+  ]},
+  // ── 李四 ──────────────────────────────────────────────
   { name:'李四', date:TODAY, items:[
     { section:'做了什么', content:'修复了线上bug，优化了查询性能，写了两篇文档' },
     { section:'遇到的问题', content:'数据库慢查询，已加索引解决' },
@@ -232,6 +244,11 @@ const KB_GROUPS = [
     { section:'做了什么', content:'完成了API文档编写，参加架构评审' },
     { section:'遇到的问题', content:'接口兼容性问题，已和前端协调解决方案' },
     { section:'明日计划',  content:'修复线上bug，优化查询性能' },
+  ]},
+  { name:'李四', date:DAY_BEFORE, items:[
+    { section:'做了什么', content:'重构了用户模块，优化了登录逻辑，完成代码评审' },
+    { section:'遇到的问题', content:'新版本和旧接口有兼容性冲突，已分析根因，待讨论方案' },
+    { section:'明日计划',  content:'完成API文档，参加架构评审' },
   ]},
 ];
 
@@ -392,24 +409,52 @@ let pendingRAG = null; // 语音路径：等 459 再发
 let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 
 function matchQuery(text){
-  console.log('[matchQuery] 输入:', text, '今天='+TODAY, '昨天='+YESTERDAY);
-  const names=[...new Set(KB_GROUPS.map(r=>r.name))];
-  for(const name of names){
-    if(text.includes(name)){
-      if(text.includes('今天')) return{name,date:TODAY};
-      if(text.includes('昨天')) return{name,date:YESTERDAY};
-      // 尝试解析"X月X日"或"X月X号"格式
-      const mdMatch=text.match(/(\d{1,2})[月](\d{1,2})[日号]/);
-      if(mdMatch){
-        const year=new Date().getFullYear();
-        const month=String(mdMatch[1]).padStart(2,'0');
-        const day=String(mdMatch[2]).padStart(2,'0');
-        return{name,date:year+'-'+month+'-'+day};
-      }
-      // 没有任何时间词：不兜底TODAY，返回null走兜底话术
-      return null;
-    }
+  console.log('[matchQuery] 输入:', text, '今天='+TODAY, '昨天='+YESTERDAY, '前天='+DAY_BEFORE);
+
+  // ── 1. 姓名识别（支持别名）─────────────────────────────
+  let canonName = null;
+  for(const alias of Object.keys(NAME_ALIAS)){
+    if(text.includes(alias)){ canonName=NAME_ALIAS[alias]; break; }
   }
+  if(!canonName) return null;
+
+  // ── 2. 日期解析（按优先级）────────────────────────────
+
+  // 2a. 今天/今日
+  if(/今天|今日/.test(text)) return{name:canonName, date:TODAY};
+
+  // 2b. 昨天
+  if(/昨天|昨日/.test(text)) return{name:canonName, date:YESTERDAY};
+
+  // 2c. 前天
+  if(/前天/.test(text)) return{name:canonName, date:DAY_BEFORE};
+
+  // 2d. 上周X（上周一…上周日）
+  const weekdayMap={'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'天':0};
+  const lastWeekMatch=text.match(/上(周|个?星期)([一二三四五六日天])/);
+  if(lastWeekMatch){
+    const targetWd=weekdayMap[lastWeekMatch[2]];
+    const d=new Date();
+    const curWd=d.getDay(); // 0=周日
+    // 距离上周目标日的天数
+    const daysAgo=(curWd===targetWd?7:((curWd-targetWd+7)%7)||7)+7;
+    // 更简洁：上周X = 当前周x对应的上周
+    const d2=new Date();
+    d2.setDate(d2.getDate()-curWd-7+targetWd);
+    const ds=d2.getFullYear()+'-'+String(d2.getMonth()+1).padStart(2,'0')+'-'+String(d2.getDate()).padStart(2,'0');
+    return{name:canonName, date:ds};
+  }
+
+  // 2e. X月X日/号
+  const mdMatch=text.match(/(\d{1,2})[月](\d{1,2})[日号]/);
+  if(mdMatch){
+    const year=new Date().getFullYear();
+    const month=String(mdMatch[1]).padStart(2,'0');
+    const day=String(mdMatch[2]).padStart(2,'0');
+    return{name:canonName, date:year+'-'+month+'-'+day};
+  }
+
+  // 2f. 没有时间词 → 返回null，走兜底话术
   return null;
 }
 
