@@ -471,7 +471,7 @@ const onMsg=evt=>{
       setStatus('初始化会话…');
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}}, // 必须传extra否则服务端报42000020
+        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
         dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
@@ -550,17 +550,42 @@ let pttReady=false;
 let waitingForFinalASR=false;
 let pttFrameCount=0;
 
+// 线性重采样：将任意采样率的 Float32 降至 16kHz
+function resampleTo16k(input, inputRate){
+  if(inputRate===16000) return input;
+  const ratio=inputRate/16000;
+  const outLen=Math.round(input.length/ratio);
+  const out=new Float32Array(outLen);
+  for(let i=0;i<outLen;i++){
+    const pos=i*ratio;
+    const idx=Math.floor(pos);
+    const frac=pos-idx;
+    const a=input[idx]||0;
+    const b=input[Math.min(idx+1,input.length-1)]||0;
+    out[i]=a+(b-a)*frac;
+  }
+  return out;
+}
+
 function initMic(){
   navigator.mediaDevices.getUserMedia({audio:true,video:false}).then(stream=>{
     micStream=stream;
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
-    logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 采样率:'+audioCtx.sampleRate);
+    // 不强制指定sampleRate——让浏览器用设备原生率，再手动重采样到16k
+    // 部分手机浏览器会忽略sampleRate参数导致发出的PCM采样率不对
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const nativeRate=audioCtx.sampleRate;
+    logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 原生采样率:'+nativeRate+'→重采样至16000');
     srcNode=audioCtx.createMediaStreamSource(stream);
-    processor=audioCtx.createScriptProcessor(512,1,1);
+    // bufferSize=4096保证重采样后每次约等于16ms@16kHz，接近文档要求的20ms
+    processor=audioCtx.createScriptProcessor(4096,1,1);
     processor.onaudioprocess=e=>{
       if(!pttReady||!ws||ws.readyState!==WebSocket.OPEN)return;
-      const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
-      f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
+      const f32=e.inputBuffer.getChannelData(0);
+      // 重采样到16kHz
+      const resampled=resampleTo16k(f32,nativeRate);
+      // 转为 int16 小端序
+      const i16=new Int16Array(resampled.length);
+      resampled.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
       ws.send(encodeAudio(i16.buffer));
       pttFrameCount++;
     };
@@ -571,7 +596,7 @@ function initMic(){
 
 function pttStart(){
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  // 如果正在播报，等359后自动开始（resume已移入_doPttStart，确保在pttReady=true前完成）
+  // 如果正在播报，等359后自动开始（resume已移入_doPttStart）
   if(state==='speaking'){
     setStatus('播报结束后自动开始录音…');
     pendingPTT=true;
@@ -594,22 +619,17 @@ function _doPttStart(){
     setStatus('🎤 正在录音，松开发送…');
     setWave(true,true);
     resetFlow();litFlow(0);
-    logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无'));
+    logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无')+' 实际采样率:'+(audioCtx?audioCtx.sampleRate:'?'));
   };
 
-  // 必须等resume()完成后再设pttReady=true
-  // 否则AudioContext仍suspended时onaudioprocess不触发，0帧送出，服务端不回451
   if(audioCtx&&audioCtx.state==='suspended'){
-    audioCtx.resume().then(()=>{
-      logEvt('🎤麦克风',0,'AudioContext已resume');
-      doStart();
-    });
+    audioCtx.resume().then(()=>{ logEvt('🎤麦克风',0,'AudioContext已resume'); doStart(); });
   } else {
     doStart();
   }
 }
 
-// ASR超时保护：防止服务端不回451时永远卡在「识别中」
+// ASR超时保护
 let asrTimeoutTimer=null;
 function clearAsrTimeout(){ if(asrTimeoutTimer){clearTimeout(asrTimeoutTimer);asrTimeoutTimer=null;} }
 
@@ -618,19 +638,19 @@ function pttEnd(){
   pttReady=false;
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
-  logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*512/16000*1000).toFixed(0)+'ms');
+  const actualRate=audioCtx?audioCtx.sampleRate:16000;
+  logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*512/actualRate*1000).toFixed(0)+'ms 采样率:'+actualRate);
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
     logEvt('→客户端',400,'EndASR');
     ws.send(encode(400,JSON.stringify({}),sid));
     waitingForFinalASR=true;
-    // 5秒内若未收到451/459，自动解除等待，避免永久卡死
     clearAsrTimeout();
     asrTimeoutTimer=setTimeout(()=>{
       if(waitingForFinalASR){
         waitingForFinalASR=false;
         logEvt('🎤麦克风',0,'ASR超时，未收到451，自动重置');
-        setStatus('识别超时，请重试（可能未录到声音）…');
+        setStatus('识别超时，请重试…');
       }
     },5000);
   }
