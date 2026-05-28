@@ -487,7 +487,17 @@ const onMsg=evt=>{
       state='speaking';setStatus('助理正在说话…');
       setWave(true,false);litFlow(4);
     } else if(eid===351){flushAudio();
-    } else if(eid===359){flushAudio();state='listening';setStatus('正在聆听…');setWave(true,true);resetFlow();litFlow(0);
+    } else if(eid===359){
+      flushAudio();
+      state='listening';
+      setStatus('播报完毕，可以继续说话或输入…');
+      setWave(false,false);
+      resetFlow();
+      // 恢复麦克风按钮，准备下一轮
+      $('micBtn').classList.add('show');
+      $('micBtn').style.display='';
+      $('micBtn').style.opacity='1';
+      litFlow(0);
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
@@ -570,12 +580,13 @@ function sendText(){
   const result=lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    // 先发 501，等收到 553(ChatTextQueryConfirmed) 后立刻发 502
-    pendingRAGAfter553 = result.payload;
-    logEvt('→客户端',501,'ChatTextQuery: '+text+' (等553后发502)');
-    ws.send(encode(501,JSON.stringify({content:text}),sid));
-    showRagCard('已发送501，等待服务端确认(553)…');
-    setStatus('等待服务端确认…');
+    // 文字RAG：直接发 502，不发 501，不触发模型推理，内容完全来自知识库
+    pendingRAGAfter553 = null; // 清掉，不走553路径
+    logEvt('→客户端',502,'ChatRAGText (文字直发)');
+    ws.send(encode(502,JSON.stringify(result.payload),sid));
+    showRagCard('✅ RAG已发送(502)，等待播报…');
+    setStatus('等待播报…');
+    litFlow(3);
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
