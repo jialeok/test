@@ -563,28 +563,46 @@ function resampleTo16k(input, fromRate){
   return out;
 }
 
+// 音频发送统计（调试用）
+let audioBytesSent=0, audioFramesSent=0;
+
 function initMic(){
-  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,sampleRate:16000},video:false}).then(stream=>{
+  navigator.mediaDevices.getUserMedia({
+    audio:{channelCount:1,sampleRate:16000,echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+    video:false
+  }).then(stream=>{
     micStream=stream;
-    // 不在构造函数里指定sampleRate——部分手机浏览器会忽略该参数，
-    // 但audioCtx.sampleRate仍返回你要求的值，导致误判；用原生率+JS重采样更可靠
     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
     const nativeRate=audioCtx.sampleRate;
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 原生采样率:'+nativeRate+'→目标16000');
     srcNode=audioCtx.createMediaStreamSource(stream);
-    // bufferSize=4096：重采样后约=4096/nativeRate*1000≈93ms@44100，
-    // 每帧送出约93*(16000/44100)≈34ms的16kHz数据，接近文档20ms要求
-    processor=audioCtx.createScriptProcessor(4096,1,1);
+    // bufferSize=1024：在48kHz下约21ms原生→重采样后约341样本@16k→682bytes，最接近文档640bytes/20ms
+    processor=audioCtx.createScriptProcessor(1024,1,1);
+    // 用gain=0静音节点代替直接接destination，避免回声同时保持AudioGraph活跃
+    const silentGain=audioCtx.createGain();silentGain.gain.value=0;
+    processor.connect(silentGain);silentGain.connect(audioCtx.destination);
+    srcNode.connect(processor);
+    audioBytesSent=0;audioFramesSent=0;
     processor.onaudioprocess=e=>{
       if(!pttReady||!ws||ws.readyState!==WebSocket.OPEN)return;
       const raw=e.inputBuffer.getChannelData(0);
+      // 音量检测：全零/极低音量说明麦克风没在录音
+      let rms=0;for(let i=0;i<raw.length;i++)rms+=raw[i]*raw[i];
+      rms=Math.sqrt(rms/raw.length);
       const resampled=resampleTo16k(raw,nativeRate);
       const i16=new Int16Array(resampled.length);
       for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
-      ws.send(encodeAudio(i16.buffer));
-      pttFrameCount++;
+      try{
+        ws.send(encodeAudio(i16.buffer));
+        audioBytesSent+=i16.byteLength;
+        audioFramesSent++;
+        pttFrameCount++;
+        // 每10帧打一次日志，包含音量和发送量
+        if(audioFramesSent%10===0) logEvt('🎤麦克风',0,'已发'+audioFramesSent+'帧/'+audioBytesSent+'bytes rms='+rms.toFixed(4)+' bufAmnt='+ws.bufferedAmount);
+      }catch(ex){
+        logEvt('🎤麦克风',0,'ws.send异常:'+ex.message);
+      }
     };
-    srcNode.connect(processor);processor.connect(audioCtx.destination);
     setStatus('按住🎤说话，或直接输入…');
   }).catch(e=>{
     logEvt('🎤麦克风',0,'权限错误:'+e.name+' '+e.message);
