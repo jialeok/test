@@ -219,7 +219,7 @@ const KB_GROUPS = [
 ];
 
 // ══ 状态 ═════════════════════════════════════════════════
-let ws, sid, seq=0, state='idle';
+let ws, sid, audioSeq=0, state='idle';
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false;
 
@@ -305,22 +305,11 @@ function hexBytes(buf,maxLen=60){
 }
 
 const encode=(eid,payload,sessionId)=>{
-  seq++; // 与服务端 autoAssignedSequence 同步递增
+  // 官方协议：文本事件帧 flags=0x14（只有event字段），不带sequence
+  // sequence 只存在于音频帧(0x25)，且每次PTT独立从1开始计数
+  const hdr=new Uint8Array([0x11,0x14,0x10,0x00]);
   const parts=[];
-  let hdr;
-  if(eid===1){
-    // StartConnection 是 Connect 级别帧，协议不带 sequence，用老格式 flags=0x14
-    // 服务端按旧格式解析，sequence 字段会让它错误地把 seq 当成 payload size
-    hdr=new Uint8Array([0x11,0x14,0x10,0x00]);
-    const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
-  } else {
-    // 其他帧带 sequence，flags=0x16: bit2=sequence + bit1=event
-    hdr=new Uint8Array([0x11,0x16,0x10,0x00]);
-    // ① sequence 字段
-    const sq=new ArrayBuffer(4);new DataView(sq).setUint32(0,seq,false);parts.push(new Uint8Array(sq));
-    // ② event 字段
-    const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
-  }
+  const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
   if(sessionId){const sb=new TextEncoder().encode(sessionId);const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);parts.push(new Uint8Array(sl));parts.push(sb);}
   const pb=typeof payload==='string'?new TextEncoder().encode(payload):new Uint8Array(payload);
   const pl=new ArrayBuffer(4);new DataView(pl).setUint32(0,pb.byteLength,false);
@@ -328,14 +317,14 @@ const encode=(eid,payload,sessionId)=>{
   const tot=parts.reduce((s,p)=>s+p.byteLength,hdr.byteLength);
   const out=new Uint8Array(tot);let o=0;out.set(hdr,o);o+=hdr.byteLength;
   parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});
-  console.log('[encode] seq='+seq+' eid='+eid+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' 前60字节:['+hexBytes(out)+']');
-  logEvt('→encode',eid,'seq='+seq+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' bytes:['+hexBytes(out)+']');
+  console.log('[encode] eid='+eid+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' 前60字节:['+hexBytes(out)+']');
+  logEvt('→encode',eid,'sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' bytes:['+hexBytes(out)+']');
   return out.buffer;
 };
 
 const encodeAudio=pcm=>{
-  const hdr=new Uint8Array([0x11,0x25,0x00,0x00]);seq++;
-  const sq=new ArrayBuffer(4);new DataView(sq).setInt32(0,seq,false);
+  const hdr=new Uint8Array([0x11,0x25,0x00,0x00]);audioSeq++;
+  const sq=new ArrayBuffer(4);new DataView(sq).setInt32(0,audioSeq,false);
   const ev=new ArrayBuffer(4);new DataView(ev).setUint32(0,200,false);
   const sb=sid?new TextEncoder().encode(sid):new Uint8Array(0);
   const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);
@@ -675,6 +664,7 @@ function _doPttStart(){
   waitingForFinalASR=false;
   pttFrameCount=0;
   audioBytesSent=0;audioFramesSent=0; // 每次按下重置统计
+  audioSeq=0; // 每次PTT重置音频帧序号，从1开始（第一帧encodeAudio里++后=1）
   const doStart=()=>{
     pttReady=true;
     $('pttBtn').classList.add('pressing');
@@ -784,7 +774,7 @@ function sendText(){
 // ══ 初始化连接 ════════════════════════════════════════════
 function initWS(){
   setConnStatus(false,'连接中…');setStatus('正在连接服务器…');
-  sid=uuid();seq=0;chunks=[];
+  sid=uuid();audioSeq=0;chunks=[];
 
   const u=new URL(WS_URL);
   u.searchParams.set('session_id','dw_'+Date.now());
