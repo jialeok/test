@@ -511,7 +511,13 @@ const onMsg=evt=>{
     } else if(eid===459){
       flushPendingRAG();
     } else if(eid===553){
-      // ChatTextQueryConfirmed ack，500模式下无需处理
+      // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
+      if(pendingRAGAfter553){
+        const ttsText=pendingRAGAfter553;
+        pendingRAGAfter553=null;
+        sendChatTTS(ttsText,'(收到553后发送)');
+        litFlow(3);
+      }
     } else if(eid===153||eid===599){
       const errMsg=j.error||JSON.stringify(j);
       logEvt('←错误',eid,errMsg);
@@ -573,9 +579,11 @@ function sendText(){
   const result=lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    pendingRAGAfter553 = null;
-    sendChatTTS(result.text,'(文字直发)');
-    litFlow(3);
+    // 先发 501 建立对话上下文，收到 553 确认后再发 500
+    pendingRAGAfter553 = result.text;
+    logEvt('→客户端',501,'ChatTextQuery (触发上下文): '+text);
+    ws.send(encode(501,JSON.stringify({content:text}),sid));
+    setStatus('等待服务端确认…');
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
