@@ -593,10 +593,13 @@ function initMic(){
       const i16=new Int16Array(resampled.length);
       for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
       try{
-        ws.send(encodeAudio(i16.buffer));
+        const frame=encodeAudio(i16.buffer);
+        ws.send(frame);
         audioBytesSent+=i16.byteLength;
         audioFramesSent++;
         pttFrameCount++;
+        // 第1帧打印详细信息，便于诊断
+        if(audioFramesSent===1) logEvt('🎤麦克风',0,'第1帧 pcmBytes='+i16.byteLength+' frameBytes='+frame.byteLength+' rms='+rms.toFixed(4)+' bufAmnt='+ws.bufferedAmount);
         // 每10帧打一次日志，包含音量和发送量
         if(audioFramesSent%10===0) logEvt('🎤麦克风',0,'已发'+audioFramesSent+'帧/'+audioBytesSent+'bytes rms='+rms.toFixed(4)+' bufAmnt='+ws.bufferedAmount);
       }catch(ex){
@@ -627,6 +630,7 @@ function _doPttStart(){
   pendingRAG=null;
   waitingForFinalASR=false;
   pttFrameCount=0;
+  audioBytesSent=0;audioFramesSent=0; // 每次按下重置统计
   const doStart=()=>{
     pttReady=true;
     $('pttBtn').classList.add('pressing');
@@ -650,11 +654,10 @@ function pttEnd(){
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
   const _sr=audioCtx?audioCtx.sampleRate:16000;
-  logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*4096/_sr*1000).toFixed(0)+'ms 采样率:'+_sr);
+  // bufferSize=1024，修正帧时长计算
+  logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*1024/_sr*1000).toFixed(0)+'ms 采样率:'+_sr);
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
-    logEvt('→客户端',400,'EndASR');
-    ws.send(encode(400,JSON.stringify({}),sid));
     waitingForFinalASR=true;
     clearAsrTimeout();
     asrTimeoutTimer=setTimeout(()=>{
@@ -663,8 +666,31 @@ function pttEnd(){
         logEvt('🎤麦克风',0,'ASR超时，未收到451，自动重置');
         setStatus('识别超时，请重试…');
       }
-    },5000);
+    },8000);
+    // 关键修复：等 bufferedAmount 清零后再发 EndASR
+    // 避免"EndASR 先到服务端，音频帧后到"导致服务端关闭 ASR 后丢弃音频
+    _sendEndASRAfterFlush();
   }
+}
+
+function _sendEndASRAfterFlush(){
+  const MAX_WAIT=2000; // 最多等2秒
+  const start=Date.now();
+  function check(){
+    if(!ws||ws.readyState!==WebSocket.OPEN)return;
+    const buf=ws.bufferedAmount;
+    if(buf===0||Date.now()-start>MAX_WAIT){
+      // 额外等100ms，确保代理层已将最后几帧转发给豆包服务端
+      const waited=Date.now()-start;
+      setTimeout(()=>{
+        logEvt('→客户端',400,'EndASR bufAmnt='+buf+' waited='+waited+'ms +100ms');
+        if(ws&&ws.readyState===WebSocket.OPEN) ws.send(encode(400,JSON.stringify({}),sid));
+      },100);
+    } else {
+      setTimeout(check,20);
+    }
+  }
+  check();
 }
 
 function stopMic(){
