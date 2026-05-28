@@ -389,6 +389,7 @@ const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 
 let pendingRAG = null; // 语音路径：等 459 再发
+let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 
 function matchQuery(text){
   console.log('[matchQuery] 输入:', text, '今天='+TODAY, '昨天='+YESTERDAY);
@@ -433,18 +434,22 @@ function applyRAGUI(result){
   },200);
 }
 
+let _ragFlushed = false; // 防止 451/459 重复触发
+
 function flushPendingRAG(){
+  if(_ragFlushed) return; // 已经触发过，直接忽略
   if(!ws||ws.readyState!==WebSocket.OPEN) return;
+  _ragFlushed = true; // 立刻锁住，后续重入直接返回
   if(!pendingRAG){
-    // 没命中知识库，500 播报兜底话术
     sendChatTTS('对不起，没找到相关内容。','(兜底)');
     return;
   }
   const ragText=pendingRAG;
   pendingRAG=null;
-  // 先发过渡话术再播报结果
+  // 先发过渡话术，等服务端 TTSEnded 后再发查询结果，彻底避免竞态
+  // 用 _pendingQueryText 挂起，在 TTSEnded(359) 里消费
   sendChatTTS('好的，稍等我查一下～','(过渡)');
-  setTimeout(()=>{ sendChatTTS(ragText,'(查询结果)'); },800);
+  _pendingQueryText = ragText;
 }
 
 // 用 ChatTTSText(500) 流式发送文本
@@ -550,6 +555,14 @@ const onMsg=evt=>{
     } else if(eid===351){flushAudio();
     } else if(eid===359){
       flushAudio();
+      // 如果有待播的查询结果（过渡话术刚播完），立刻发出，不做会话刷新
+      if(_pendingQueryText){
+        const qt=_pendingQueryText;
+        _pendingQueryText=null;
+        sendChatTTS(qt,'(查询结果)');
+        // 不刷新会话，不改 state，等查询结果的 TTSEnded 再走正常流程
+        return;
+      }
       state='listening';
       setWave(false,false);
       resetFlow();litFlow(0);
@@ -727,6 +740,8 @@ let pendingPTT=false;
 function _doPttStart(){
   pendingPTT=false;
   pendingRAG=null;
+  _pendingQueryText=null;
+  _ragFlushed=false; // 新一轮录音，重置防重入锁
   waitingForFinalASR=false;
   pttFrameCount=0;
   audioBytesSent=0;audioFramesSent=0; // 每次按下重置统计
@@ -807,7 +822,13 @@ function stopMic(){
 
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
-function fillAndSend(t){ $('textInput').value=t; sendText(); }
+function fillAndSend(t){
+  _ragFlushed=false;
+  _pendingQueryText=null;
+  pendingRAG=null;
+  $('textInput').value=t;
+  sendText();
+}
 
 let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
 
