@@ -570,15 +570,6 @@ const onMsg=evt=>{
         waitingForFinalASR=false;
       }
       flushPendingRAG();
-    } else if(eid===553){
-      // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
-      if(pendingRAGAfter553){
-        const ttsText=pendingRAGAfter553;
-        pendingRAGAfter553=null;
-        ragTTSPending = 1; // 只发一包，播完即发102
-        sendChatTTS(ttsText,'(收到553后发送)');
-        litFlow(3);
-      }
     } else if(eid===152){
       // SessionFinished ack，复用WS连接，用新sid重建session
       logEvt('←服务端',152,'SessionFinished，准备重建session');
@@ -768,8 +759,6 @@ function stopMic(){
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
 
-let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
-
 function sendText(){
   const el=$('textInput');
   const text=el.value.trim();
@@ -784,12 +773,12 @@ function sendText(){
   const result=lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    // 先发 501 建立对话上下文，收到 553 确认后再发 500
-    pendingRAGAfter553 = result.text;
-    logEvt('→客户端',501,'ChatTextQuery (触发上下文): '+text);
-    ws.send(encode(501,JSON.stringify({content:text}),sid));
-    setStatus('等待服务端确认…');
+    // RAG命中：直接走500，不发501，避免触发LLM(502路径)
+    ragTTSPending = 2;
+    sendChatTTS('好的，稍等我查一下～','(过渡)');
+    setTimeout(()=>{ sendChatTTS(result.text,'(查询结果)'); },800);
   } else {
+    // 没命中RAG，走正常对话(501)
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
     setStatus('等待回复…');
