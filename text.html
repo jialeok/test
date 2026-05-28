@@ -374,10 +374,15 @@ const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g
 let pendingRAG = null; // 语音路径：等 459 再发
 
 function matchQuery(text){
-  const m=text.match(/(?:查|帮我查|帮忙查|查一下|查询)(.{1,4}?)(今天|昨天)(的|的工作|遇到什么|做了什么|工作|情况|计划)?/);
-  if(!m)return null;
-  const name=m[1].replace(/的|工作|情况|报告|日报/g,'').trim();
-  return{name,date:m[2]==='昨天'?'2026-05-25':'2026-05-26'};
+  console.log('[matchQuery] 输入:', text);
+  const names=[...new Set(KB_GROUPS.map(r=>r.name))];
+  for(const name of names){
+    if(text.includes(name)){
+      if(text.includes('今天')) return{name,date:'2026-05-26'};
+      if(text.includes('昨天')) return{name,date:'2026-05-25'};
+    }
+  }
+  return null;
 }
 
 // 同步检索 KB，返回 ragPayload 或 null
