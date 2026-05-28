@@ -397,14 +397,14 @@ function matchQuery(text){
 }
 
 // 同步检索 KB，返回 ragPayload 或 null
-function lookupRAG(text){
-  const query=matchQuery(text);
+function lookupRAG(input){
+  const query=matchQuery(input);
   if(!query)return null;
   const rec=KB_GROUPS.find(r=>r.name===query.name&&r.date===query.date);
   if(!rec)return null;
   const content=rec.items.map(it=>it.section+'：'+it.content).join('。');
-  const text=rec.name+'，'+rec.date+'的工作日报。'+content+'。';
-  return{query,rec,text};
+  const ttsContent=rec.name+'，'+rec.date+'的工作日报。'+content+'。';
+  return{query,rec,text:ttsContent};
 }
 
 // 更新UI（不影响发送时机）
@@ -427,19 +427,17 @@ function applyRAGUI(result){
 
 function flushPendingRAG(){
   if(!pendingRAG)return;
-  const text=pendingRAG;
+  const ragText=pendingRAG;
   pendingRAG=null;
   if(ws&&ws.readyState===WebSocket.OPEN){
-    sendChatTTS(text,'(收到459后发送)');
+    sendChatTTS(ragText,'(收到459后发送)');
   }
 }
 
 // 用 ChatTTSText(500) 流式发送文本
-function sendChatTTS(text, note=''){
-  logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+text.substring(0,30)+'…');
-  // 第一包：start=true
-  ws.send(encode(500,JSON.stringify({start:true,content:text,end:false}),sid));
-  // 结束包：end=true
+function sendChatTTS(ttsText, note=''){
+  logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+ttsText.substring(0,30)+'…');
+  ws.send(encode(500,JSON.stringify({start:true,content:ttsText,end:false}),sid));
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
   showRagCard('✅ TTS已发送(500)！切换「RAG详情」tab查看');
   setStatus('TTS已发送，等待播报…');
