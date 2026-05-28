@@ -472,7 +472,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -493,10 +493,15 @@ const onMsg=evt=>{
     } else if(eid===359){
       flushAudio();
       state='listening';
-      setStatus('按住🎤继续说话，或直接输入…');
       setWave(false,false);
       resetFlow();litFlow(0);
       $('pttBtn').disabled=false;
+      if(pendingPTT){
+        // 用户在播报期间按了按钮，现在自动开始录音
+        _doPttStart();
+      } else {
+        setStatus('按住🎤说话，或直接输入…');
+      }
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
@@ -504,14 +509,22 @@ const onMsg=evt=>{
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         if(finals.length){
-          // keep_alive模式：451 is_interim=false只更新pendingRAG，等459再触发
+          // 拿到最终识别结果，更新pendingRAG
           const result=lookupRAG(t);
           if(result){ applyRAGUI(result); pendingRAG=result.text; }
           else { pendingRAG=null; }
+          // push_to_talk模式：收到最终451即可触发，无需等459
+          if(waitingForFinalASR){
+            waitingForFinalASR=false;
+            flushPendingRAG();
+          }
         }
       }
     } else if(eid===459){
-      // keep_alive模式：服务端检测到说话结束，触发RAG
+      // keep_alive模式才会收到459，兼容处理
+      if(waitingForFinalASR){
+        waitingForFinalASR=false;
+      }
       flushPendingRAG();
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
@@ -556,15 +569,24 @@ function initMic(){
 
 function pttStart(){
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  if(state==='speaking'){
-    stopAudio();
-    logEvt('→客户端',515,'ClientInterrupt');
-    ws.send(encode(515,JSON.stringify({}),sid));
-  }
   // 手机浏览器AudioContext可能被挂起，必须resume
   if(audioCtx&&audioCtx.state==='suspended'){
     audioCtx.resume().then(()=>logEvt('🎤麦克风',0,'AudioContext已resume'));
   }
+  // 如果正在播报，必须等服务端359确认结束后才能录音
+  // 不在这里发515，避免打断后服务端状态混乱导致后续音频被忽略
+  if(state==='speaking'){
+    setStatus('播报结束后自动开始录音…');
+    pendingPTT=true; // 标记：等359来了再开始录音
+    return;
+  }
+  _doPttStart();
+}
+
+let pendingPTT=false;
+
+function _doPttStart(){
+  pendingPTT=false;
   pendingRAG=null;
   waitingForFinalASR=false;
   pttFrameCount=0;
@@ -582,8 +604,12 @@ function pttEnd(){
   $('pttBtn').classList.remove('pressing');
   setWave(false,false);
   logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*512/16000*1000).toFixed(0)+'ms');
-  // keep_alive模式：松开停止发音频，服务端VAD自动检测说话结束，会回459
   setStatus('识别中…');
+  if(ws&&ws.readyState===WebSocket.OPEN){
+    logEvt('→客户端',400,'EndASR');
+    ws.send(encode(400,JSON.stringify({}),sid));
+    waitingForFinalASR=true;
+  }
 }
 
 function stopMic(){
