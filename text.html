@@ -56,9 +56,28 @@
   /* 状态文字 */
   .status-row{text-align:center;font-size:12px;color:var(--muted);padding:2px 0 8px;font-family:var(--mono);flex-shrink:0}
 
-  /* 麦克风按钮 */
-  .mic-btn{margin:0 14px;padding:13px;border-radius:16px;border:none;background:linear-gradient(135deg,#5b4fff,#9b59f5);color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:none;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 20px rgba(91,79,255,.4);flex-shrink:0}
+  /* 麦克风悬浮按钮 */
+  .mic-btn{
+    position:fixed;bottom:28px;right:24px;z-index:100;
+    width:62px;height:62px;border-radius:50%;border:none;
+    background:linear-gradient(135deg,#5b4fff,#9b59f5);
+    color:#fff;font-size:24px;cursor:pointer;
+    display:none;align-items:center;justify-content:center;
+    box-shadow:0 6px 24px rgba(91,79,255,.55),0 0 0 0 rgba(91,79,255,.4);
+    transition:transform .15s,box-shadow .15s;
+    flex-shrink:0;
+  }
   .mic-btn.show{display:flex}
+  .mic-btn:active{transform:scale(.92)}
+  .mic-btn.listening{
+    animation:mic-pulse 1.6s ease-in-out infinite;
+    background:linear-gradient(135deg,#00c48c,#00e6a8);
+    box-shadow:0 6px 24px rgba(0,196,140,.55),0 0 0 0 rgba(0,196,140,.4);
+  }
+  @keyframes mic-pulse{
+    0%,100%{box-shadow:0 6px 24px rgba(0,196,140,.55),0 0 0 0 rgba(0,196,140,.4)}
+    50%{box-shadow:0 6px 32px rgba(0,196,140,.7),0 0 0 12px rgba(0,196,140,.0)}
+  }
 
   /* RAG 状态卡 */
   .rag-card{margin:10px 14px 0;padding:10px 12px;border-radius:12px;background:rgba(79,255,176,.06);border:1px solid rgba(79,255,176,.2);font-family:var(--mono);font-size:11px;color:var(--accent);display:none;flex-shrink:0}
@@ -121,6 +140,7 @@
   <div class="tab active" onclick="switchTab(0)">🎙️ 语音对话</div>
   <div class="tab" onclick="switchTab(1)">📚 知识库</div>
   <div class="tab" onclick="switchTab(2)">🔍 RAG详情</div>
+  <div class="tab" onclick="switchTab(3)">🪲 事件日志</div>
 </div>
 
 <!-- Tab0: 语音对话 -->
@@ -153,8 +173,8 @@
   <div class="rag-card" id="ragCard"></div>
 
   <!-- 麦克风按钮 -->
-  <button class="mic-btn" id="micBtn" onclick="startMic()">
-    🎤 点击开始说话
+  <button class="mic-btn" id="micBtn" onclick="startMic()" title="点击开始说话">
+    🎤
   </button>
 
   <!-- 文本输入（备用） -->
@@ -183,7 +203,14 @@
   <div class="kb-list" id="kbList"></div>
 </div>
 
-<!-- Tab2: RAG详情 -->
+<!-- Tab3: 事件日志 -->
+<div class="tab-content" id="tab3">
+  <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">实时事件流（最新在上）</span>
+    <button onclick="evtLog=[];$('evtLog').textContent=''" style="font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">清空</button>
+  </div>
+  <pre id="evtLog" style="flex:1;margin:0 14px 14px;padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
+</div>
 <div class="tab-content" id="tab2">
   <div id="detailPane" style="flex:1;display:flex;flex-direction:column">
     <div class="empty-state">
@@ -359,8 +386,10 @@ const playNext=()=>{
 };
 const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 
-// ══ 意图匹配 + RAG 检索 ═══════════════════════════════════
+// ══ 意图匹配 + RAG 检索（同步）═══════════════════════════
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
+
+let pendingRAG = null; // 语音路径：等 459 再发
 
 function matchQuery(text){
   const m=text.match(/(?:查|帮我查|帮忙查|查一下|查询)(.{1,4}?)(今天|昨天)(的|的工作|遇到什么|做了什么|工作|情况|计划)?/);
@@ -369,66 +398,87 @@ function matchQuery(text){
   return{name,date:m[2]==='昨天'?'2026-05-25':'2026-05-26'};
 }
 
-function handleRAGQuery(text){
+// 同步检索 KB，返回 ragPayload 或 null
+function lookupRAG(text){
   const query=matchQuery(text);
-  if(!query)return false;
+  if(!query)return null;
+  const rec=KB_GROUPS.find(r=>r.name===query.name&&r.date===query.date);
+  if(!rec)return null;
+  const content=rec.items.map(it=>it.section+'：'+it.content).join('；');
+  const ragArr=[{title:rec.name+' '+rec.date+' 工作日报',content}];
+  return{query,rec,ragArr,payload:{external_rag:JSON.stringify(ragArr)}};
+}
 
+// 更新UI（不影响发送时机）
+function applyRAGUI(result){
+  const{query,rec,ragArr}=result;
   stopAudio();
   litFlow(1);
   showRagCard('意图识别：查 '+query.name+' · '+query.date);
   setStatus('检索知识库…');
-
   setTimeout(()=>{
-    const rec=KB_GROUPS.find(r=>r.name===query.name&&r.date===query.date);
-    if(!rec){
-      litFlow(2);
-      showRagCard('未找到 '+query.name+' 在 '+query.date+' 的记录');
-      setStatus('无数据，转普通回复');
-      resetFlow();
-      return;
-    }
-
     litFlow(2);
     renderKB(rec.name+rec.date);
-
     setTimeout(()=>{
       litFlow(3);
-      const content=rec.items.map(it=>it.section+'：'+it.content).join('；');
-      const ragArr=[{title:rec.name+' '+rec.date+' 工作日报',content}];
-      const payload={external_rag:JSON.stringify(ragArr)};
-
-      showRagCard('已检索 '+rec.items.length+' 条 → 发送 ChatRAGText (502)');
+      showRagCard('知识库已就绪，等待发送…');
       renderDetail(query,rec,ragArr);
+    },200);
+  },200);
+}
 
-      // 切换到RAG详情提示
-      setTimeout(()=>showRagCard('✅ RAG已发送！切换「RAG详情」tab查看'),1200);
+function flushPendingRAG(){
+  if(!pendingRAG)return;
+  const payload=pendingRAG;
+  pendingRAG=null;
+  if(ws&&ws.readyState===WebSocket.OPEN){
+    logEvt('→客户端',502,'ChatRAGText (收到459后发送)');
+    ws.send(encode(502,JSON.stringify(payload),sid));
+    showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
+    setStatus('RAG已发送，等待播报…');
+  }
+}
 
-      if(ws&&ws.readyState===WebSocket.OPEN){
-        ws.send(encode(502,JSON.stringify(payload),sid));
-      }
-    },400);
-  },500);
-
-  return true;
+// ══ 事件日志（调试用）════════════════════════════════════
+const EID_NAMES={50:'ConnectionStarted',150:'SessionStarted',153:'SessionFailed',
+  350:'TTSSentenceStart',351:'TTSSentenceEnd',352:'TTSResponse',359:'TTSEnded',
+  450:'ASRInfo',451:'ASRResponse',459:'ASREnded',
+  550:'ChatResponse',553:'ChatTextQueryConfirmed',559:'ChatEnded',599:'Error'};
+let evtLog=[];
+function logEvt(dir,eid,note=''){
+  const name=EID_NAMES[eid]||'eid='+eid;
+  const ts=new Date().toISOString().slice(11,23);
+  const entry=`${ts} ${dir} [${eid}] ${name}${note?' '+note:''}`;
+  evtLog.push(entry);
+  if(evtLog.length>60)evtLog.shift();
+  const el=$('evtLog');
+  if(el){el.textContent=evtLog.slice().reverse().join('\n');}
+  console.log(entry);
 }
 
 // ══ WS 消息处理 ════════════════════════════════════════════
 const onMsg=evt=>{
   if(!(evt.data instanceof ArrayBuffer))return;
   const{msgType,eid,payload}=parseFrame(evt.data);
+  // 记录所有服务端事件（msgType===9 是 JSON 事件，11 是音频帧）
+  if(msgType===9){logEvt('←服务端',eid);}
+  else if(msgType===11){logEvt('←音频帧',352,'(TTSResponse binary)');}
   if(msgType===9&&payload){
     let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
     if(eid===50){
       setConnStatus(true,'连接成功');
       setStatus('初始化会话…');
-      ws.send(encode(100,JSON.stringify({
+      const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
         dialog:{bot_name:'助理',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-      }),sid));
+      };
+      logEvt('→客户端',100,'StartSession');
+      ws.send(encode(100,JSON.stringify(sessionPayload),sid));
     } else if(eid===150){
       state='listening';setStatus('连接就绪，可以说话了');
       $('micBtn').classList.add('show');
+      $('micBtn').style.display='';
       litFlow(0);
     } else if(eid===350){
       const t=j.text||'';if(t)setSub(t,true);
@@ -439,8 +489,18 @@ const onMsg=evt=>{
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
-      if(t){setSub(t,true);setStatus('识别到：'+t);litFlow(0);handleRAGQuery(t);}
-    } else if(eid===153||eid===599){setStatus('连接出错，请刷新重试');setConnStatus(false,'出错');}
+      if(t){
+        setSub(t,true);setStatus('识别到：'+t);litFlow(0);
+        const result=lookupRAG(t);
+        if(result){ applyRAGUI(result); pendingRAG=result.payload; }
+      }
+    } else if(eid===459){
+      flushPendingRAG();
+    } else if(eid===153||eid===599){
+      const errMsg=j.error||JSON.stringify(j);
+      logEvt('←错误',eid,errMsg);
+      setStatus('连接出错：'+errMsg);setConnStatus(false,'出错');
+    }
   }
   if(msgType===11&&payload)chunks.push(payload);
 };
@@ -465,6 +525,7 @@ function startMic(){
     srcNode.connect(processor);processor.connect(audioCtx.destination);
     setStatus('正在聆听，请说话…');
     setWave(true,true);
+    $('micBtn').classList.remove('show');
     $('micBtn').style.display='none';
   }).catch(e=>{setStatus('麦克风错误: '+(e.name||e.message));$('micBtn').style.opacity='1';});
 }
@@ -491,9 +552,17 @@ function sendText(){
   setSub(text,true);setStatus('发送中…');
   resetFlow();litFlow(0);
 
-  // 先尝试RAG，命中就走RAG，否则走文本闲聊
-  const isRAG=handleRAGQuery(text);
-  if(!isRAG){
+  const result=lookupRAG(text);
+  if(result){
+    applyRAGUI(result);
+    logEvt('→客户端',501,'ChatTextQuery: '+text);
+    ws.send(encode(501,JSON.stringify({content:text}),sid));
+    logEvt('→客户端',502,'ChatRAGText (立即发送)');
+    ws.send(encode(502,JSON.stringify(result.payload),sid));
+    showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
+    setStatus('RAG已发送，等待播报…');
+  } else {
+    logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
     setStatus('等待回复…');
   }
@@ -507,10 +576,14 @@ function initWS(){
   const u=new URL(WS_URL);
   u.searchParams.set('session_id','dw_'+Date.now());
   ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
-  ws.onopen=()=>ws.send(encode(1,'{}',null));
+  ws.onopen=()=>{
+    ws.send(encode(1,'{}',null));
+    // 连接后立即显示麦克风按钮，让用户知道可以等待
+    $('micBtn').classList.add('show');
+  };
   ws.onmessage=onMsg;
   ws.onerror=()=>{setConnStatus(false,'连接失败');setStatus('连接失败，请刷新重试');};
-  ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('已断开('+e.code+')，刷新重连');state='idle';setWave(false,false);$('micBtn').classList.remove('show');};
+  ws.onclose=e=>{stopMic();setConnStatus(false,'已断开');setStatus('已断开('+e.code+')，刷新重连');state='idle';setWave(false,false);$('micBtn').classList.remove('show');$('micBtn').style.display='';};
 }
 
 initWS();
