@@ -891,7 +891,6 @@ function initWS(){
     state='idle';
     setWave(false,false);
     _refreshPending = false;
-    _greetingDone = false; // 重连后允许重新播开场白
     _isGreeting   = false;
     logEvt('⚠️断线',0,'code='+e.code+' 3秒后自动重连…');
     setStatus('连接断开，3秒后自动重连…');
