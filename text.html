@@ -219,7 +219,7 @@ const KB_GROUPS = [
 ];
 
 // ══ 状态 ═════════════════════════════════════════════════
-let ws, sid, seq=2, state='idle';
+let ws, sid, seq=0, state='idle';
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false;
 
@@ -305,8 +305,13 @@ function hexBytes(buf,maxLen=60){
 }
 
 const encode=(eid,payload,sessionId)=>{
-  const hdr=new Uint8Array([0x11,0x14,0x10,0x00]);
+  seq++; // 与服务端 autoAssignedSequence 同步递增
+  // flags=0x16: bit2=sequence, bit1=event（两个字段都带上，计数器完全同步）
+  const hdr=new Uint8Array([0x11,0x16,0x10,0x00]);
   const parts=[];
+  // ① 先写 sequence 字段（4字节大端）
+  const sq=new ArrayBuffer(4);new DataView(sq).setUint32(0,seq,false);parts.push(new Uint8Array(sq));
+  // ② 再写 event 字段
   const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
   if(sessionId){const sb=new TextEncoder().encode(sessionId);const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);parts.push(new Uint8Array(sl));parts.push(sb);}
   const pb=typeof payload==='string'?new TextEncoder().encode(payload):new Uint8Array(payload);
@@ -315,9 +320,9 @@ const encode=(eid,payload,sessionId)=>{
   const tot=parts.reduce((s,p)=>s+p.byteLength,hdr.byteLength);
   const out=new Uint8Array(tot);let o=0;out.set(hdr,o);o+=hdr.byteLength;
   parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});
-  // 老手风格日志：打印eid、sid、payloadLen、totalLen、前60字节
-  console.log('[encode] eid='+eid+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' 前60字节:['+hexBytes(out)+']');
-  logEvt('→encode',eid,'sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' bytes:['+hexBytes(out)+']');
+  // 老手风格日志：打印seq、eid、sid、payloadLen、totalLen、前60字节
+  console.log('[encode] seq='+seq+' eid='+eid+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' 前60字节:['+hexBytes(out)+']');
+  logEvt('→encode',eid,'seq='+seq+' sid='+(sessionId?sessionId.substring(0,8)+'…':'null')+' payloadLen='+pb.byteLength+' totalLen='+tot+' bytes:['+hexBytes(out)+']');
   return out.buffer;
 };
 
@@ -772,7 +777,7 @@ function sendText(){
 // ══ 初始化连接 ════════════════════════════════════════════
 function initWS(){
   setConnStatus(false,'连接中…');setStatus('正在连接服务器…');
-  sid=uuid();seq=2;chunks=[];
+  sid=uuid();seq=0;chunks=[];
 
   const u=new URL(WS_URL);
   u.searchParams.set('session_id','dw_'+Date.now());
