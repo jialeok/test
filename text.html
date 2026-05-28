@@ -538,7 +538,7 @@ function stopMic(){
   micStream=srcNode=processor=audioCtx=null;
 }
 
-// ══ 文字输入（走 ChatTextQuery 501）════════════════════════
+// ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
 
 function sendText(){
@@ -554,13 +554,17 @@ function sendText(){
 
   const result=lookupRAG(text);
   if(result){
+    // 文字输入时，502 必须在语音 ASR 的 459 之后才能生效，文字路径没有 459。
+    // 正确做法：把知识库内容直接拼进 501 的 content，让模型朗读知识。
     applyRAGUI(result);
-    logEvt('→客户端',501,'ChatTextQuery: '+text);
-    ws.send(encode(501,JSON.stringify({content:text}),sid));
-    logEvt('→客户端',502,'ChatRAGText (立即发送)');
-    ws.send(encode(502,JSON.stringify(result.payload),sid));
-    showRagCard('✅ RAG已发送(502)！切换「RAG详情」tab查看');
-    setStatus('RAG已发送，等待播报…');
+    const{rec}=result;
+    const knowledge=rec.items.map(it=>it.section+'：'+it.content).join('；');
+    const injected=`请根据以下知识库内容，口语化地播报给用户（不超过3句话）：${knowledge}`;
+    logEvt('→客户端',501,'ChatTextQuery (RAG注入): '+injected.substring(0,40)+'…');
+    ws.send(encode(501,JSON.stringify({content:injected}),sid));
+    showRagCard('✅ 知识已注入501，等待播报…');
+    setStatus('等待播报…');
+    litFlow(3);
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
