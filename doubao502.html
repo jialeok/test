@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>豆包语音助理 v5.3</title>
+<title>豆包语音助理 v5.4</title>
 <style>
   body {
     min-height: 100vh;
@@ -821,19 +821,29 @@ const CTRL = (() => {
 
   const DEFAULT_PROMPT = '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
 
-  // ── 状态（与 window._dwConfig 同步）────────────────────
-  // window._dwConfig 是 DW 模块读取配置的唯一来源
+  // ── 配置持久化（localStorage）────────────────────────
+  const STORAGE_KEY = 'dw_config_v1';
+
+  const saveConfig = () => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(window._dwConfig)); } catch (_) {}
+  };
+
   const initConfig = () => {
-    if (!window._dwConfig) {
-      window._dwConfig = {
-        speaker:       SPEAKERS[0].id,
-        systemPrompt:  DEFAULT_PROMPT,
-        speakingStyle: '',
-        speechRate:    0,
-        loudnessRate:  0,
-        dialect:       'none',
-        botName:       '智能助理',
-      };
+    const defaults = {
+      speaker:       SPEAKERS[0].id,
+      systemPrompt:  DEFAULT_PROMPT,
+      speakingStyle: '',
+      speechRate:    0,
+      loudnessRate:  0,
+      dialect:       'none',
+      botName:       '智能助理',
+    };
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      // 合并已保存的配置（保留 defaults 中缺失的字段）
+      window._dwConfig = saved ? Object.assign({}, defaults, JSON.parse(saved)) : { ...defaults };
+    } catch (_) {
+      window._dwConfig = { ...defaults };
     }
   };
   initConfig();
@@ -908,6 +918,7 @@ const CTRL = (() => {
   // ── ① 音色切换（UpdateConfig eid=201，立即热更新）────────
   const selectSpeaker = id => {
     cfg().speaker = id;
+    saveConfig();
     renderSpeakers();
     const sp = SPEAKERS.find(s => s.id === id);
     // 先更新界面
@@ -930,12 +941,14 @@ const CTRL = (() => {
     cfg().speechRate = parseInt(val);
     $('ctrl-rate-val').textContent = cfg().speechRate;
     updateFill('ctrl-rate-fill', cfg().speechRate, -50, 100);
+    saveConfig();
   };
 
   const onVol = val => {
     cfg().loudnessRate = parseInt(val);
     $('ctrl-vol-val').textContent = cfg().loudnessRate;
     updateFill('ctrl-vol-fill', cfg().loudnessRate, -50, 100);
+    saveConfig();
   };
 
   const updateFill = (fillId, val, min, max) => {
@@ -956,6 +969,7 @@ const CTRL = (() => {
     const trimmed = val.substring(0, 2000);
     cfg().systemPrompt = trimmed;
     $('ctrl-prompt-count').textContent = trimmed.length + ' / 2000';
+    saveConfig();
   };
 
   // ── ④ 说话风格 ────────────────────────────────────────
@@ -972,12 +986,14 @@ const CTRL = (() => {
     cfg().speakingStyle = text;
     $('ctrl-style').value = text;
     renderStylePresets();
-    toast(text ? `✓ 风格已选：${STYLE_PRESETS.find(p=>p.text===text)?.label}（重启生效）` : '✓ 恢复默认风格');
+    saveConfig();
+    toast(text ? `✓ 风格已选：${STYLE_PRESETS.find(p=>p.text===text)?.label}（保存成功）` : '✓ 恢复默认风格');
   };
 
   const onStyle = val => {
     cfg().speakingStyle = val;
-    renderStylePresets(); // 有自定义输入时高亮"自定义"
+    renderStylePresets();
+    saveConfig();
   };
 
   const renderStylePresets = () => {
@@ -996,8 +1012,9 @@ const CTRL = (() => {
   const selectDialect = id => {
     cfg().dialect = id;
     renderDialects();
+    saveConfig();
     const d = DIALECTS.find(x => x.id === id);
-    toast(d.id === 'none' ? '标准普通话（重启生效）' : `${d.label}方言（重启生效）`);
+    toast(d.id === 'none' ? '标准普通话（已保存）' : `${d.label}方言（已保存）`);
   };
 
   // ── 保存设置并关闭控制面板（原"重启 Session"）──────────
