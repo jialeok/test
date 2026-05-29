@@ -1250,27 +1250,14 @@ async function chipQuery(name, dateStr, dayLabel){
   logEvt('→客户端',515,'ClientInterrupt (chip打断)');
   ws.send(encode(515,JSON.stringify({}),sid));
 
-  // ★ 修复：模拟一次 ASR 输入，让服务端建立 TTS 会话上下文
-  // 问题根因：新 session 下服务端处于"等待用户说话"状态，直接发500会被忽略
-  // 解法：先 StartASR(300) → 一帧静音PCM(200) → EndASR(400)，让服务端走完 ASR→LLM 触发入口
-  //       同时并行做 RAG 查询；待模拟ASR发完 + 短暂等服务端响应后，发 515 掐断 LLM，再发 500
-  await _sendFakeASR(name, dayLabel);
-
-  // 并行等待：给服务端时间建立上下文 + 等 RAG 查询结果
-  // 240ms：足够服务端收到假 ASR 并启动 TTS/LLM 流水线，再被 515 打断
+  // ★ 修复竞态：515发出后等150ms，让服务端残留的350到达并被忽略
+  // 同时并行发起 RAG 查询，不浪费等待时间
   const [, result] = await Promise.all([
-    new Promise(r => setTimeout(r, 240)),
+    new Promise(r => setTimeout(r, 150)),
     dateStr ? lookupRAGDirect({name, date:dateStr}) : Promise.resolve(null)
   ]);
 
-  // 假 ASR 可能已触发服务端 350（LLM TTS），先 515 彻底打断
-  logEvt('→客户端',515,'ClientInterrupt (chip假ASR后掐断LLM)');
-  ws.send(encode(515,JSON.stringify({}),sid));
-
-  // 再等 120ms，让残留的 350/352 帧到达并被 _blockLLMAudio 屏蔽
-  await new Promise(r => setTimeout(r, 120));
-
-  // 强制解除屏蔽（此时服务端已干净，准备接收我们的 500）
+  // 强制解除屏蔽（防止 515 后的残留 350 把 _blockLLMAudio 置 true）
   _blockLLMAudio = false;
   _our500Sent    = false;
 
@@ -1297,44 +1284,6 @@ async function chipQuery(name, dateStr, dayLabel){
     setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录，正在播报提示…');
   }
   } finally { _chipQueryInFlight = false; }
-}
-
-// ★ 新增：模拟一次用户 ASR 输入，让服务端建立 TTS 上下文
-// 发送：StartASR(300 with text) → 一帧静音PCM(200) → EndASR(400)
-// 目的：让服务端从"等待用户"状态切换到"已收到输入、准备应答"状态
-// 之后我们会立刻发 515 打断 LLM 流水线，再发 500 播报我们自己的文本
-function _sendFakeASR(name, dayLabel){
-  return new Promise(resolve => {
-    if(!ws||ws.readyState!==WebSocket.OPEN){ resolve(); return; }
-
-    // 1. 发 StartASR (300) —— 用带 content 的 SayHello 格式（有些豆包协议用300做文字输入）
-    //    这里走标准 ASR 路线：先 StartASR，再塞一帧静音 PCM，再 EndASR
-    //    服务端收到 EndASR 后会触发 ASREnded(459)，进而启动 LLM，我们再515掐断
-
-    // 构造一帧 16kHz 单声道 20ms 静音 PCM（640 bytes，全0）
-    const silenceBytes = new Int16Array(320); // 320 个 16-bit 样本 = 640 bytes = 20ms@16kHz
-    const audioFrame = encodeAudio(silenceBytes.buffer);
-
-    logEvt('→客户端',300,'FakeASR StartASR (为chip建立TTS上下文)');
-    ws.send(encode(300, JSON.stringify({
-      content: '查' + name + dayLabel + '的工作日报'
-    }), sid));
-
-    // 稍等10ms，再发一帧静音PCM
-    setTimeout(()=>{
-      if(!ws||ws.readyState!==WebSocket.OPEN){ resolve(); return; }
-      ws.send(audioFrame);
-      logEvt('→客户端',200,'FakeASR 静音PCM帧 (20ms)');
-
-      // 再等50ms，发 EndASR(400)，让服务端确认输入结束
-      setTimeout(()=>{
-        if(!ws||ws.readyState!==WebSocket.OPEN){ resolve(); return; }
-        logEvt('→客户端',400,'FakeASR EndASR');
-        ws.send(encode(400, JSON.stringify({}), sid));
-        resolve();
-      }, 50);
-    }, 10);
-  });
 }
 
 // ★ 新增：直接用精确query对象查Supabase，不走matchQuery
