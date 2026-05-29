@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>语音智询 VoiQ</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg:#0d0f14; --panel:#13161e; --border:#1f2433;
@@ -195,62 +196,33 @@
 </div>
 
 <script>
-// ══ 配置（和你原始文件一致）══════════════════════════════
+// ══ 配置 ══════════════════════════════════════════════════
 const WS_URL      = 'wss://doubao-ws-proxy.onrender.com/proxy';
 const SYSTEM_PROMPT = '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
 const SPEAKER     = 'zh_female_vv_jupiter_bigtts';
 
-// ══ 知识库数据 ════════════════════════════════════════════
-// 工具函数：获取相对今天偏移N天的日期字符串
+// ══ Supabase 配置 ═════════════════════════════════════════
+const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ══ 日期工具 ══════════════════════════════════════════════
 function getDateStr(offsetDays=0){
   const d=new Date();d.setDate(d.getDate()+offsetDays);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 const TODAY     = getDateStr(0);
 const YESTERDAY = getDateStr(-1);
-const DAY_BEFORE= getDateStr(-2); // 前天
+const DAY_BEFORE= getDateStr(-2);
 
-// 姓名别名映射：任意写法 → KB_GROUPS 中的标准 name
-// 新增别名直接在这里加，查询逻辑不用改
+// ══ 姓名别名映射（新增员工在这里加）════════════════════════
 const NAME_ALIAS = {
   '小张':'小张', '张工':'小张', '大张':'小张', '张三':'小张',
   '小李':'李四', '李工':'李四', '老李':'李四', '李四':'李四',
 };
 
-const KB_GROUPS = [
-  // ── 小张 ──────────────────────────────────────────────
-  { name:'小张', date:TODAY, items:[
-    { section:'做了什么', content:'完成了客户A的需求评审，写了接口文档，代码提交了两个模块' },
-    { section:'遇到的问题', content:'后端接口文档缺失，已跟后端老李沟通确认，正在补文档' },
-    { section:'明日计划',  content:'对接客户B联调测试，修复QA提的3个bug' },
-  ]},
-  { name:'小张', date:YESTERDAY, items:[
-    { section:'做了什么', content:'参加了需求评审会议，搭建了测试环境' },
-    { section:'遇到的问题', content:'服务器权限不足，已申请运维开通' },
-    { section:'明日计划',  content:'完成接口开发，准备联调' },
-  ]},
-  { name:'小张', date:DAY_BEFORE, items:[
-    { section:'做了什么', content:'完成了模块A的单元测试，修复了2个遗留bug，提交了代码评审' },
-    { section:'遇到的问题', content:'测试环境不稳定，偶发超时，已提交运维排查' },
-    { section:'明日计划',  content:'参加需求评审会议，搭建测试环境' },
-  ]},
-  // ── 李四 ──────────────────────────────────────────────
-  { name:'李四', date:TODAY, items:[
-    { section:'做了什么', content:'修复了线上bug，优化了查询性能，写了两篇文档' },
-    { section:'遇到的问题', content:'数据库慢查询，已加索引解决' },
-    { section:'明日计划',  content:'压测新版本，准备上线' },
-  ]},
-  { name:'李四', date:YESTERDAY, items:[
-    { section:'做了什么', content:'完成了API文档编写，参加架构评审' },
-    { section:'遇到的问题', content:'接口兼容性问题，已和前端协调解决方案' },
-    { section:'明日计划',  content:'修复线上bug，优化查询性能' },
-  ]},
-  { name:'李四', date:DAY_BEFORE, items:[
-    { section:'做了什么', content:'重构了用户模块，优化了登录逻辑，完成代码评审' },
-    { section:'遇到的问题', content:'新版本和旧接口有兼容性冲突，已分析根因，待讨论方案' },
-    { section:'明日计划',  content:'完成API文档，参加架构评审' },
-  ]},
-];
+// KB_GROUPS 保留为空，知识库展示用（Supabase数据加载后填入）
+let KB_GROUPS = [];
 
 // ══ 状态 ═════════════════════════════════════════════════
 let ws, sid, globalSeq=0, state='idle'; // globalSeq: 与服务端autoAssignedSequence完全同步，每发一帧+1
@@ -458,15 +430,63 @@ function matchQuery(text){
   return null;
 }
 
-// 同步检索 KB，返回 ragPayload 或 null
-function lookupRAG(input){
+// 从 Supabase 异步检索日报
+async function lookupRAG(input){
   const query=matchQuery(input);
-  if(!query)return null;
-  const rec=KB_GROUPS.find(r=>r.name===query.name&&r.date===query.date);
-  if(!rec)return null;
-  const content=rec.items.map(it=>it.section+'：'+it.content).join('。');
-  const ttsContent=rec.name+'，'+rec.date+'的工作日报。'+content+'。';
-  return{query,rec,text:ttsContent};
+  if(!query) return null;
+
+  try{
+    // 1. 查员工（支持别名，用 ilike 模糊匹配）
+    const {data:empList}=await sbClient
+      .from('employees')
+      .select('id,name')
+      .eq('name', query.name)
+      .eq('enabled', true)
+      .limit(1);
+    if(!empList||empList.length===0) return null;
+    const emp=empList[0];
+
+    // 2. 查当天日报
+    const {data:records}=await sbClient
+      .from('work_records')
+      .select('*')
+      .eq('employee_id', emp.id)
+      .eq('record_date', query.date)
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(!records||records.length===0) return null;
+    const rec=records[0];
+
+    // 3. 解析 formatted_fields
+    let fields=rec.formatted_fields;
+    if(typeof fields==='string'){ try{ fields=JSON.parse(fields); }catch(_){ fields={}; } }
+    fields=fields||{};
+
+    // 4. 拼播报文本（字段名对应建表时的 done / problem / plan）
+    const parts=[];
+    if(fields.done)    parts.push('今日完成：'+fields.done);
+    if(fields.problem) parts.push('遇到的问题：'+fields.problem);
+    if(fields.plan)    parts.push('明日计划：'+fields.plan);
+    if(parts.length===0) return null;
+
+    const ttsText=emp.name+'，'+query.date+'的工作日报。'+parts.join('。')+'。';
+
+    // 5. 同步更新 KB_GROUPS 供知识库tab展示
+    KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===query.date));
+    KB_GROUPS.push({
+      name:emp.name, date:query.date,
+      items:[
+        {section:'做了什么',  content:fields.done||''},
+        {section:'遇到的问题',content:fields.problem||''},
+        {section:'明日计划',  content:fields.plan||''},
+      ]
+    });
+
+    return{query, rec:{name:emp.name,date:query.date,items:[]}, text:ttsText};
+  }catch(e){
+    logEvt('⚠️Supabase',0,'查询失败:'+e.message);
+    return null;
+  }
 }
 
 // 更新UI（不影响发送时机）
@@ -648,15 +668,16 @@ const onMsg=evt=>{
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         if(finals.length){
-          // 拿到最终识别结果，更新pendingRAG
-          const result=lookupRAG(t);
-          if(result){ applyRAGUI(result); pendingRAG=result.text; }
-          else { pendingRAG=null; }
-          // push_to_talk模式：收到最终451即可触发，无需等459
-          if(waitingForFinalASR){
-            waitingForFinalASR=false;
-            flushPendingRAG();
-          }
+          // 拿到最终识别结果，异步查 Supabase
+          lookupRAG(t).then(result=>{
+            if(result){ applyRAGUI(result); pendingRAG=result.text; }
+            else { pendingRAG=null; }
+            // push_to_talk模式：收到最终451即可触发，无需等459
+            if(waitingForFinalASR){
+              waitingForFinalASR=false;
+              flushPendingRAG();
+            }
+          });
         }
       }
     } else if(eid===459){
@@ -891,7 +912,7 @@ function fillAndSend(t){
 
 let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
 
-function sendText(){
+async function sendText(){
   const el=$('textInput');
   const text=el.value.trim();
   if(!text||!ws||ws.readyState!==WebSocket.OPEN){
@@ -899,16 +920,14 @@ function sendText(){
     return;
   }
   el.value='';el.style.height='auto';
-  setSub(text,true);setStatus('发送中…');
+  setSub(text,true);setStatus('检索知识库…');
   resetFlow();litFlow(0);
 
-  const result=lookupRAG(text);
+  const result=await lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    // 文字输入有RAG：直接发500播报知识库内容，不等553（push_to_talk模式553不可靠）
-    pendingRAGAfter553 = null; // 清掉，避免老的553残留触发
-    stopAudio(); // 打断当前播报
-    // 先发过渡话术再播报结果
+    pendingRAGAfter553 = null;
+    stopAudio();
     sendChatTTS('好的，稍等我查一下～','(过渡)');
     setTimeout(()=>{ sendChatTTS(result.text,'(查询结果)'); },800);
     setStatus('TTS已发送，等待播报…');
