@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>豆包语音助理 v5.4</title>
+<title>豆包语音助理 v5.5</title>
 <style>
   body {
     min-height: 100vh;
@@ -1039,8 +1039,10 @@ const CTRL = (() => {
     DW.close();
     _connPaused = false;
 
-    // 关闭控制面板
-    close();
+    // 直接关闭控制面板（内联操作，避免调用尚未定义的 close()）
+    const dr = $('ctrl-drawer');
+    dr.style.transform = 'translateY(100%)';
+    setTimeout(() => { $('ctrl-overlay').style.display = 'none'; }, 300);
 
     btn.textContent = '✅ 已保存，点助理按钮开始对话';
     btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
