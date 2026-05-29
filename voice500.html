@@ -572,6 +572,7 @@ let _blockLLMAudio = false;  // ★ 方案B：屏蔽LLM音频帧（352），防�
 let _our500Sent    = false;  // ★ 方案B：我们是否已发过500 TTS，用于区分350来源
 let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 let _chipTTSActive  = false; // ★ chip查询500会话生命周期：完成后不刷新会话，保持上下文
+let _pendingChipTTSText = null; // 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
 
 function matchQuery(text){
@@ -927,10 +928,12 @@ const onMsg=evt=>{
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
-          // chip 500 TTS 正在播放，只发515压制服务端LLM，不屏蔽本地音频
-          logEvt('←350',350,'LLM触发(chip播放中)，仅发515不屏蔽音频');
-          dbgLog('🔇 350 (LLM) chip播放中仅515压制: '+t.substring(0,30));
-          send515Throttled('(chip中压制LLM，保持500音频)');
+          // chip 500 TTS 正在播放：封音频100ms + 发515，最小化LLM插嘴
+          _blockLLMAudio = true;
+          logEvt('←350',350,'LLM触发(chip播放中)，封音频100ms+515压制');
+          dbgLog('🔇 350 (LLM) chip中封音频100ms+515: '+t.substring(0,30));
+          send515Throttled('(chip中压制LLM)');
+          setTimeout(()=>{ _blockLLMAudio = false; }, 100);
         } else {
           _blockLLMAudio = true;
           logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
@@ -1014,8 +1017,14 @@ const onMsg=evt=>{
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
-      // ChatTextQueryConfirmed：现在chip不走501，553不会到来；仅记录
-      dbgLog('📥 收到553 ChatTextQueryConfirmed (未预期)');
+      // ChatTextQueryConfirmed：chip的501已确认 → 立刻发500（区块仍封死，我们的350解封）
+      if(_pendingChipTTSText){
+        const ttsText = _pendingChipTTSText;
+        _pendingChipTTSText = null;
+        dbgLog('📥 553 → 立刻sendChatTTS(500) 无延迟');
+        sendChatTTS(ttsText, '(收到553后-无延迟)');
+        litFlow(3);
+      }
     } else if(eid===152){
       // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
       if(_refreshPending){
@@ -1238,8 +1247,8 @@ function stopMic(){
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
 let _chipQueryInFlight = false; // 防止用户快速重复点击chip
 
-// ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
-// ★ 参照PTT语音流程：不经过501(触发LLM)，直接sendChatTTS(500)完成TTS播报
+// ★ 标签点击：用精确的员工名+日期查RAG，走501→553→500完成TTS播报
+// ★ 501建立上下文（必须），_blockLLMAudio封死LLM→553→500→我们的350解封
 async function chipQuery(name, dateStr, dayLabel){
   if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
@@ -1290,10 +1299,16 @@ async function chipQuery(name, dateStr, dayLabel){
     litFlow(3);
   }
 
-  // ★ 参照PTT语音流程：直接sendChatTTS(500)，不发501(不触发LLM)
+  // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
+  // ★ 关键：501之前_blockLLMAudio=true，所有LLM音频全部封死
+  // ★ 只在我们的350到达时解封
+  _blockLLMAudio = true;
+  _our500Sent    = false;
   _chipTTSActive = true;
-  dbgLog('📤 直接sendChatTTS(500): ' + ttsText.substring(0, 50));
-  sendChatTTS(ttsText, '(chip查询直接500)');
+  _pendingChipTTSText = ttsText;
+  dbgLog('📤 sendChatTextQuery(501): ' + ttsText.substring(0, 50));
+  logEvt('→客户端',501,'ChatTextQuery');
+  ws.send(encode(501, JSON.stringify({ content: ttsText }), sid));
   } finally { _chipQueryInFlight = false; }
 }
 
