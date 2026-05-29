@@ -341,12 +341,25 @@ const DW = (() => {
     stopMic(); stopAudio(); ws=null; state='idle'; setWave(false,false); setDot(false);
   };
 
+  // 仅建连不显示 modal（供外挂控制面板使用）
+  const _connect = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) return; // 已连接不重复
+    sid=uuid(); seq=2; chunks=[];
+    const u=new URL(WS_URL);
+    u.searchParams.set('session_id','dw_'+Date.now());
+    ws=new WebSocket(u.toString()); ws.binaryType='arraybuffer';
+    ws.onopen    = () => { ws.send(encode(1,'{}',null)); };
+    ws.onmessage = onMsg;
+    ws.onerror   = () => { setDot(false); };
+    ws.onclose   = e  => { stopMic(); state='idle'; setWave(false,false); setDot(false); };
+  };
+
   // 补一个 dotpulse 动画
   const style=document.createElement('style');
   style.textContent='@keyframes dw-dotpulse{0%,100%{opacity:.5;transform:scale(.7)}50%{opacity:1;transform:scale(1.1)}}';
   document.head.appendChild(style);
 
-  return { open, close, _startMic, _ws: ()=>ws, _sid: ()=>sid, _encode: encode };
+  return { open, close, _startMic, _connect, _ws: ()=>ws, _sid: ()=>sid, _encode: encode };
 })();
 </script>
 <!-- ══ 豆包语音助理组件 结束 ══ -->
@@ -540,8 +553,13 @@ const CTRL = (() => {
   const refreshConn = () => {
     const ws = DW._ws();
     const alive = ws && ws.readyState === WebSocket.OPEN;
-    $('ctrl-dot').style.background = alive ? '#4ade80' : '#334155';
-    $('ctrl-connlabel').textContent = alive ? '已连接，操作立即可用' : 'Session 未就绪';
+    const connecting = ws && ws.readyState === WebSocket.CONNECTING;
+    $('ctrl-dot').style.background = alive ? '#4ade80' : connecting ? '#f59e0b' : '#334155';
+    $('ctrl-connlabel').textContent = alive ? '已连接，操作即时可用' : connecting ? '连接中…' : '未连接，正在尝试建连…';
+    if (!alive && !connecting) {
+      DW._connect(); // 后台静默建连
+      setTimeout(refreshConn, 1500); // 1.5s后刷新状态
+    }
   };
 
   // ── encode 副本（与插件完全一致）────────────────────
@@ -612,7 +630,9 @@ const CTRL = (() => {
   const selectSpeaker = id => {
     const ws = DW._ws(), sid = DW._sid();
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      toast('⚠ 未连接'); return;
+      toast('⚠ 连接中，稍后重试');
+      DW._connect();
+      return;
     }
     currentSpeaker = id;
     renderSpeakers();
