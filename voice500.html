@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260529-4 -->
+<!-- v=20260529-5 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -1331,9 +1331,9 @@ async function chipQuery(name, dateStr, dayLabel){
   _chipTTSActive = true;
   _pendingChipTTSText = ttsText;
   dbgLog('� chipQuery发501前: blockLLMAudio='+_blockLLMAudio+' our500Sent='+_our500Sent+' chipTTSActive='+_chipTTSActive);
-  dbgLog('�� sendChatTextQuery(501): ' + ttsText.substring(0, 50));
+  dbgLog('📤 sendChatTextQuery(501): 查' + name + '的日报');
   logEvt('→客户端',501,'ChatTextQuery');
-  ws.send(encode(501, JSON.stringify({ content: ttsText }), sid));
+  ws.send(encode(501, JSON.stringify({ content: '查' + name + '的日报' }), sid));
   } finally { _chipQueryInFlight = false; }
 }
 
