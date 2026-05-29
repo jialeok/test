@@ -66,15 +66,10 @@
   .hint-chip{font-size:11px;padding:5px 10px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .2s}
   .hint-chip:active{border-color:var(--accent);color:var(--accent)}
 
-  /* 底部输入栏（微信风格）*/
-  .bottom-bar{flex-shrink:0;background:rgba(255,255,255,.98);border-top:1px solid var(--border);padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:flex-end;}
-  #textInput{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:9px 14px;color:var(--text);font-family:var(--sans);font-size:14px;resize:none;outline:none;line-height:1.5;min-height:38px;max-height:80px;transition:border-color .2s;}
-  #textInput:focus{border-color:rgba(10,124,78,.5)}
-  #textInput::placeholder{color:var(--muted)}
-  .send-btn{width:38px;height:38px;border-radius:50%;border:none;background:#0a7c4e;color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;}
-  .send-btn:active{transform:scale(.88)}
-  .ptt-btn{flex-shrink:0;width:56px;height:38px;border-radius:20px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;user-select:none;-webkit-user-select:none;}
-  .ptt-btn.pressing{background:linear-gradient(135deg,#0a7c4e,#0aaa6e);border-color:transparent;box-shadow:0 0 16px rgba(10,124,78,.4);transform:scale(.96);}
+  /* 底部按住说话按钮（全宽）*/
+  .bottom-bar{flex-shrink:0;background:rgba(255,255,255,.98);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+  .ptt-btn{width:100%;height:52px;border-radius:26px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:15px;font-family:var(--sans);font-weight:600;letter-spacing:.05em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;user-select:none;-webkit-user-select:none;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+  .ptt-btn.pressing{background:linear-gradient(135deg,#0a7c4e,#0aaa6e);border-color:transparent;color:#fff;box-shadow:0 0 20px rgba(10,124,78,.35);transform:scale(.98);}
   .ptt-btn:disabled{opacity:.4;cursor:not-allowed}
 
   /* ── Tab1: 知识库 ── */
@@ -161,14 +156,9 @@
   </div>
 </div>
 
-<!-- 底部输入栏（微信风格，固定在底部）-->
+<!-- 底部按住说话（全宽） -->
 <div class="bottom-bar">
-  <button class="ptt-btn" id="pttBtn">🎤</button>
-  <textarea id="textInput" placeholder="输入问题…" rows="1"
-    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText()}"
-    oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'"
-  ></textarea>
-  <button class="send-btn" onclick="sendText()">➤</button>
+  <button class="ptt-btn" id="pttBtn">🎤 按住说话</button>
 </div>
 
 <!-- Tab1: 知识库 -->
@@ -366,6 +356,10 @@ function resetFlow(){ litFlow(-1); }
 
 // 状态显示
 function setStatus(t){ $('statusTxt').textContent=t; }
+function setPttLabel(pressing){
+  const btn=$('pttBtn');
+  if(btn) btn.innerHTML = pressing ? '🔴 松开发送' : '🎤 按住说话';
+}
 function setConnStatus(on,t){ $('connDot').classList.toggle('on',on); $('connStatus').textContent=t; }
 function setSub(t,active){
   const el=$('subtitle');
@@ -702,7 +696,7 @@ function flushPendingRAG(){
   const doFlush = (ragText) => {
     if(!ragText){
       logEvt('→客户端',500,'(兜底) lookupRAG无结果');
-      sendChatTTS('对不起，没找到相关内容。','(兜底)');
+      sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(兜底)');
       return;
     }
     pendingRAG = null;
@@ -1038,6 +1032,7 @@ function _doPttStart(){
   const doStart=()=>{
     pttReady=true;
     $('pttBtn').classList.add('pressing');
+    setPttLabel(true);
     setStatus('🎤 正在录音，松开发送…');
     setWave(true,true);
     resetFlow();litFlow(0);
@@ -1061,6 +1056,7 @@ function pttEnd(){
   if(!pttReady)return;
   pttReady=false;
   $('pttBtn').classList.remove('pressing');
+  setPttLabel(false);
   setWave(false,false);
   const _sr=audioCtx?audioCtx.sampleRate:16000;
   // bufferSize=1024，修正帧时长计算
@@ -1111,13 +1107,35 @@ function stopMic(){
 }
 
 // ══ 文字输入 ════════════════════════════════════════════
-function fillText(t){ $('textInput').value=t; $('textInput').focus(); }
+function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
 function fillAndSend(t){
   _ragFlushed=false;
   _pendingQueryText=null;
   pendingRAG=null;
-  $('textInput').value=t;
-  sendText();
+  if(typeof pendingRAGPromise!=='undefined') pendingRAGPromise=null;
+  // 直接用文字走RAG查询（无需输入框）
+  const fakeEl={value:t,style:{height:'auto'}};
+  const origInput=$('textInput');
+  if(origInput){ origInput.value=t; sendText(); }
+  else{
+    // 输入框已移除，直接调查询逻辑
+    (async()=>{
+      if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
+      setSub(t,true);setStatus('检索知识库…');
+      resetFlow();litFlow(0);
+      const result=await lookupRAG(t);
+      if(result){
+        applyRAGUI(result);
+        stopAudio();
+        _pendingQueryText=result.text;
+        _ragFlushed=false;
+        sendChatTTS('好的，稍等我查一下～','(chip过渡)');
+      } else {
+        sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(chip兜底)');
+        setStatus('未找到相关内容');
+      }
+    })();
+  }
 }
 
 let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
@@ -1138,18 +1156,16 @@ async function sendText(){
     applyRAGUI(result);
     pendingRAGAfter553 = null;
     stopAudio();
-    // ⚡ 关键修复：不能连发两条 TTS——服务端处理第一条时第二条会被丢弃
-    // 必须等第一条（过渡话术）的 TTSEnded(359) 回来，再发第二条（查询结果）
-    // _pendingQueryText 由 TTSEnded handler 消费
     _pendingQueryText = result.text;
     _ragFlushed = false;
     logEvt('→客户端(RAG)',500,'过渡话术，结果将在TTSEnded后发送');
     sendChatTTS('好的，稍等我查一下～','(过渡-等TTSEnded再发结果)');
     setStatus('过渡话术已发，等待服务端TTSEnded后播报结果…');
   } else {
-    logEvt('→客户端',501,'ChatTextQuery: '+text);
-    ws.send(encode(501,JSON.stringify({content:text}),sid));
-    setStatus('等待回复…');
+    // ★ 全走500路线，不走502闲聊，直接播提示
+    logEvt('→客户端',500,'(兜底) 未匹配到RAG内容');
+    sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(兜底)');
+    setStatus('未找到相关内容');
   }
 }
 
