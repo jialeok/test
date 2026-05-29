@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>豆包语音助理 v5.5</title>
+<title>豆包语音助理 v5.6</title>
 <style>
   body {
     min-height: 100vh;
@@ -804,6 +804,13 @@ const DW = (() => {
 
 <script>
 const CTRL = (() => {
+  // ── 抽屉开关（最先定义，供后续函数调用）─────────────────
+  const drawerClose = () => {
+    const dr = document.getElementById('ctrl-drawer');
+    dr.style.transform = 'translateY(100%)';
+    setTimeout(() => { document.getElementById('ctrl-overlay').style.display = 'none'; }, 300);
+  };
+
   // ── 音色列表 ──────────────────────────────────────────
   const SPEAKERS = [
     { id:'zh_female_vv_jupiter_bigtts',     label:'vv',   desc:'活泼女声', emoji:'👧' },
@@ -1039,10 +1046,8 @@ const CTRL = (() => {
     DW.close();
     _connPaused = false;
 
-    // 直接关闭控制面板（内联操作，避免调用尚未定义的 close()）
-    const dr = $('ctrl-drawer');
-    dr.style.transform = 'translateY(100%)';
-    setTimeout(() => { $('ctrl-overlay').style.display = 'none'; }, 300);
+    // 关闭控制面板
+    drawerClose();
 
     btn.textContent = '✅ 已保存，点助理按钮开始对话';
     btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
@@ -1054,9 +1059,10 @@ const CTRL = (() => {
 
   // ── 抽屉开关 ─────────────────────────────────────────
   const toggle = () => {
-    const ol = $('ctrl-overlay');
-    ol.style.display === 'flex' ? close() : open();
+    const ol = document.getElementById('ctrl-overlay');
+    ol.style.display === 'flex' ? drawerClose() : open();
   };
+  const close = drawerClose;
   const open = () => {
     refreshConn();
     renderSpeakers();
@@ -1081,12 +1087,6 @@ const CTRL = (() => {
     ol.style.display = 'flex';
     requestAnimationFrame(() => { dr.style.transform = 'translateY(0)'; });
   };
-  const close = () => {
-    const dr = $('ctrl-drawer');
-    dr.style.transform = 'translateY(100%)';
-    setTimeout(() => { $('ctrl-overlay').style.display = 'none'; }, 300);
-  };
-
   // ── 复制调试日志 ──────────────────────────────────────
   const copyLog = () => {
     const panel = document.getElementById('dw-debuglog');
