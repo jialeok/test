@@ -920,6 +920,10 @@ const onMsg=evt=>{
         dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
+        // ★ Chip流程：我们的350到了，立刻预发515抢在LLM生成TTS前压制
+        if(_chipTTSActive){
+          send515Throttled('(350后预压制LLM残留)');
+        }
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
@@ -1025,7 +1029,7 @@ const onMsg=evt=>{
             sendChatTTS(ttsText,'(收到553后发送)');
             litFlow(3);
           }
-        }, 80);
+        }, 200);
       }
     } else if(eid===152){
       // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
@@ -1291,9 +1295,9 @@ async function chipQuery(name, dateStr, dayLabel){
     ttsText = name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。';
   } else {
     const actualDate = (result.query && result.query.date) || '';
-    if(actualDate && dateStr !== actualDate){
-      ttsText = '提醒一下，' + name + dayLabel + '还没有提交日报。以下是最近的记录：' + result.text;
-      dbgLog('📅 日期不匹配: 期望'+dateStr+' 实际'+actualDate+' → 加前缀');
+    if(actualDate && actualDate !== getDateStr(0)){
+      ttsText = '提醒一下，' + name + '今天还没有提交日报。以下是最近的记录：' + result.text;
+      dbgLog('📅 日期不匹配: 今天='+getDateStr(0)+' 实际='+actualDate+' → 加前缀');
     } else {
       ttsText = result.text;
     }
