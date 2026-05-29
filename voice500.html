@@ -1224,6 +1224,7 @@ function stopMic(){
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
 // ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
+// ★ 方案B：完全绕开501，直接走纯500路线，不邀请LLM入场
 async function chipQuery(name, dateStr, dayLabel){
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
   stopAudio();
@@ -1244,11 +1245,10 @@ async function chipQuery(name, dateStr, dayLabel){
   ws.send(encode(515,JSON.stringify({}),sid));
 
   if(!dateStr){
-    // 没有日报记录：走 501→553→500 流程
-    pendingRAGAfter553 = name + '暂时没有工作日报记录，请联系相关人员确认。';
-    logEvt('→客户端',501,'ChatTextQuery (chip无记录)');
-    ws.send(encode(501,JSON.stringify({content:'查' + name + '的工作日报'}),sid));
-    setStatus('未找到 ' + name + ' 的日报记录，发送提示…');
+    // 没有日报记录：直接500播报提示，不走501
+    logEvt('→客户端',500,'ChatTTSText (chip无记录，纯500路线)');
+    sendChatTTS(name + '暂时没有工作日报记录，请联系相关人员确认。', '(chip无记录)');
+    setStatus('未找到 ' + name + ' 的日报记录，正在播报提示…');
     return;
   }
 
@@ -1256,18 +1256,17 @@ async function chipQuery(name, dateStr, dayLabel){
   const result = await lookupRAGDirect({name, date:dateStr});
   if(result){
     applyRAGUI(result);
-    // ★ 走 501→553→500 路线：先发 501 文本 query 触发服务端流水线
-    // 在收到 553(ChatTextQueryConfirmed) 后由 onMsg 里的 553 分支发出 500 TTS
-    pendingRAGAfter553 = result.text;
-    logEvt('→客户端',501,'ChatTextQuery (chip，等553后发500)');
-    ws.send(encode(501,JSON.stringify({content:'查' + name + dayLabel + '的工作日报'}),sid));
+    // ★ 方案B：直接500播报，完全不走501，LLM不入场
     litFlow(3);
-    setStatus('等待服务端确认后播报…');
+    logEvt('→客户端',500,'ChatTTSText (chip，纯500路线，跳过501)');
+    _pendingQueryText = result.text;
+    sendChatTTS('好的，稍等我查一下～', '(chip过渡)');
+    setStatus('过渡话术已发，等TTSEnded后播报结果…');
   } else {
-    pendingRAGAfter553 = name + dayLabel + '的工作记录暂未找到，请确认是否已录入。';
-    logEvt('→客户端',501,'ChatTextQuery (chip兜底)');
-    ws.send(encode(501,JSON.stringify({content:'查' + name + dayLabel + '的工作日报'}),sid));
-    setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录，发送提示…');
+    // 兜底：直接500播报，不走501
+    logEvt('→客户端',500,'ChatTTSText (chip兜底，纯500路线)');
+    sendChatTTS(name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。', '(chip兜底)');
+    setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录，正在播报提示…');
   }
 }
 
