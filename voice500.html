@@ -706,8 +706,9 @@ function flushPendingRAG(){
   stopAudio(); // 同步清掉本地音频队列
   // 先发过渡话术，等服务端 TTSEnded 后再发查询结果，彻底避免竞态
   // 用 _pendingQueryText 挂起，在 TTSEnded(359) 里消费
-  sendChatTTS('好的，稍等我查一下～','(过渡)');
+  // ⚡ 必须先赋值，再发TTS——否则服务端极快回TTSEnded时_pendingQueryText还是null
   _pendingQueryText = ragText;
+  sendChatTTS('好的，稍等我查一下～','(过渡)');
 }
 
 // 用 ChatTTSText(500) 流式发送文本
@@ -819,7 +820,14 @@ const onMsg=evt=>{
       if(_pendingQueryText){
         const qt=_pendingQueryText;
         _pendingQueryText=null;
-        sendChatTTS(qt,'(查询结果)');
+        logEvt('←TTSEnded→RAG',359,'消费_pendingQueryText，发送查询结果TTS');
+        litFlow(3);
+        showRagCard('✅ 过渡话术完毕，正在播报查询结果…');
+        if(ws && ws.readyState===WebSocket.OPEN){
+          sendChatTTS(qt,'(查询结果)');
+        } else {
+          logEvt('⚠️RAG',0,'WS已断开，无法发送查询结果');
+        }
         // 不刷新会话，不改 state，等查询结果的 TTSEnded 再走正常流程
         return;
       }
@@ -1109,9 +1117,14 @@ async function sendText(){
     applyRAGUI(result);
     pendingRAGAfter553 = null;
     stopAudio();
-    sendChatTTS('好的，稍等我查一下～','(过渡)');
-    setTimeout(()=>{ sendChatTTS(result.text,'(查询结果)'); },800);
-    setStatus('TTS已发送，等待播报…');
+    // ⚡ 关键修复：不能连发两条 TTS——服务端处理第一条时第二条会被丢弃
+    // 必须等第一条（过渡话术）的 TTSEnded(359) 回来，再发第二条（查询结果）
+    // _pendingQueryText 由 TTSEnded handler 消费
+    _pendingQueryText = result.text;
+    _ragFlushed = false;
+    logEvt('→客户端(RAG)',500,'过渡话术，结果将在TTSEnded后发送');
+    sendChatTTS('好的，稍等我查一下～','(过渡-等TTSEnded再发结果)');
+    setStatus('过渡话术已发，等待服务端TTSEnded后播报结果…');
   } else {
     logEvt('→客户端',501,'ChatTextQuery: '+text);
     ws.send(encode(501,JSON.stringify({content:text}),sid));
