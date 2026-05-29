@@ -1231,6 +1231,9 @@ async function chipQuery(name, dateStr, dayLabel){
   // ★ 关键修复：chip直接传精确query对象，不经过matchQuery（matchQuery需要时间词，chip传的是YYYY-MM-DD格式）
   if(!dateStr){
     // 没有日报记录，直接语音提示
+    // ★ 发500前先发515，确保服务端能接收
+    logEvt('→客户端',515,'ClientInterrupt (chip无记录，发500前打断)');
+    ws.send(encode(515,JSON.stringify({}),sid));
     sendChatTTS(name + '暂时没有工作日报记录，请联系相关人员确认。','(chip无记录)');
     setStatus('未找到 ' + name + ' 的日报记录');
     return;
@@ -1241,12 +1244,19 @@ async function chipQuery(name, dateStr, dayLabel){
     applyRAGUI(result);
     _pendingQueryText = result.text;
     _ragFlushed = false;
+    // ★ 关键修复：发500前先发515打断服务端，使其进入可接收500的状态
+    // 否则服务端可能处于 listening/中间态，350不会正确触发
+    _blockLLMAudio = true;  // 屏蔽服务端可能残留的LLM音频帧
+    logEvt('→客户端',515,'ClientInterrupt (chip，发500前打断)');
+    ws.send(encode(515,JSON.stringify({}),sid));
     sendChatTTS('好的，稍等我查一下～','(chip过渡)');
     litFlow(3);
   } else {
     _blockLLMAudio = false;
     _our500Sent    = false;
-    // ★ 语音播报找不到的提示
+    // ★ 发兜底TTS前也要先发515，确保服务端能接收
+    logEvt('→客户端',515,'ClientInterrupt (chip兜底，发500前打断)');
+    ws.send(encode(515,JSON.stringify({}),sid));
     sendChatTTS(name + dayLabel + '的工作记录暂未找到，请确认是否已录入。','(chip兜底-精确)');
     setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录');
   }
