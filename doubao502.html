@@ -24,17 +24,10 @@
 </head>
 <body>
 
-<!-- 你的页面内容（随便放什么） -->
 <div class="page-placeholder">
   <h2>你的业务页面</h2>
   <p>右下角有悬浮语音助理按钮 👇</p>
 </div>
-
-<!-- ══════════════════════════════════════════
-  豆包实时语音助理组件
-  使用方法：把下面这一整块复制到任意页面底部
-  需要自定义时只改"组件配置"那几行
-════════════════════════════════════════════ -->
 
 <!-- 1. 悬浮按钮 -->
 <button id="dw-btn" onclick="DW.open()" title="语音助理" style="
@@ -62,7 +55,6 @@
     box-shadow:0 -8px 40px rgba(0,0,0,.18); overflow:hidden;
     animation:dw-slideup .25s cubic-bezier(.34,1.1,.64,1);
   ">
-    <!-- 头部 -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:linear-gradient(160deg,#f0eeff,#fff);border-bottom:1px solid rgba(91,79,255,.08)">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#5b4fff,#9b59f5);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 12px rgba(91,79,255,.4)">
@@ -81,21 +73,18 @@
       </button>
     </div>
 
-    <!-- 字幕 -->
     <div style="padding:14px 18px 0">
       <div id="dw-sub" style="min-height:56px;padding:12px 14px;background:#f4f4f8;border-radius:16px;font-size:14px;color:#0e0e12;line-height:1.65;word-break:break-all;border:1.5px solid transparent;transition:all .3s">
         <span style="color:#9999aa;font-style:italic">等待对话开始…</span>
       </div>
     </div>
 
-    <!-- 波形 -->
     <div style="display:flex;align-items:center;justify-content:center;gap:5px;height:52px" id="dw-wave">
       <div class="dw-bar"></div><div class="dw-bar"></div><div class="dw-bar"></div>
       <div class="dw-bar"></div><div class="dw-bar"></div><div class="dw-bar"></div>
       <div class="dw-bar"></div>
     </div>
 
-    <!-- 点击说话按钮 -->
     <div style="padding:0 18px 20px;display:flex;flex-direction:column;gap:10px">
       <button id="dw-tapbtn" onclick="DW._startMic()" style="
         display:none;align-items:center;justify-content:center;gap:8px;
@@ -146,27 +135,35 @@
 .dw-bar.active:nth-child(6){animation-delay:.70s}
 .dw-bar.active:nth-child(7){animation-delay:.84s}
 .dw-bar.green { background:linear-gradient(to top,#00c48c,#00e6a8) !important; }
+@keyframes dw-dotpulse{0%,100%{opacity:.5;transform:scale(.7)}50%{opacity:1;transform:scale(1.1)}}
 </style>
 
 <!-- 4. 核心逻辑 -->
 <script>
 const DW = (() => {
-  // ── 组件配置（按需修改这里）──────────────────────────
-  const WS_URL       = 'wss://doubao-ws-proxy.onrender.com/proxy';
-  const SYSTEM_PROMPT= window._doubaoSystemPrompt || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
-  const SPEAKER      = window._doubaoSpeaker      || 'zh_female_vv_jupiter_bigtts';
-  const BOT_NAME     = '智能助理'; // 显示在 Modal 头部的名字
-  // ────────────────────────────────────────────────────
+  // ── 全局配置（由控制面板写入）──────────────────────
+  const WS_URL = 'wss://doubao-ws-proxy.onrender.com/proxy';
+
+  // 读取配置（控制面板会写到 window._dwConfig）
+  const getConfig = () => {
+    const c = window._dwConfig || {};
+    return {
+      speaker:      c.speaker      || 'zh_female_vv_jupiter_bigtts',
+      systemPrompt: c.systemPrompt || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。',
+      speechRate:   c.speechRate   !== undefined ? c.speechRate   : 0,
+      loudnessRate: c.loudnessRate !== undefined ? c.loudnessRate : 0,
+      dialect:      c.dialect      || 'none',
+      botName:      c.botName      || '智能助理',
+    };
+  };
 
   let ws, sid, seq=2, state='idle';
   let micStream, audioCtx, srcNode, processor;
   let chunks=[], queue=[], playing=false;
 
-  // DOM 引用
   const $ = id => document.getElementById(id);
-
   const setStatus = t => { $('dw-status').textContent = t; };
-  const setDot    = on => {
+  const setDot = on => {
     const d = $('dw-dot');
     d.style.background = on ? '#00c48c' : '#d0d0da';
     d.style.animation  = on ? 'dw-dotpulse 1.2s ease-in-out infinite' : 'none';
@@ -175,7 +172,7 @@ const DW = (() => {
     const el = $('dw-sub');
     el.textContent = t || '';
     if (!t) el.innerHTML = '<span style="color:#9999aa;font-style:italic">等待对话开始…</span>';
-    el.style.borderColor    = t ? 'transparent' : 'transparent';
+    el.style.borderColor = 'transparent';
   };
   const setWave = (active, green) => {
     document.querySelectorAll('.dw-bar').forEach(b => {
@@ -185,190 +182,313 @@ const DW = (() => {
   };
   const setListening = on => {
     setDot(on);
-    setWave(on, on); // 聆听时绿色，说话时紫色由调用方决定
+    setWave(on, on);
     $('dw-sub').style.borderColor = on ? 'rgba(0,196,140,.2)' : 'transparent';
     $('dw-sub').style.background  = on ? 'rgba(0,196,140,.04)' : '#f4f4f8';
   };
 
-  // ── 二进制协议 ────────────────────────────────────────
+  // ── UUID ─────────────────────────────────────────────
   const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r=Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
   });
 
+  // ── 二进制协议编码 ────────────────────────────────────
+  // 帧格式: [header 4B] [event 4B] [sessionIdLen 4B] [sessionId] [payloadLen 4B] [payload]
+  // header[0]=0x11(ver1+hdrSize1), header[1]=0x14(msgType=1,flags=0x04 hasEvent),
+  // header[2]=0x10(serial=JSON,compress=none), header[3]=0x00
   const encode = (eid, payload, sessionId) => {
-    const hdr  = new Uint8Array([0x11,0x14,0x10,0x00]);
+    const hdr   = new Uint8Array([0x11, 0x14, 0x10, 0x00]);
     const parts = [];
-    const eb = new ArrayBuffer(4); new DataView(eb).setUint32(0,eid,false); parts.push(new Uint8Array(eb));
+
+    // event id (flags=0x04 表示有 event 字段)
+    const eb = new ArrayBuffer(4);
+    new DataView(eb).setUint32(0, eid, false);
+    parts.push(new Uint8Array(eb));
+
+    // session id（只有 session 级别事件才带）
     if (sessionId) {
       const sb = new TextEncoder().encode(sessionId);
-      const sl = new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
-      parts.push(new Uint8Array(sl)); parts.push(sb);
+      const sl = new ArrayBuffer(4);
+      new DataView(sl).setUint32(0, sb.byteLength, false);
+      parts.push(new Uint8Array(sl));
+      parts.push(sb);
     }
-    const pb = typeof payload==='string' ? new TextEncoder().encode(payload) : new Uint8Array(payload);
-    const pl = new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
-    parts.push(new Uint8Array(pl)); parts.push(pb);
-    const tot = parts.reduce((s,p)=>s+p.byteLength, hdr.byteLength);
-    const out = new Uint8Array(tot); let o=0;
-    out.set(hdr,o); o+=hdr.byteLength;
-    parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});
+
+    // payload
+    const pb = typeof payload === 'string'
+      ? new TextEncoder().encode(payload)
+      : new Uint8Array(payload);
+    const pl = new ArrayBuffer(4);
+    new DataView(pl).setUint32(0, pb.byteLength, false);
+    parts.push(new Uint8Array(pl));
+    parts.push(pb);
+
+    const tot = parts.reduce((s, p) => s + p.byteLength, hdr.byteLength);
+    const out = new Uint8Array(tot);
+    let o = 0;
+    out.set(hdr, o); o += hdr.byteLength;
+    parts.forEach(p => { out.set(p, o); o += p.byteLength; });
     return out.buffer;
   };
 
+  // 音频帧: header[1]=0x25(msgType=2 audioOnly, flags=0x05 hasSeq+hasEvent)
   const encodeAudio = pcm => {
-    const hdr = new Uint8Array([0x11,0x25,0x00,0x00]);
+    const hdr = new Uint8Array([0x11, 0x25, 0x00, 0x00]);
     seq++;
-    const sq=new ArrayBuffer(4); new DataView(sq).setInt32(0,seq,false);
-    const ev=new ArrayBuffer(4); new DataView(ev).setUint32(0,200,false);
-    const sb=sid?new TextEncoder().encode(sid):new Uint8Array(0);
-    const sl=new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
-    const pb=new Uint8Array(pcm);
-    const pl=new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
-    const tot=4+4+4+4+sb.byteLength+4+pb.byteLength;
-    const out=new Uint8Array(tot); let o=0;
-    [hdr,new Uint8Array(sq),new Uint8Array(ev),new Uint8Array(sl),sb,new Uint8Array(pl),pb]
-      .forEach(p=>{out.set(p,o);o+=p.byteLength;});
+    const sq = new ArrayBuffer(4); new DataView(sq).setInt32(0, seq, false);
+    const ev = new ArrayBuffer(4); new DataView(ev).setUint32(0, 200, false);
+    const sb = sid ? new TextEncoder().encode(sid) : new Uint8Array(0);
+    const sl = new ArrayBuffer(4); new DataView(sl).setUint32(0, sb.byteLength, false);
+    const pb = new Uint8Array(pcm);
+    const pl = new ArrayBuffer(4); new DataView(pl).setUint32(0, pb.byteLength, false);
+    const tot = 4 + 4 + 4 + 4 + sb.byteLength + 4 + pb.byteLength;
+    const out = new Uint8Array(tot); let o = 0;
+    [hdr, new Uint8Array(sq), new Uint8Array(ev), new Uint8Array(sl), sb, new Uint8Array(pl), pb]
+      .forEach(p => { out.set(p, o); o += p.byteLength; });
     return out.buffer;
   };
 
+  // ── 解帧 ─────────────────────────────────────────────
   const parseFrame = buf => {
-    const dv=new DataView(buf);
-    const hSz=(dv.getUint8(0)&0x0f)*4, msgType=(dv.getUint8(1)>>4)&0x0f, flags=dv.getUint8(1)&0x0f;
-    let o=hSz;
-    if(msgType===15)o+=4;
-    if(flags&0x03)o+=4;
-    let eid=0; if(flags&0x04){eid=dv.getUint32(o,false);o+=4;}
-    let sessId=null;
-    if(o+4<=buf.byteLength){const sl=dv.getUint32(o,false);if(sl>0&&sl<200&&o+4+sl<=buf.byteLength){o+=4;sessId=new TextDecoder().decode(new Uint8Array(buf,o,sl));o+=sl;}}
-    let payload=null;
-    if(o+4<=buf.byteLength){const pl=dv.getUint32(o,false);o+=4;if(pl>0&&o+pl<=buf.byteLength)payload=buf.slice(o,o+pl);}
-    return {msgType,eid,payload};
+    const dv = new DataView(buf);
+    const hSz     = (dv.getUint8(0) & 0x0f) * 4;
+    const msgType = (dv.getUint8(1) >> 4) & 0x0f;
+    const flags   = dv.getUint8(1) & 0x0f;
+    let o = hSz;
+    if (msgType === 15) o += 4;          // error code
+    if (flags & 0x03)  o += 4;          // sequence
+    let eid = 0;
+    if (flags & 0x04) { eid = dv.getUint32(o, false); o += 4; }
+    let sessId = null;
+    if (o + 4 <= buf.byteLength) {
+      const sl = dv.getUint32(o, false);
+      if (sl > 0 && sl < 200 && o + 4 + sl <= buf.byteLength) {
+        o += 4; sessId = new TextDecoder().decode(new Uint8Array(buf, o, sl)); o += sl;
+      }
+    }
+    let payload = null;
+    if (o + 4 <= buf.byteLength) {
+      const pl = dv.getUint32(o, false); o += 4;
+      if (pl > 0 && o + pl <= buf.byteLength) payload = buf.slice(o, o + pl);
+    }
+    return { msgType, eid, payload };
   };
 
-  // ── 音频播放队列 ──────────────────────────────────────
+  // ── 音频播放 ──────────────────────────────────────────
   const flushAudio = () => {
-    if(!chunks.length)return;
-    const tot=chunks.reduce((s,c)=>s+c.byteLength,0), merged=new Uint8Array(tot); let o=0;
-    chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;}); chunks=[];
-    queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
+    if (!chunks.length) return;
+    const tot = chunks.reduce((s, c) => s + c.byteLength, 0);
+    const merged = new Uint8Array(tot); let o = 0;
+    chunks.forEach(c => { merged.set(new Uint8Array(c), o); o += c.byteLength; });
+    chunks = [];
+    queue.push(URL.createObjectURL(new Blob([merged], { type: 'audio/ogg; codecs=opus' })));
     playNext();
   };
   const playNext = () => {
-    if(playing||!queue.length)return; playing=true;
-    const url=queue.shift(), a=new Audio(url);
-    const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
-    a.onended=done; a.onerror=done; a.play().catch(done);
+    if (playing || !queue.length) return;
+    playing = true;
+    const url = queue.shift(), a = new Audio(url);
+    const done = () => { URL.revokeObjectURL(url); playing = false; playNext(); };
+    a.onended = done; a.onerror = done; a.play().catch(done);
   };
-  const stopAudio = () => { queue=[]; chunks=[]; playing=false; };
+  const stopAudio = () => { queue = []; chunks = []; playing = false; };
 
   // ── 麦克风 ───────────────────────────────────────────
   const _startMic = async () => {
-    $('dw-tapbtn').style.display='none';
+    $('dw-tapbtn').style.display = 'none';
     setStatus('正在聆听…');
     setListening(true);
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-      audioCtx  = new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioCtx  = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       srcNode   = audioCtx.createMediaStreamSource(micStream);
-      processor = audioCtx.createScriptProcessor(512,1,1);
+      processor = audioCtx.createScriptProcessor(512, 1, 1);
       processor.onaudioprocess = e => {
-        if(!ws||ws.readyState!==WebSocket.OPEN)return;
-        const f32=e.inputBuffer.getChannelData(0), i16=new Int16Array(f32.length);
-        f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const f32 = e.inputBuffer.getChannelData(0);
+        const i16 = new Int16Array(f32.length);
+        f32.forEach((v, i) => { i16[i] = Math.max(-32768, Math.min(32767, v * 32767)); });
         ws.send(encodeAudio(i16.buffer));
       };
-      srcNode.connect(processor); processor.connect(audioCtx.destination);
-    } catch(e) { setStatus('麦克风错误: '+(e.name||e.message)); }
+      srcNode.connect(processor);
+      processor.connect(audioCtx.destination);
+    } catch (e) {
+      setStatus('麦克风错误: ' + (e.name || e.message));
+    }
   };
   const stopMic = () => {
-    try{processor?.disconnect();}catch(_){}
-    try{srcNode?.disconnect();}catch(_){}
-    try{audioCtx?.close();}catch(_){}
-    micStream?.getTracks().forEach(t=>t.stop()); micStream=srcNode=processor=audioCtx=null;
+    try { processor?.disconnect(); } catch (_) {}
+    try { srcNode?.disconnect(); } catch (_) {}
+    try { audioCtx?.close(); } catch (_) {}
+    micStream?.getTracks().forEach(t => t.stop());
+    micStream = srcNode = processor = audioCtx = null;
+  };
+
+  // ── 构建 StartSession payload ────────────────────────
+  const sanitize = s => s
+    .replace(/[\r\n\t]/g, ' ')
+    .replace(/\\/g, '、')
+    .replace(/["]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .substring(0, 2000);
+
+  const buildStartPayload = () => {
+    const cfg = getConfig();
+    const payload = {
+      tts: {
+        speaker: cfg.speaker,                       // ✅ speaker 在 tts 根层级
+        audio_config: {
+          channel: 1,
+          format: 'ogg_opus',
+          sample_rate: 24000,
+          speech_rate:   cfg.speechRate,            // ✅ 语速
+          loudness_rate: cfg.loudnessRate,          // ✅ 音量
+        },
+        extra: {},
+      },
+      asr: {
+        audio_info: { format: 'pcm', sample_rate: 16000, channel: 1 },
+        extra: {},
+      },
+      dialog: {
+        bot_name:      sanitize(cfg.botName),
+        system_role:   sanitize(cfg.systemPrompt), // ✅ 提示词
+        speaking_style: '口语化、简短，每次不超过3句话',
+        extra: {
+          model:        '1.2.1.1',
+          input_mod:    'keep_alive',
+          strict_audit: false,
+        },
+      },
+    };
+    // 方言：仅 vv 音色 + 2.0 模型支持
+    if (cfg.dialect && cfg.dialect !== 'none') {
+      payload.tts.extra.explicit_dialect = cfg.dialect;
+    }
+    return JSON.stringify(payload);
   };
 
   // ── WS 消息处理 ──────────────────────────────────────
-  const sanitize = s => s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
-
   const onMsg = evt => {
-    if(!(evt.data instanceof ArrayBuffer))return;
-    const {msgType,eid,payload}=parseFrame(evt.data);
-    if(msgType===9&&payload){
-      let j={}; try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
-      if(eid===50){  // ConnectionStarted
-        setStatus('连接成功，初始化中…');
-        ws.send(encode(100, JSON.stringify({
-          tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-          dialog:{bot_name:'助理',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-        }), sid));
-      } else if(eid===150){ // SessionStarted
-        state='listening'; setStatus('点击下方开始说话');
-        $('dw-tapbtn').style.display='flex';
-      } else if(eid===350){ // TTSSentenceStart
-        const t=j.text||''; if(t)setSub(t);
-        state='speaking'; setStatus('助理正在说话…');
-        setListening(false); setWave(true,false);
-      } else if(eid===351){ flushAudio();
-      } else if(eid===359){ flushAudio(); state='listening'; setStatus('正在聆听…'); setListening(true);
-      } else if(eid===450){ stopAudio();
-      } else if(eid===451){ const t=(j.results||[]).map(r=>r.text).join(''); if(t){setStatus('我听到：'+t);setSub(t);}
-      } else if(eid===153||eid===599){ setStatus('连接出错，请重试'); }
+    if (!(evt.data instanceof ArrayBuffer)) return;
+    const { msgType, eid, payload } = parseFrame(evt.data);
+    if (msgType === 9 && payload) {
+      let j = {};
+      try { j = JSON.parse(new TextDecoder().decode(payload)); } catch (_) {}
+
+      if (eid === 50) {          // ConnectionStarted
+        setStatus('连接成功，初始化会话…');
+        ws.send(encode(100, buildStartPayload(), sid));
+
+      } else if (eid === 150) { // SessionStarted
+        state = 'listening';
+        setStatus('点击下方开始说话');
+        $('dw-tapbtn').style.display = 'flex';
+
+      } else if (eid === 350) { // TTSSentenceStart
+        const t = j.text || '';
+        if (t) setSub(t);
+        state = 'speaking';
+        setStatus('助理正在说话…');
+        setListening(false);
+        setWave(true, false);
+
+      } else if (eid === 351) { // TTSSentenceEnd
+        flushAudio();
+
+      } else if (eid === 359) { // TTSEnded
+        flushAudio();
+        state = 'listening';
+        setStatus('正在聆听…');
+        setListening(true);
+
+      } else if (eid === 450) { // ASRInfo（用户开始说话，打断播放）
+        stopAudio();
+
+      } else if (eid === 451) { // ASRResponse
+        const t = (j.results || []).map(r => r.text).join('');
+        if (t) { setStatus('我听到：' + t); setSub(t); }
+
+      } else if (eid === 153 || eid === 599) {
+        setStatus('连接出错，请重试');
+      }
     }
-    if(msgType===11&&payload) chunks.push(payload);
+    if (msgType === 11 && payload) chunks.push(payload); // TTSResponse 音频包
   };
 
   // ── 公开方法 ─────────────────────────────────────────
   const open = () => {
-    const m=$('dw-modal'); m.style.display='flex';
-    setSub(''); setStatus('正在连接…'); setDot(false); setWave(false,false);
-    $('dw-tapbtn').style.display='none';
-    sid=uuid(); seq=2; chunks=[];
+    const cfg = getConfig();
+    $('dw-name').textContent = cfg.botName || '智能助理';
+    const m = $('dw-modal');
+    m.style.display = 'flex';
+    setSub(''); setStatus('正在连接…'); setDot(false); setWave(false, false);
+    $('dw-tapbtn').style.display = 'none';
+    sid = uuid(); seq = 2; chunks = [];
 
-    const u=new URL(WS_URL);
-    u.searchParams.set('session_id','dw_'+Date.now());
-    ws=new WebSocket(u.toString()); ws.binaryType='arraybuffer';
-    ws.onopen    = () => { ws.send(encode(1,'{}',null)); };
+    const u = new URL(WS_URL);
+    u.searchParams.set('session_id', 'dw_' + Date.now());
+    ws = new WebSocket(u.toString());
+    ws.binaryType = 'arraybuffer';
+    ws.onopen    = () => { ws.send(encode(1, '{}', null)); };
     ws.onmessage = onMsg;
     ws.onerror   = () => setStatus('连接失败，请检查网络');
-    ws.onclose   = e  => { stopMic(); setStatus('已断开 ('+e.code+')'); state='idle'; setWave(false,false); setDot(false); };
+    ws.onclose   = e  => {
+      stopMic(); setStatus('已断开 (' + e.code + ')');
+      state = 'idle'; setWave(false, false); setDot(false);
+    };
   };
 
   const close = () => {
-    $('dw-modal').style.display='none';
-    if(ws&&ws.readyState===WebSocket.OPEN){
-      try{ ws.send(encode(102,'{}',sid)); setTimeout(()=>{ try{ws.send(encode(2,'{}',null)); setTimeout(()=>ws?.close(),300);}catch(_){}},300); }catch(_){}
+    $('dw-modal').style.display = 'none';
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(encode(102, '{}', sid));
+        setTimeout(() => {
+          try { ws.send(encode(2, '{}', null)); setTimeout(() => ws?.close(), 300); } catch (_) {}
+        }, 300);
+      } catch (_) {}
     }
-    stopMic(); stopAudio(); ws=null; state='idle'; setWave(false,false); setDot(false);
+    stopMic(); stopAudio(); ws = null; state = 'idle';
+    setWave(false, false); setDot(false);
   };
 
-  // 仅建连不显示 modal（供外挂控制面板使用）
+  // 仅后台建连，不打开 modal（供控制面板预连）
   const _connect = () => {
-    if (ws && ws.readyState === WebSocket.OPEN) return; // 已连接不重复
-    sid=uuid(); seq=2; chunks=[];
-    const u=new URL(WS_URL);
-    u.searchParams.set('session_id','dw_'+Date.now());
-    ws=new WebSocket(u.toString()); ws.binaryType='arraybuffer';
-    ws.onopen    = () => { ws.send(encode(1,'{}',null)); };
+    if (ws && ws.readyState <= WebSocket.OPEN) return;
+    sid = uuid(); seq = 2; chunks = [];
+    const u = new URL(WS_URL);
+    u.searchParams.set('session_id', 'dw_' + Date.now());
+    ws = new WebSocket(u.toString());
+    ws.binaryType = 'arraybuffer';
+    ws.onopen    = () => { ws.send(encode(1, '{}', null)); };
     ws.onmessage = onMsg;
-    ws.onerror   = () => { setDot(false); };
-    ws.onclose   = e  => { stopMic(); state='idle'; setWave(false,false); setDot(false); };
+    ws.onerror   = () => {};
+    ws.onclose   = () => { stopMic(); state = 'idle'; setWave(false, false); setDot(false); };
   };
 
-  // 补一个 dotpulse 动画
-  const style=document.createElement('style');
-  style.textContent='@keyframes dw-dotpulse{0%,100%{opacity:.5;transform:scale(.7)}50%{opacity:1;transform:scale(1.1)}}';
-  document.head.appendChild(style);
+  // ✅ UpdateConfig (eid=201)：实时切换音色，无需重启 Session
+  const updateSpeaker = (speaker) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    // 文档：UpdateConfig payload = { tts: { speaker: "..." }, dialog: {...} }
+    const payload = JSON.stringify({ tts: { speaker } });
+    ws.send(encode(201, payload, sid));
+    return true;
+  };
 
-  return { open, close, _startMic, _connect, _ws: ()=>ws, _sid: ()=>sid, _encode: encode };
+  return { open, close, _startMic, _connect, updateSpeaker,
+           _ws: () => ws, _sid: () => sid, _encode: encode };
 })();
 </script>
-<!-- ══ 豆包语音助理组件 结束 ══ -->
 
 
 <!-- ══════════════════════════════════════════════════════
-  豆包控制面板 · 外挂层
-  功能①：音色切换（UpdateConfig eid=201，热更新立即生效）
-  功能②：语速 / 音量（Session级别，改完点"重启"生效）
+  豆包控制面板
+  ① 音色切换（UpdateConfig eid=201，热更新立即生效）
+  ② 语速 / 音量（Session级，重启生效）
+  ③ 提示词编辑（Session级，重启生效）
+  ④ 方言切换（Session级，重启生效，仅 vv+2.0）
   不修改插件任何逻辑，通过 DW._ws() / DW._sid() / DW._encode() 桥接
 ════════════════════════════════════════════════════════ -->
 
@@ -402,7 +522,7 @@ const DW = (() => {
     transition:transform .3s cubic-bezier(.34,1.1,.64,1);
     padding-bottom:env(safe-area-inset-bottom,0px);
   ">
-    <!-- 把手 -->
+    <!-- 头部把手 -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);"></div>
@@ -424,23 +544,20 @@ const DW = (() => {
       <span id="ctrl-toastlabel" style="margin-left:auto;color:#818cf8;opacity:0;transition:opacity .4s;"></span>
     </div>
 
-    <div style="overflow-y:auto;max-height:62vh;padding:0 16px 20px;display:flex;flex-direction:column;gap:18px;">
+    <div style="overflow-y:auto;max-height:68vh;padding:0 16px 20px;display:flex;flex-direction:column;gap:18px;">
 
-      <!-- ① 音色切换 ─────────────────────────── -->
+      <!-- ① 音色切换（立即生效） -->
       <div>
         <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
           <span>① 音色切换</span>
           <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
-          <span style="font-size:9px;color:#475569;font-weight:400;">立即生效</span>
+          <span style="font-size:9px;color:#4ade80;font-weight:400;">连接后立即生效</span>
         </div>
-        <!-- 音色卡片网格 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="ctrl-speaker-grid">
-          <!-- 由JS渲染 -->
-        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="ctrl-speaker-grid"></div>
         <div id="ctrl-speaker-hint" style="margin-top:8px;font-size:10px;color:#475569;font-family:monospace;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid rgba(255,255,255,.06);min-height:28px;"></div>
       </div>
 
-      <!-- ② 语速 / 音量 ─────────────────────── -->
+      <!-- ② 语速 / 音量（重启生效） -->
       <div>
         <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
           <span>② 语速 · 音量</span>
@@ -492,40 +609,67 @@ const DW = (() => {
           </div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="ctrl-dialect-grid"></div>
         </div>
-
-        <!-- 重启session按钮 -->
-        <button id="ctrl-restart-btn" onclick="CTRL.restartSession()" style="
-          margin-top:16px;width:100%;padding:13px;border-radius:14px;border:none;
-          background:linear-gradient(135deg,#6366f1,#818cf8);
-          color:#fff;font-size:13px;font-weight:700;cursor:pointer;
-          letter-spacing:.05em;font-family:monospace;
-          box-shadow:0 4px 16px rgba(99,102,241,.4);
-          transition:opacity .2s;
-        ">↺ 重启 Session 应用设置</button>
-        <div style="text-align:center;font-size:10px;color:#334155;margin-top:6px;">语速、音量、方言在下次 Session 初始化时生效</div>
       </div>
+
+      <!-- ③ 提示词编辑（重启生效） -->
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span>③ System Prompt</span>
+          <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
+          <span style="font-size:9px;color:#f59e0b;font-weight:400;">重启后生效</span>
+        </div>
+        <textarea id="ctrl-prompt" rows="4"
+          placeholder="输入自定义提示词，例如：你是一个历史老师，请用生动的方式讲解历史故事。"
+          oninput="CTRL.onPrompt(this.value)"
+          style="
+            width:100%;box-sizing:border-box;
+            background:rgba(255,255,255,.05);
+            border:1px solid rgba(99,102,241,.3);
+            border-radius:12px;padding:12px;
+            color:#e2e8f0;font-size:12px;line-height:1.6;
+            font-family:-apple-system,sans-serif;
+            resize:vertical;outline:none;
+            transition:border-color .2s;
+          "
+          onfocus="this.style.borderColor='rgba(99,102,241,.8)'"
+          onblur="this.style.borderColor='rgba(99,102,241,.3)'"
+        ></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <span style="font-size:10px;color:#334155;">最多 2000 字符</span>
+          <span id="ctrl-prompt-count" style="font-size:10px;color:#475569;font-family:monospace;">0 / 2000</span>
+        </div>
+      </div>
+
+      <!-- 重启按钮 -->
+      <button id="ctrl-restart-btn" onclick="CTRL.restartSession()" style="
+        width:100%;padding:13px;border-radius:14px;border:none;
+        background:linear-gradient(135deg,#6366f1,#818cf8);
+        color:#fff;font-size:13px;font-weight:700;cursor:pointer;
+        letter-spacing:.05em;font-family:monospace;
+        box-shadow:0 4px 16px rgba(99,102,241,.4);
+        transition:opacity .2s;
+      ">↺ 重启 Session 应用所有设置</button>
+      <div style="text-align:center;font-size:10px;color:#334155;margin-top:-12px;">语速、音量、提示词、方言在下次 Session 初始化时生效</div>
 
     </div>
   </div>
 </div>
 
 <style>
-/* 自定义滑块轨道透明（原生range隐藏，用div模拟轨道） */
 #ctrl-rate::-webkit-slider-thumb { -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#818cf8; box-shadow:0 2px 8px rgba(99,102,241,.6); cursor:pointer; }
 #ctrl-vol::-webkit-slider-thumb  { -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#818cf8; box-shadow:0 2px 8px rgba(99,102,241,.6); cursor:pointer; }
 #ctrl-rate::-webkit-slider-runnable-track { background:transparent; }
 #ctrl-vol::-webkit-slider-runnable-track  { background:transparent; }
-@keyframes ctrl-drawerout { from{transform:translateY(100%)} to{transform:translateY(0)} }
 </style>
 
 <script>
 const CTRL = (() => {
   // ── 音色列表 ──────────────────────────────────────────
   const SPEAKERS = [
-    { id:'zh_female_vv_jupiter_bigtts',     label:'vv',     desc:'活泼女声', emoji:'👧' },
-    { id:'zh_female_xiaohe_jupiter_bigtts', label:'晓禾',   desc:'台湾女声', emoji:'🌸' },
-    { id:'zh_male_yunzhou_jupiter_bigtts',  label:'云舟',   desc:'沉稳男声', emoji:'🧔' },
-    { id:'zh_male_xiaotian_jupiter_bigtts', label:'小天',   desc:'磁性男声', emoji:'🎙' },
+    { id:'zh_female_vv_jupiter_bigtts',     label:'vv',   desc:'活泼女声', emoji:'👧' },
+    { id:'zh_female_xiaohe_jupiter_bigtts', label:'晓禾', desc:'台湾女声', emoji:'🌸' },
+    { id:'zh_male_yunzhou_jupiter_bigtts',  label:'云舟', desc:'沉稳男声', emoji:'🧔' },
+    { id:'zh_male_xiaotian_jupiter_bigtts', label:'小天', desc:'磁性男声', emoji:'🎙' },
   ];
 
   const DIALECTS = [
@@ -535,216 +679,164 @@ const CTRL = (() => {
     { id:'shaanxi', label:'陕西', emoji:'🏯' },
   ];
 
-  // ── 状态 ─────────────────────────────────────────────
-  let currentSpeaker = SPEAKERS[0].id;
-  let pendingRate = 0, pendingVol = 0, pendingDialect = 'none';
-  let toastTimer = null;
+  const DEFAULT_PROMPT = '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
 
-  // ── DOM helpers ──────────────────────────────────────
+  // ── 状态（与 window._dwConfig 同步）────────────────────
+  // window._dwConfig 是 DW 模块读取配置的唯一来源
+  const initConfig = () => {
+    if (!window._dwConfig) {
+      window._dwConfig = {
+        speaker:      SPEAKERS[0].id,
+        systemPrompt: DEFAULT_PROMPT,
+        speechRate:   0,
+        loudnessRate: 0,
+        dialect:      'none',
+        botName:      '智能助理',
+      };
+    }
+  };
+  initConfig();
+
+  const cfg = () => window._dwConfig; // 直接引用，修改即生效
+
+  let toastTimer = null;
   const $ = id => document.getElementById(id);
 
   const toast = msg => {
     const el = $('ctrl-toastlabel');
     el.textContent = msg; el.style.opacity = '1';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
   };
 
+  // ── 连接状态检查 ──────────────────────────────────────
   const refreshConn = () => {
     const ws = DW._ws();
     const alive = ws && ws.readyState === WebSocket.OPEN;
     const connecting = ws && ws.readyState === WebSocket.CONNECTING;
     $('ctrl-dot').style.background = alive ? '#4ade80' : connecting ? '#f59e0b' : '#334155';
-    $('ctrl-connlabel').textContent = alive ? '已连接，操作即时可用' : connecting ? '连接中…' : '未连接，正在尝试建连…';
+    $('ctrl-connlabel').textContent = alive ? '已连接，音色切换立即生效'
+      : connecting ? '连接中…'
+      : '未连接，正在后台建连…';
     if (!alive && !connecting) {
-      DW._connect(); // 后台静默建连
-      setTimeout(refreshConn, 1500); // 1.5s后刷新状态
+      DW._connect();
+      setTimeout(refreshConn, 1500);
     }
   };
 
-  // ── encode 副本（与插件完全一致）────────────────────
-  const encode = (eid, payload, sessionId) => {
-    const hdr = new Uint8Array([0x11,0x14,0x10,0x00]), parts = [];
-    const eb = new ArrayBuffer(4); new DataView(eb).setUint32(0,eid,false); parts.push(new Uint8Array(eb));
-    if (sessionId) {
-      const sb = new TextEncoder().encode(sessionId);
-      const sl = new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
-      parts.push(new Uint8Array(sl)); parts.push(sb);
-    }
-    const pb = typeof payload==='string' ? new TextEncoder().encode(payload) : new Uint8Array(payload);
-    const pl = new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
-    parts.push(new Uint8Array(pl)); parts.push(pb);
-    const tot = parts.reduce((s,p)=>s+p.byteLength, hdr.byteLength);
-    const out = new Uint8Array(tot); let o=0;
-    out.set(hdr,o); o+=hdr.byteLength;
-    parts.forEach(p=>{ out.set(p,o); o+=p.byteLength; });
-    return out.buffer;
-  };
-
-  // ── 渲染音色卡片 ─────────────────────────────────────
+  // ── 渲染音色卡片 ──────────────────────────────────────
   const renderSpeakers = () => {
-    const grid = $('ctrl-speaker-grid');
-    grid.innerHTML = SPEAKERS.map(s => `
-      <button onclick="CTRL.selectSpeaker('${s.id}')" id="ctrl-sp-${s.id.replace(/[^a-z]/gi,'_')}" style="
-        padding:12px 10px;border-radius:14px;border:1.5px solid ${s.id===currentSpeaker?'rgba(99,102,241,.8)':'rgba(255,255,255,.07)'};
-        background:${s.id===currentSpeaker?'rgba(99,102,241,.15)':'rgba(255,255,255,.03)'};
+    const cur = cfg().speaker;
+    $('ctrl-speaker-grid').innerHTML = SPEAKERS.map(s => `
+      <button onclick="CTRL.selectSpeaker('${s.id}')" style="
+        padding:12px 10px;border-radius:14px;
+        border:1.5px solid ${s.id===cur ? 'rgba(99,102,241,.8)' : 'rgba(255,255,255,.07)'};
+        background:${s.id===cur ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.03)'};
         cursor:pointer;text-align:left;transition:all .2s;
         display:flex;align-items:center;gap:10px;
       ">
         <span style="font-size:22px;line-height:1;">${s.emoji}</span>
         <div>
-          <div style="font-size:13px;font-weight:700;color:${s.id===currentSpeaker?'#a5b4fc':'#94a3b8'};line-height:1.3;">${s.label}</div>
+          <div style="font-size:13px;font-weight:700;color:${s.id===cur ? '#a5b4fc' : '#94a3b8'};line-height:1.3;">${s.label}</div>
           <div style="font-size:10px;color:#475569;">${s.desc}</div>
         </div>
-        ${s.id===currentSpeaker?'<span style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:#818cf8;flex-shrink:0;"></span>':''}
+        ${s.id===cur ? '<span style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:#818cf8;flex-shrink:0;"></span>' : ''}
       </button>
     `).join('');
   };
 
-  // ── 渲染方言卡片 ─────────────────────────────────────
+  // ── 渲染方言卡片 ──────────────────────────────────────
   const renderDialects = () => {
-    const grid = document.getElementById('ctrl-dialect-grid');
-    if (!grid) return;
-    grid.innerHTML = DIALECTS.map(d => `
+    const cur = cfg().dialect || 'none';
+    $('ctrl-dialect-grid').innerHTML = DIALECTS.map(d => `
       <button onclick="CTRL.selectDialect('${d.id}')" style="
         padding:10px 6px;border-radius:12px;
-        border:1.5px solid ${d.id===pendingDialect?'rgba(99,102,241,.8)':'rgba(255,255,255,.07)'};
-        background:${d.id===pendingDialect?'rgba(99,102,241,.15)':'rgba(255,255,255,.03)'};
+        border:1.5px solid ${d.id===cur ? 'rgba(99,102,241,.8)' : 'rgba(255,255,255,.07)'};
+        background:${d.id===cur ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.03)'};
         cursor:pointer;text-align:center;transition:all .2s;
       ">
         <div style="font-size:18px;line-height:1.4;">${d.emoji}</div>
-        <div style="font-size:11px;font-weight:700;color:${d.id===pendingDialect?'#a5b4fc':'#64748b'};margin-top:2px;">${d.label}</div>
+        <div style="font-size:11px;font-weight:700;color:${d.id===cur ? '#a5b4fc' : '#64748b'};margin-top:2px;">${d.label}</div>
       </button>
     `).join('');
   };
 
-  // ── 功能③ 方言切换（session级别，重启后生效）────────
-  const selectDialect = id => {
-    pendingDialect = id;
-    renderDialects();
-    const d = DIALECTS.find(x=>x.id===id);
-    toast(d.id==='none' ? '标准普通话（重启生效）' : `${d.label}方言（重启生效）`);
-  };
-
-  // ── 功能① 音色切换 UpdateConfig eid=201 ─────────────
+  // ── ① 音色切换（UpdateConfig eid=201，立即热更新）────────
   const selectSpeaker = id => {
-    const ws = DW._ws(), sid = DW._sid();
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      toast('⚠ 连接中，稍后重试');
-      DW._connect();
-      return;
-    }
-    currentSpeaker = id;
+    cfg().speaker = id;
     renderSpeakers();
-    const sp = SPEAKERS.find(s=>s.id===id);
-    $('ctrl-speaker-hint').textContent = `发送 UpdateConfig → ${sp.label} (${sp.desc})`;
-    ws.send(encode(201, JSON.stringify({ tts:{ speaker: id } }), sid));
-    setTimeout(()=>{ $('ctrl-speaker-hint').textContent = `✓ 已切换到 ${sp.label}，下一句生效`; }, 200);
-    toast(`✓ ${sp.label}`);
+    const sp = SPEAKERS.find(s => s.id === id);
+    // 先更新界面
+    $('ctrl-speaker-hint').textContent = `正在发送 UpdateConfig → ${sp.label}…`;
+
+    const ok = DW.updateSpeaker(id); // ✅ 调用 DW 暴露的方法
+    if (ok) {
+      setTimeout(() => {
+        $('ctrl-speaker-hint').textContent = `✓ 已切换到 ${sp.label}，下一句回复生效`;
+      }, 300);
+      toast(`✓ ${sp.label}`);
+    } else {
+      $('ctrl-speaker-hint').textContent = `⚠ 未连接，下次 Session 时生效`;
+      toast('⚠ 未连接，切换已记录');
+    }
   };
 
-  // ── 功能② 滑块回调 ──────────────────────────────────
+  // ── ② 语速 / 音量滑块 ────────────────────────────────
   const onRate = val => {
-    pendingRate = parseInt(val);
-    $('ctrl-rate-val').textContent = pendingRate;
-    updateFill('ctrl-rate-fill', pendingRate, -50, 100);
+    cfg().speechRate = parseInt(val);
+    $('ctrl-rate-val').textContent = cfg().speechRate;
+    updateFill('ctrl-rate-fill', cfg().speechRate, -50, 100);
   };
 
   const onVol = val => {
-    pendingVol = parseInt(val);
-    $('ctrl-vol-val').textContent = pendingVol;
-    updateFill('ctrl-vol-fill', pendingVol, -50, 100);
+    cfg().loudnessRate = parseInt(val);
+    $('ctrl-vol-val').textContent = cfg().loudnessRate;
+    updateFill('ctrl-vol-fill', cfg().loudnessRate, -50, 100);
   };
 
   const updateFill = (fillId, val, min, max) => {
     const fill = $(fillId);
-    const pct = (val - min) / (max - min) * 100; // 0~100%
-    const center = (0 - min) / (max - min) * 100; // 0值位置%
+    const pct    = (val - min) / (max - min) * 100;
+    const center = (0 - min) / (max - min) * 100;
     if (val >= 0) {
-      fill.style.left = center + '%';
+      fill.style.left  = center + '%';
       fill.style.width = (pct - center) + '%';
     } else {
-      fill.style.left = pct + '%';
+      fill.style.left  = pct + '%';
       fill.style.width = (center - pct) + '%';
     }
   };
 
-  // ── 功能② 重启Session ────────────────────────────────
-  // 通过 window._doubaoSpeaker / _doubaoSpeechRate / _doubaoLoudnessRate
-  // 插件 open() 时读 window._doubaoSpeaker，但语速/音量在 StartSession payload 里
-  // 需要猴补：在 DW.open 之前把参数写入 window，然后重开
+  // ── ③ 提示词编辑 ──────────────────────────────────────
+  const onPrompt = val => {
+    const trimmed = val.substring(0, 2000);
+    cfg().systemPrompt = trimmed;
+    $('ctrl-prompt-count').textContent = trimmed.length + ' / 2000';
+  };
+
+  // ── ④ 方言切换 ────────────────────────────────────────
+  const selectDialect = id => {
+    cfg().dialect = id;
+    renderDialects();
+    const d = DIALECTS.find(x => x.id === id);
+    toast(d.id === 'none' ? '标准普通话（重启生效）' : `${d.label}方言（重启生效）`);
+  };
+
+  // ── 重启 Session（将所有 pending 设置应用到新 Session）──
   const restartSession = () => {
     const btn = $('ctrl-restart-btn');
     btn.textContent = '重启中…'; btn.style.opacity = '.5'; btn.disabled = true;
 
-    // 把 pending 参数挂到 window，供下面的 patchedOpen 读取
-    window._ctrlPendingRate     = pendingRate;
-    window._ctrlPendingVol      = pendingVol;
-    window._ctrlPendingSpeaker  = currentSpeaker;
-    window._ctrlPendingDialect  = pendingDialect;
-    window._doubaoSpeaker       = currentSpeaker; // 插件 open() 读这个
-
+    // DW.close() → DW.open() 时会从 window._dwConfig 读取最新配置
+    // 无需任何 monkeypatch，因为 buildStartPayload() 直接调用 getConfig() 读 _dwConfig
     DW.close();
-
-    // 等关闭动画后重开；用 monkeypatch 拦截 StartSession 注入 speech_rate/loudness_rate
     setTimeout(() => {
-      // 临时覆盖 DW._encode 不行（是副本），改用 WebSocket.prototype.send 拦截一次
-      const origSend = WebSocket.prototype.send;
-      let intercepted = false;
-      WebSocket.prototype.send = function(data) {
-        if (!intercepted && data instanceof ArrayBuffer && data.byteLength > 20) {
-          const dv = new DataView(data);
-          // 判断是否是 StartSession (eid=100)
-          let o = 4; // skip header
-          // flags = byte1 & 0x0f，检查有 event field
-          const flags = dv.getUint8(1) & 0x0f;
-          if (flags & 0x04) {
-            const maybeEid = dv.getUint32(o, false); o += 4;
-            if (maybeEid === 100) {
-              intercepted = true;
-              WebSocket.prototype.send = origSend; // 恢复
-              // 解析 payload
-              try {
-                // skip session id
-                const sl = dv.getUint32(o, false); o += 4 + sl;
-                const pl = dv.getUint32(o, false); o += 4;
-                const jsonStr = new TextDecoder().decode(new Uint8Array(data, o, pl));
-                const obj = JSON.parse(jsonStr);
-                // 注入 speech_rate 和 loudness_rate
-                obj.tts = obj.tts || {};
-                obj.tts.audio_config = obj.tts.audio_config || {};
-                obj.tts.audio_config.speech_rate   = window._ctrlPendingRate;
-                obj.tts.audio_config.loudness_rate = window._ctrlPendingVol;
-                obj.tts.speaker = window._ctrlPendingSpeaker;
-                // 方言：none 时不传，避免影响非 vv 音色
-                obj.tts.extra = obj.tts.extra || {};
-                if (window._ctrlPendingDialect && window._ctrlPendingDialect !== 'none') {
-                  obj.tts.extra.explicit_dialect = window._ctrlPendingDialect;
-                } else {
-                  delete obj.tts.extra.explicit_dialect;
-                }
-                // 重新 encode
-                const newData = encode(100, JSON.stringify(obj), DW._sid());
-                origSend.call(this, newData);
-                const dialectLabel = DIALECTS.find(d=>d.id===window._ctrlPendingDialect)?.label || '标准';
-                toast(`✓ 语速${pendingRate} 音量${pendingVol} 方言:${dialectLabel}`);
-                return;
-              } catch(e) {
-                console.warn('CTRL intercept failed', e);
-              }
-            }
-          }
-        }
-        origSend.call(this, data);
-      };
-
       DW.open();
-      setTimeout(()=>{
-        btn.textContent = '↺ 重启 Session 应用设置';
-        btn.style.opacity = '1'; btn.disabled = false;
-        WebSocket.prototype.send = origSend; // 超时保底恢复
-      }, 5000);
-    }, 600);
+      const dialectLabel = DIALECTS.find(d => d.id === (cfg().dialect || 'none'))?.label || '标准';
+      toast(`✓ 语速${cfg().speechRate} 音量${cfg().loudnessRate} 方言:${dialectLabel}`);
+      btn.textContent = '↺ 重启 Session 应用所有设置';
+      btn.style.opacity = '1'; btn.disabled = false;
+    }, 700);
   };
 
   // ── 抽屉开关 ─────────────────────────────────────────
@@ -756,26 +848,38 @@ const CTRL = (() => {
     refreshConn();
     renderSpeakers();
     renderDialects();
+    // 同步滑块显示值
+    const c = cfg();
+    $('ctrl-rate').value = c.speechRate;
+    $('ctrl-rate-val').textContent = c.speechRate;
+    updateFill('ctrl-rate-fill', c.speechRate, -50, 100);
+    $('ctrl-vol').value = c.loudnessRate;
+    $('ctrl-vol-val').textContent = c.loudnessRate;
+    updateFill('ctrl-vol-fill', c.loudnessRate, -50, 100);
+    // 同步提示词
+    const ta = $('ctrl-prompt');
+    ta.value = c.systemPrompt || DEFAULT_PROMPT;
+    $('ctrl-prompt-count').textContent = ta.value.length + ' / 2000';
+
     const ol = $('ctrl-overlay'), dr = $('ctrl-drawer');
     ol.style.display = 'flex';
-    requestAnimationFrame(()=>{ dr.style.transform = 'translateY(0)'; });
+    requestAnimationFrame(() => { dr.style.transform = 'translateY(0)'; });
   };
   const close = () => {
     const dr = $('ctrl-drawer');
     dr.style.transform = 'translateY(100%)';
-    setTimeout(()=>{ $('ctrl-overlay').style.display='none'; }, 300);
+    setTimeout(() => { $('ctrl-overlay').style.display = 'none'; }, 300);
   };
 
-  // ── 初始化 ───────────────────────────────────────────
+  // ── 初始化渲染 ───────────────────────────────────────
   renderSpeakers();
   renderDialects();
   updateFill('ctrl-rate-fill', 0, -50, 100);
   updateFill('ctrl-vol-fill',  0, -50, 100);
 
-  return { toggle, open, close, selectSpeaker, selectDialect, onRate, onVol, restartSession };
+  return { toggle, open, close, selectSpeaker, selectDialect, onRate, onVol, onPrompt, restartSession };
 })();
 </script>
-<!-- ══ 豆包控制面板 外挂层 结束 ══ -->
 
 </body>
 </html>
