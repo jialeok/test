@@ -1019,9 +1019,15 @@ const CTRL = (() => {
     // 暂停 refreshConn 轮询，防止在 close→open 间隙抢先调用 _connect() 造成 session 竞争
     _connPaused = true;
     DW.close();
+
+    // 先关掉控制面板（立即隐藏，不等动画），再打开语音 modal
+    // 否则控制面板会盖在语音 modal 上，用户看不到说话按钮
+    $('ctrl-overlay').style.display = 'none';
+    $('ctrl-drawer').style.transform = 'translateY(100%)';
+
     setTimeout(() => {
+      dwLog('ok', 'DW.open() 即将调用，语音对话框将打开');
       DW.open();
-      toast(`✓ 语速${c.speechRate} 音量${c.loudnessRate} 方言:${dialectLabel}`);
       btn.textContent = '↺ 重启 Session 应用所有设置';
       btn.style.opacity = '1'; btn.disabled = false;
       // open() 已经建立了新连接，恢复轮询以便后续状态同步
