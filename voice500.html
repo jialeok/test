@@ -62,8 +62,8 @@
   .rag-card.show{display:block}
 
   /* 快捷chip */
-  .hints{padding:6px 14px 4px;display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0}
-  .hint-chip{font-size:11px;padding:5px 10px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .2s}
+  .hints{padding:6px 14px 4px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+  .hint-chip{font-size:12px;padding:8px 14px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .2s;text-align:left;overflow:hidden;text-overflow:ellipsis}
   .hint-chip:active{border-color:var(--accent);color:var(--accent)}
 
   /* 底部按住说话按钮（全宽）*/
@@ -317,39 +317,81 @@ async function loadEmployeeNames(){
     if(error) throw error;
     employeeNames=(data||[]).map(e=>e.name);
     dbgLog('✅ 员工列表: '+employeeNames.join(', '));
-    renderChips(); // ★ 员工加载完成后渲染快捷标签
+    renderChips(); // ★ 员工加载完成后渲染快捷标签（renderChips已是async）
   }catch(e){
     dbgLog('⚠️ 员工加载失败: '+e.message);
     renderChips(); // 失败也渲染（显示空提示）
   }
 }
 
-// ★ 动态渲染员工快捷标签：每位员工生成「今天/昨天/前天」三个chip
-function renderChips(){
+// ★ 动态渲染员工快捷标签：查每位员工最近有日报的实际日期，每人一行一个chip
+async function renderChips(){
   const container = $('chipContainer');
   if(!container) return;
   if(!employeeNames.length){
     container.innerHTML = '<span style="font-size:11px;color:var(--muted)">暂无员工数据</span>';
     return;
   }
-  const days = [
-    {label:'今天', offset:0},
-    {label:'昨天', offset:1},
-    {label:'前天', offset:2},
-  ];
-  let html = '';
+  container.innerHTML = '<span style="font-size:11px;color:var(--muted)">加载日报记录…</span>';
+
+  // 批量查每位员工最近一条日报
+  let chips = [];
   for(const name of employeeNames){
-    for(const d of days){
-      // 生成日期字符串
-      const dt = new Date(); dt.setDate(dt.getDate() - d.offset);
-      const dateStr = dt.getFullYear()+'-'
-        +String(dt.getMonth()+1).padStart(2,'0')+'-'
-        +String(dt.getDate()).padStart(2,'0');
-      // chip文字：「小明 今天」，点击直接用员工名+日期走RAG
-      html += `<div class="hint-chip" onclick="chipQuery('${name}','${dateStr}','${d.label}')">${name} ${d.label}</div>`;
+    try{
+      // 先找员工ID
+      const {data:empList} = await sbClient
+        .from('employees').select('id,name').eq('name',name).eq('enabled',true).limit(1);
+      if(!empList||empList.length===0) continue;
+      const empId = empList[0].id;
+      // 查最近5条日报，找到最近的日期
+      const {data:recs} = await sbClient
+        .from('work_records').select('record_date')
+        .eq('employee_id', empId)
+        .order('record_date',{ascending:false})
+        .limit(5);
+      if(!recs||recs.length===0){
+        // 没有日报 → 仍然显示chip，点击后会有语音提示未找到
+        chips.push({name, dateStr:'', dateLabel:'暂无记录', hasRecord:false});
+      } else {
+        const dateStr = (recs[0].record_date||'').substring(0,10);
+        // 计算友好日期标签
+        const dateLabel = _friendlyDate(dateStr);
+        chips.push({name, dateStr, dateLabel, hasRecord:true});
+      }
+    }catch(e){
+      dbgLog('⚠️ chip加载失败('+name+'): '+e.message);
+    }
+  }
+
+  if(!chips.length){
+    container.innerHTML = '<span style="font-size:11px;color:var(--muted)">暂无员工数据</span>';
+    return;
+  }
+  // 每人一行，完整短句，只显示有记录的；无记录的也显示但标灰
+  let html = '';
+  for(const c of chips){
+    if(c.hasRecord){
+      html += `<div class="hint-chip" style="width:100%;box-sizing:border-box" onclick="chipQuery('${c.name}','${c.dateStr}','${c.dateLabel}')">查 ${c.name} ${c.dateLabel} 的工作日报</div>`;
+    } else {
+      html += `<div class="hint-chip" style="width:100%;box-sizing:border-box;opacity:.5" onclick="chipQuery('${c.name}','','${c.dateLabel}')">查 ${c.name} 的工作日报（暂无记录）</div>`;
     }
   }
   container.innerHTML = html;
+}
+
+// 友好日期：今天/昨天/前天/具体日期
+function _friendlyDate(dateStr){
+  if(!dateStr) return '最近';
+  const today    = getDateStr(0);
+  const yesterday= getDateStr(-1);
+  const dayBefore= getDateStr(-2);
+  if(dateStr===today)     return '今天';
+  if(dateStr===yesterday) return '昨天';
+  if(dateStr===dayBefore) return '前天';
+  // 显示月日
+  const m = dateStr.match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if(m) return parseInt(m[1])+'月'+parseInt(m[2])+'日';
+  return dateStr;
 }
 
 // KB_GROUPS 保留为空，知识库展示用（Supabase数据加载后填入）
@@ -1171,7 +1213,7 @@ function stopMic(){
 
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
-// ★ 标签点击：直接用精确的员工名+日期查RAG，不走语音也不走LLM
+// ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
 async function chipQuery(name, dateStr, dayLabel){
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
   stopAudio();
@@ -1182,12 +1224,19 @@ async function chipQuery(name, dateStr, dayLabel){
   pendingRAG     = null;
   pendingRAGPromise = null;
 
-  const queryText = name + ' ' + dateStr; // 精确查询字符串，姓名+日期
-  setSub(name + ' ' + dayLabel, true);
+  setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
   setStatus('查询 ' + name + ' ' + dayLabel + '…');
   resetFlow(); litFlow(0); litFlow(1); litFlow(2);
 
-  const result = await lookupRAG(queryText);
+  // ★ 关键修复：chip直接传精确query对象，不经过matchQuery（matchQuery需要时间词，chip传的是YYYY-MM-DD格式）
+  if(!dateStr){
+    // 没有日报记录，直接语音提示
+    sendChatTTS(name + '暂时没有工作日报记录，请联系相关人员确认。','(chip无记录)');
+    setStatus('未找到 ' + name + ' 的日报记录');
+    return;
+  }
+
+  const result = await lookupRAGDirect({name, date:dateStr});
   if(result){
     applyRAGUI(result);
     _pendingQueryText = result.text;
@@ -1197,8 +1246,69 @@ async function chipQuery(name, dateStr, dayLabel){
   } else {
     _blockLLMAudio = false;
     _our500Sent    = false;
-    sendChatTTS(name + dayLabel + '的工作记录暂未录入，请联系相关人员确认。','(chip兜底-精确)');
+    // ★ 语音播报找不到的提示
+    sendChatTTS(name + dayLabel + '的工作记录暂未找到，请确认是否已录入。','(chip兜底-精确)');
     setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录');
+  }
+}
+
+// ★ 新增：直接用精确query对象查Supabase，不走matchQuery
+async function lookupRAGDirect(query){
+  dbgLog('🔍 lookupRAGDirect: 查 '+query.name+' / '+query.date);
+  try{
+    let empList, empErr;
+    ({data:empList, error:empErr}=await sbClient
+      .from('employees').select('id,name').eq('name', query.name).eq('enabled', true).limit(1));
+    if(empErr){ dbgLog('⚠️ 查员工报错: '+empErr.message); return null; }
+    if(!empList||empList.length===0){
+      ({data:empList, error:empErr}=await sbClient
+        .from('employees').select('id,name').ilike('name','%'+query.name+'%').eq('enabled',true).limit(1));
+      if(empErr||!empList||empList.length===0){ dbgLog('❌ 找不到员工: '+query.name); return null; }
+    }
+    const emp=empList[0];
+    const {data:records, error:recErr}=await sbClient
+      .from('work_records').select('*').eq('employee_id', emp.id).eq('record_date', query.date)
+      .order('created_at',{ascending:false}).limit(1);
+    if(recErr){ dbgLog('⚠️ 查日报报错: '+recErr.message); return null; }
+    if(!records||records.length===0){ dbgLog('❌ 无日报记录: '+query.name+' '+query.date); return null; }
+    const rec=records[0];
+    const recDate=(rec.record_date||'').substring(0,10);
+    let fields=rec.formatted_fields;
+    if(typeof fields==='string'){ try{fields=JSON.parse(fields);}catch(_){fields={};} }
+    fields=fields||{};
+    const fieldKeys=Object.keys(fields);
+    const done    = fields.done    || fields['今日完成'] || fields['完成'] || fields['工作内容'] || '';
+    const problem = fields.problem || fields['问题']    || fields['遇到问题'] || fields['障碍'] || '';
+    const plan    = fields.plan    || fields['明日计划'] || fields['计划'] || fields['下一步'] || '';
+    const parts=[];
+    if(done)    parts.push('今日完成：'+done);
+    if(problem) parts.push('遇到的问题：'+problem);
+    if(plan)    parts.push('明日计划：'+plan);
+    if(parts.length===0&&fieldKeys.length>0){
+      fieldKeys.forEach(k=>{ if(fields[k]) parts.push(k+'：'+fields[k]); });
+    }
+    if(parts.length===0){
+      const rawContent=rec.raw_content||rec.content||rec.text||'';
+      if(rawContent){
+        const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
+        KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
+        KB_GROUPS.push({name:emp.name,date:recDate,items:[{section:'工作内容',content:rawContent}]});
+        renderKB(emp.name+recDate);
+        return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
+      }
+      return null;
+    }
+    const ttsText=emp.name+'，'+recDate+'的工作日报。'+parts.join('。')+'。';
+    KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
+    KB_GROUPS.push({name:emp.name,date:recDate,items:[
+      {section:'做了什么',content:done},{section:'遇到的问题',content:problem},{section:'明日计划',content:plan}
+    ].filter(it=>it.content)});
+    renderKB(emp.name+recDate);
+    dbgLog('✅ lookupRAGDirect 播报文本: '+ttsText.substring(0,80));
+    return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
+  }catch(e){
+    dbgLog('⚠️ lookupRAGDirect 异常: '+e.message);
+    return null;
   }
 }
 
