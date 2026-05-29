@@ -332,7 +332,7 @@ let KB_GROUPS = [];
 // ══ 状态 ═════════════════════════════════════════════════
 let ws, sid, globalSeq=0, state='idle'; // globalSeq: 与服务端autoAssignedSequence完全同步，每发一帧+1
 let micStream, audioCtx, srcNode, processor;
-let chunks=[], queue=[], playing=false;
+let chunks=[], queue=[], playing=false, _currentAudio=null; // ★ 记住当前播放的Audio对象
 let _greetingDone = false; // 防止静默刷新后重复播开场白
 let _isGreeting   = false; // 开场白播出中，TTSEnded时跳过刷新，断循环
 
@@ -482,10 +482,18 @@ const flushAudio=()=>{
 const playNext=()=>{
   if(playing||!queue.length)return;playing=true;
   const url=queue.shift(),a=new Audio(url);
-  const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
+  _currentAudio=a; // ★ 记住，stopAudio时能pause它
+  const done=()=>{URL.revokeObjectURL(url);playing=false;_currentAudio=null;playNext();};
   a.onended=done;a.onerror=done;a.play().catch(done);
 };
-const stopAudio=()=>{queue=[];chunks=[];playing=false;};
+const stopAudio=()=>{
+  // ★ 真正停止：pause当前正在播的Audio，清队列
+  if(_currentAudio){
+    try{_currentAudio.pause();_currentAudio.src='';}catch(_){}
+    _currentAudio=null;
+  }
+  queue=[];chunks=[];playing=false;
+};
 
 // ══ 意图匹配 + RAG 检索（同步）═══════════════════════════
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
