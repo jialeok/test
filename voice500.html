@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260529-9 -->
+<!-- v=20260529-7 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -553,6 +553,7 @@ const parseFrame=buf=>{
 
 // ══ 音频队列 ═════════════════════════════════════════════
 const flushAudio=()=>{
+  if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
   if(!chunks.length)return;
   const nChunks = chunks.length;
   const tot=chunks.reduce((s,c)=>s+c.byteLength,0),merged=new Uint8Array(tot);let o=0;
@@ -1083,22 +1084,10 @@ const onMsg=evt=>{
       dbgLog('🔇 丢弃352: '+size+'B blockLLMAudio='+_blockLLMAudio+' chip='+_chipTTSActive);
     } else {
       chunks.push(payload);
-      if(!_flushTimer){
-        _flushTimer = setTimeout(function tick(){
-          _flushTimer = null;
-          const n = chunks.length;
-          if(n > 0){
-            flushAudio();
-            dbgLog('⏰ 自驱tick flush chunks入队前='+n);
-          }
-          if(chunks.length > 0){
-            _flushTimer = setTimeout(tick, 200);
-          }
-        }, 200);
-        dbgLog('📥 352入队: '+size+'B ▶启动自驱tick');
-      } else {
-        dbgLog('📥 352入队: '+size+'B chunks='+chunks.length);
-      }
+      const wasTimer = !!_flushTimer;
+      if(_flushTimer) clearTimeout(_flushTimer);
+      _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
+      dbgLog('📥 352入队: '+size+'B chunks='+chunks.length+' 定时器='+(wasTimer?'重置':'新设'));
     }
   }
 };
