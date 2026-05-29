@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><!-- v1.1 -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>员工汇报 · OneToMore</title>
+    <link rel="stylesheet" href="https://puhuiti.oss-cn-hangzhou.aliyuncs.com/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3.css">
+    <link rel="stylesheet" href="https://sf1-cdn-tos.toutiaostatic.com/obj/eden-cn/jlduhbuvnulog/harmonyos_sans/harmonyos_sans.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @font-face {
+            font-family: 'Material Icons Round';
+            font-style: normal; font-weight: 400; font-display: block;
+            src: url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff2) format('woff2'),
+                 url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff) format('woff');
+        }
+        .material-icons-round {
+            font-family: 'Material Icons Round'; font-weight: normal; font-style: normal;
+            font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none;
+            display: inline-block; white-space: nowrap; word-wrap: normal; direction: ltr;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        :root {
+            --ink: #0e0e12;
+            --ink-soft: #6b6b80;
+            --accent: #5b4fff;
+            --accent-glow: rgba(91,79,255,0.25);
+            --accent-light: rgba(91,79,255,0.08);
+            --surface: #f4f4f8;
+            --surface2: #ebebf3;
+            --white: #ffffff;
+            --danger: #ff4d6d;
+            --danger-light: rgba(255,77,109,0.1);
+            --success: #00c48c;
+            --success-light: rgba(0,196,140,0.1);
+            --warning: #f59e0b;
+            --warning-light: rgba(245,158,11,0.1);
+            --border: rgba(0,0,0,0.07);
+            --r-sm: 12px;
+            --r-md: 18px;
+            --r-lg: 24px;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 20px rgba(0,0,0,0.09);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            min-height: 100%; background: var(--surface);
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink);
+        }
+
+        .topbar {
+            position: sticky; top: 0; z-index: 200;
+            height: 52px; background: rgba(255,255,255,0.97);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
+            padding: 0 16px; gap: 0;
+        }
+        .topbar-logo {
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; flex-shrink: 0;
+        }
+        .topbar-logo-icon {
+            width: 30px; height: 30px; background: var(--accent);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+        }
+        .topbar-logo-icon .material-icons-round { font-size: 16px !important; color: #fff; }
+        .topbar-logo-name {
+            font-family: 'HarmonyOS Sans', sans-serif;
+            font-size: 15px; font-weight: 800; color: var(--ink);
+            white-space: nowrap;
+        }
+        .topbar-sep { flex: 1; }
+        /* 用户信息栏（topbar下方） */
+        .topbar-userbar {
+            display: flex; align-items: center;
+            padding: 6px 16px; gap: 8px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+        .topbar-userbar-name {
+            font-weight: 700; color: var(--ink);
+            display: flex; align-items: center; gap: 4px;
+        }
+        .topbar-userbar-dept { color: var(--ink-soft); flex: 1; }
+        .topbar-nav { display: flex; gap: 6px; }
+        .topbar-nav a {
+            padding: 4px 10px; border-radius: 16px; font-size: 12px;
+            font-weight: 600; color: var(--ink-soft); text-decoration: none;
+            background: var(--white); display: flex; align-items: center;
+            gap: 3px; white-space: nowrap; transition: background .15s;
+        }
+        .topbar-nav a:hover { background: var(--surface2); }
+        .topbar-logout {
+            border: none; background: none; cursor: pointer;
+            color: var(--ink-soft); font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; gap: 3px;
+            padding: 4px 8px; border-radius: 16px;
+            transition: background .15s; flex-shrink: 0;
+        }
+        .topbar-logout:hover { background: var(--danger-light); color: var(--danger); }
+        .topbar-logout .material-icons-round { font-size: 15px !important; }
+
+        .main {
+            max-width: 640px; margin: 0 auto;
+            padding: 28px 20px 80px;
+        }
+
+        .section-title {
+            font-family: 'HarmonyOS Sans', sans-serif;
+            font-size: 20px; font-weight: 800; letter-spacing: -.3px;
+            margin-bottom: 4px;
+        }
+        .section-sub { font-size: 12px; color: var(--ink-soft); margin-bottom: 20px; }
+
+        .card {
+            background: var(--white); border-radius: var(--r-lg);
+            box-shadow: var(--shadow-sm); overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .card-title {
+            display: flex; align-items: center; gap: 8px;
+            font-family: 'HarmonyOS Sans', sans-serif; font-size: 14px; font-weight: 700;
+        }
+        .card-title .material-icons-round { font-size: 17px !important; color: var(--accent); }
+        .card-body { padding: 20px; }
+
+        .btn-primary {
+            padding: 12px 24px; border: none; border-radius: var(--r-sm);
+            background: var(--accent); color: #fff;
+            font-family: 'HarmonyOS Sans', sans-serif; font-size: 14px; font-weight: 700;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+            box-shadow: 0 4px 14px var(--accent-glow);
+            transition: transform .12s, box-shadow .12s, opacity .12s;
+            width: 100%; justify-content: center;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+        .btn-primary:active { transform: scale(.97); }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+        .btn-primary .material-icons-round { font-size: 18px !important; }
+        .btn-secondary {
+            padding: 10px 20px; border: 1.5px solid var(--border);
+            border-radius: var(--r-sm); background: var(--white);
+            color: var(--ink); font-family: 'HarmonyOS Sans', sans-serif;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s, border-color .15s;
+            width: 100%; justify-content: center;
+        }
+        .btn-secondary:hover { background: var(--surface); border-color: #d0d0da; }
+        .btn-secondary .material-icons-round { font-size: 16px !important; }
+        .btn-ghost {
+            padding: 9px 16px; border: 1.5px solid var(--border);
+            border-radius: var(--r-sm); background: transparent;
+            color: var(--ink-soft); font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s, border-color .15s;
+        }
+        .btn-ghost:hover { background: var(--surface); border-color: #d0d0da; }
+        .btn-ghost .material-icons-round { font-size: 15px !important; }
+        .btn-sm {
+            padding: 6px 12px; border: none; border-radius: 8px;
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 4px;
+            transition: opacity .12s, transform .12s;
+        }
+        .btn-sm:hover { opacity: .85; }
+        .btn-sm:active { transform: scale(.96); }
+        .btn-sm .material-icons-round { font-size: 14px !important; }
+        .btn-sm-accent { background: var(--accent-light); color: var(--accent); }
+        .btn-sm-danger { background: var(--danger-light); color: var(--danger); }
+
+        .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+        .form-label { font-size: 12px; font-weight: 700; color: var(--ink); letter-spacing: .3px; }
+        .form-input {
+            padding: 10px 13px; border: 1.5px solid #e2e2ec;
+            border-radius: var(--r-sm); font-size: 13px;
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink); background: var(--surface); outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            width: 100%;
+        }
+        .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); background: var(--white); }
+        .form-select {
+            padding: 10px 13px; border: 1.5px solid #e2e2ec;
+            border-radius: var(--r-sm); font-size: 13px;
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink); background: var(--surface); outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            width: 100%; cursor: pointer; appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b80' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+        }
+        .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+
+        .field-row {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 14px 0; border-bottom: 1px solid var(--border);
+        }
+        .field-row:last-child { border-bottom: none; }
+        .field-label {
+            min-width: 80px; padding-top: 10px;
+            font-size: 13px; font-weight: 700; color: var(--ink);
+        }
+        .field-label .required { color: var(--danger); margin-left: 2px; }
+        .field-input-wrap { flex: 1; position: relative; }
+        .field-input-wrap .form-input,
+        .field-input-wrap .form-select { width: 100%; }
+        .field-input-wrap textarea.form-input { resize: vertical; min-height: 60px; line-height: 1.6; }
+        .voice-btn {
+            position: absolute; right: 8px; top: 8px;
+            width: 32px; height: 32px; border: none; border-radius: 8px;
+            background: var(--accent-light); color: var(--accent);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: background .15s;
+        }
+        .voice-btn:hover { background: rgba(91,79,255,0.15); }
+        .voice-btn.recording { background: var(--danger-light); color: var(--danger); animation: pulse 1s infinite; }
+        .voice-btn .material-icons-round { font-size: 16px !important; }
+
+        .raw-text-area {
+            width: 100%; padding: 14px 16px; border: 1.5px solid #e2e2ec;
+            border-radius: var(--r-md); font-size: 14px;
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink); background: var(--surface); outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            resize: vertical; min-height: 120px; line-height: 1.7;
+        }
+        .raw-text-area:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); background: var(--white); }
+
+        .ai-btn {
+            padding: 14px 28px; border: none; border-radius: var(--r-md);
+            background: linear-gradient(135deg, #5b4fff, #9b59f5);
+            color: #fff; font-family: 'HarmonyOS Sans', sans-serif;
+            font-size: 15px; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 20px var(--accent-glow);
+            transition: transform .12s, box-shadow .12s, opacity .12s;
+            width: 100%; justify-content: center;
+        }
+        .ai-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px var(--accent-glow); }
+        .ai-btn:active { transform: scale(.97); }
+        .ai-btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+        .ai-btn .material-icons-round { font-size: 20px !important; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 11px; font-weight: 700;
+        }
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-accent { background: var(--accent-light); color: var(--accent); }
+
+        .toast {
+            position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: var(--ink); color: #fff; padding: 12px 20px;
+            border-radius: 14px; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.25); z-index: 9999;
+            opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+            white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.success .material-icons-round { color: var(--success); }
+        .toast.error   .material-icons-round { color: var(--danger); }
+        .toast .material-icons-round { font-size: 16px !important; }
+
+        /* 历史汇报 - voice500风格 */
+        .history-item {
+            background: var(--white); border-radius: var(--r-md);
+            box-shadow: var(--shadow-sm); padding: 14px 16px;
+            margin-bottom: 10px;
+        }
+        .history-item:last-child { margin-bottom: 0; }
+        .history-date {
+            font-size: 12px; color: var(--ink-soft);
+            margin-bottom: 10px; font-family: monospace;
+        }
+        .history-fields { display: flex; flex-direction: column; gap: 8px; }
+        .history-field { font-size: 14px; line-height: 1.7; }
+        .history-field-key {
+            font-weight: 700; color: var(--accent);
+            margin-right: 6px;
+        }
+        .history-field-key::after { content: ' '; }
+
+        .login-container {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 20px; background: var(--surface);
+        }
+        .login-box {
+            width: 100%; max-width: 380px;
+            background: var(--white); border-radius: var(--r-lg);
+            box-shadow: var(--shadow-md); overflow: hidden;
+        }
+        .login-header {
+            padding: 32px 28px 20px; text-align: center;
+        }
+        .login-header-icon {
+            width: 56px; height: 56px; margin: 0 auto 16px;
+            background: var(--accent); border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .login-header-icon .material-icons-round { font-size: 28px !important; color: #fff; }
+        .login-header h1 { font-family: 'HarmonyOS Sans', sans-serif; font-size: 20px; font-weight: 800; }
+        .login-header p { font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+        .login-body { padding: 0 28px 28px; }
+        .login-body .form-group { margin-bottom: 14px; }
+
+        .preview-tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 6px;
+            background: var(--success-light); color: var(--success);
+            font-size: 10px; font-weight: 700;
+        }
+
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 600px) {
+            .main { padding: 16px 12px 80px; }
+            .field-row { flex-direction: column; gap: 4px; }
+            .field-label { min-width: 0; padding-top: 0; }
+            .field-input-wrap { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- 登录页 -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="login-page" class="login-container">
+    <div class="login-box">
+        <div class="login-header">
+            <div class="login-header-icon">
+                <span class="material-icons-round">assignment</span>
+            </div>
+            <h1>员工汇报</h1>
+            <p>输入姓名和PIN码登录</p>
+        </div>
+        <div class="login-body">
+            <div class="form-group">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-input" id="login-name" placeholder="请输入姓名" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label">PIN 码</label>
+                <input type="password" class="form-input" id="login-pin" placeholder="请输入PIN码" maxlength="6" autocomplete="off">
+            </div>
+            <button class="btn-primary" id="login-btn" onclick="doLogin()" style="margin-top:8px">
+                <span class="material-icons-round">login</span>登录
+            </button>
+            <div id="login-error" style="font-size:12px;color:var(--danger);margin-top:10px;text-align:center;min-height:16px"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- 主页面 -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div id="app-page" class="hidden">
+    <header class="topbar">
+        <a class="topbar-logo" href="#">
+            <div class="topbar-logo-icon">
+                <span class="material-icons-round">auto_awesome</span>
+            </div>
+            <span class="topbar-logo-name">OneToMore</span>
+        </a>
+        <span class="topbar-sep"></span>
+        <nav class="topbar-nav">
+            <a href="smartadmin.html"><span class="material-icons-round" style="font-size:13px!important">admin_panel_settings</span>管理</a>
+            <a href="index.html"><span class="material-icons-round" style="font-size:13px!important">smart_toy</span>查询</a>
+        </nav>
+        <button class="topbar-logout" onclick="doLogout()">
+            <span class="material-icons-round">logout</span>退出
+        </button>
+    </header>
+    <!-- 用户信息栏 -->
+    <div class="topbar-userbar" id="topbar-userbar" style="display:none">
+        <span class="topbar-userbar-name">
+            <span class="material-icons-round" style="font-size:14px!important;color:var(--accent)">person</span>
+            <span id="display-name">-</span>
+        </span>
+        <span class="topbar-userbar-dept" id="display-dept"></span>
+    </div>
+
+    <main class="main">
+        <!-- 汇报区 -->
+        <div id="report-section">
+            <div class="section-title">📝 今日汇报</div>
+            <div class="section-sub" id="report-date-sub">-</div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="material-icons-round">dynamic_form</span>汇报内容
+                    </div>
+                    <span class="preview-tag hidden" id="ai-preview-tag">
+                        <span class="material-icons-round" style="font-size:12px!important">auto_awesome</span>AI已整理
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div id="fields-container">
+                        <div style="color:var(--ink-soft);font-size:13px;padding:20px 0;text-align:center">加载字段中…</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="material-icons-round">mic</span>语音/文字输入
+                    </div>
+                    <button class="voice-btn" id="global-voice-btn" onclick="toggleGlobalVoice()" style="position:static;width:auto;height:auto;padding:6px 12px;border-radius:8px;gap:4px;font-size:12px;font-weight:600">
+                        <span class="material-icons-round">mic</span>语音
+                    </button>
+                </div>
+                <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+                    <div style="font-size:12px;color:var(--ink-soft);padding:10px 12px;background:var(--accent-light);border-radius:10px;display:flex;gap:8px;align-items:flex-start">
+                        <span class="material-icons-round" style="font-size:15px!important;color:var(--accent);flex-shrink:0;margin-top:1px">info</span>
+                        <span>在下方输入一大段文字（或点击语音按钮说话），然后点击「AI 整理」，系统会自动将内容填入上方各字段。</span>
+                    </div>
+                    <textarea class="raw-text-area" id="raw-text" placeholder="在这里输入或粘贴今日汇报内容…&#10;&#10;例如：今天完成了项目A的需求文档，和客户确认了方案，明天计划开始开发…"></textarea>
+                    <button class="ai-btn" id="ai-organize-btn" onclick="aiOrganize()">
+                        <span class="material-icons-round">auto_awesome</span>AI 整理
+                    </button>
+                </div>
+            </div>
+
+            <button class="btn-primary" id="submit-btn" onclick="submitReport()" style="margin-top:4px">
+                <span class="material-icons-round">send</span>确认提交
+            </button>
+        </div>
+
+        <!-- 历史记录区 -->
+        <div id="history-section" style="margin-top:32px">
+            <div class="section-title">📋 历史汇报</div>
+            <div class="section-sub" style="margin-bottom:16px">查看本人历史汇报记录</div>
+            <div id="history-list">
+                <div style="color:var(--ink-soft);font-size:13px;padding:20px 0;text-align:center">加载中…</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast">
+    <span class="material-icons-round" id="toast-icon">check_circle</span>
+    <span id="toast-msg"></span>
+</div>
+
+<script>
+    const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
+
+    let sbClient = null;
+    let toastTimer = null;
+    let currentEmployee = null;
+    let formFields = [];
+    let recognition = null;
+    let isRecording = false;
+    let currentVoiceTarget = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+        sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const saved = sessionStorage.getItem('emp_session');
+        if (saved) {
+            try {
+                currentEmployee = JSON.parse(saved);
+                showApp();
+            } catch(_) {}
+        }
+        initSpeechRecognition();
+    });
+
+    function esc(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    function showToast(msg, type = 'success') {
+        const toast  = document.getElementById('toast');
+        const msgEl  = document.getElementById('toast-msg');
+        const iconEl = document.getElementById('toast-icon');
+        toast.className = 'toast ' + type;
+        msgEl.textContent = msg;
+        iconEl.textContent = type === 'error' ? 'error' : 'check_circle';
+        toast.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  登录/登出                                                     */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function doLogin() {
+        const name = document.getElementById('login-name').value.trim();
+        const pin = document.getElementById('login-pin').value.trim();
+        const errEl = document.getElementById('login-error');
+        const btn = document.getElementById('login-btn');
+
+        errEl.textContent = '';
+        if (!name) { errEl.textContent = '请输入姓名'; return; }
+        if (!pin) { errEl.textContent = '请输入PIN码'; return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:18px!important;animation:spin 1s linear infinite">refresh</span>验证中…';
+
+        try {
+            const { data, error } = await sbClient
+                .from('employees')
+                .select('*')
+                .eq('name', name)
+                .eq('pin', pin)
+                .eq('enabled', true)
+                .single();
+
+            if (error || !data) {
+                errEl.textContent = '姓名或PIN码错误，或账号已禁用';
+                return;
+            }
+
+            currentEmployee = data;
+            sessionStorage.setItem('emp_session', JSON.stringify(data));
+            showApp();
+        } catch(e) {
+            errEl.textContent = '登录失败: ' + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-icons-round">login</span>登录';
+        }
+    }
+
+    function doLogout() {
+        currentEmployee = null;
+        sessionStorage.removeItem('emp_session');
+        document.getElementById('app-page').classList.add('hidden');
+        document.getElementById('login-page').classList.remove('hidden');
+        document.getElementById('login-name').value = '';
+        document.getElementById('login-pin').value = '';
+        document.getElementById('login-error').textContent = '';
+    }
+
+    async function showApp() {
+        document.getElementById('login-page').classList.add('hidden');
+        document.getElementById('app-page').classList.remove('hidden');
+        document.getElementById('display-name').textContent = currentEmployee.name;
+        // 显示用户信息栏
+        const userbar = document.getElementById('topbar-userbar');
+        if (userbar) {
+            userbar.style.display = 'flex';
+            const deptEl = document.getElementById('display-dept');
+            if (deptEl) deptEl.textContent = currentEmployee.department || '';
+        }
+
+        const today = new Date();
+        const dateStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+        document.getElementById('report-date-sub').textContent = dateStr + ' ' + ['日','一','二','三','四','五','六'][today.getDay()];
+
+        await loadFormFields();
+        await loadHistory();
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  加载表单字段                                                  */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function loadFormFields() {
+        const container = document.getElementById('fields-container');
+        try {
+            const { data, error } = await sbClient
+                .from('form_fields')
+                .select('*')
+                .eq('enabled', true)
+                .order('sort_order', { ascending: true });
+            if (error) throw error;
+
+            formFields = data || [];
+            if (formFields.length === 0) {
+                container.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;padding:20px 0;text-align:center">暂无汇报字段，请联系管理员配置</div>';
+                return;
+            }
+
+            container.innerHTML = formFields.map(f => renderField(f)).join('');
+        } catch(e) {
+            container.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:20px 0;text-align:center">加载字段失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function renderField(f) {
+        const reqMark = f.required ? '<span class="required">*</span>' : '';
+        const voiceBtn = `<button class="voice-btn" onclick="toggleFieldVoice('${f.name}', this)" title="语音输入"><span class="material-icons-round">mic</span></button>`;
+
+        let inputHtml = '';
+        switch (f.field_type) {
+            case 'textarea':
+                inputHtml = `<div class="field-input-wrap">
+                    <textarea class="form-input" id="field-${f.name}" rows="3" placeholder="请输入${f.label}" style="resize:vertical;min-height:60px;line-height:1.6;padding-right:40px"></textarea>
+                    ${voiceBtn}
+                </div>`;
+                break;
+            case 'number':
+                inputHtml = `<div class="field-input-wrap">
+                    <input type="number" class="form-input" id="field-${f.name}" placeholder="请输入${f.label}" style="padding-right:40px">
+                    ${voiceBtn}
+                </div>`;
+                break;
+            case 'date':
+                inputHtml = `<div class="field-input-wrap">
+                    <input type="date" class="form-input" id="field-${f.name}">
+                </div>`;
+                break;
+            case 'select':
+                const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+                inputHtml = `<div class="field-input-wrap">
+                    <select class="form-select" id="field-${f.name}">
+                        <option value="">请选择${f.label}</option>
+                        ${opts}
+                    </select>
+                </div>`;
+                break;
+            default:
+                inputHtml = `<div class="field-input-wrap">
+                    <input type="text" class="form-input" id="field-${f.name}" placeholder="请输入${f.label}" style="padding-right:40px">
+                    ${voiceBtn}
+                </div>`;
+        }
+
+        return `<div class="field-row">
+            <div class="field-label">${esc(f.label)}${reqMark}</div>
+            ${inputHtml}
+        </div>`;
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  语音识别                                                      */
+    /* ══════════════════════════════════════════════════════════════ */
+    function initSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+
+        recognition = new SpeechRecognition();
+        recognition.lang = 'zh-CN';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+
+        recognition.onresult = (event) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            if (currentVoiceTarget === '__global__') {
+                document.getElementById('raw-text').value = transcript;
+            } else if (currentVoiceTarget) {
+                const el = document.getElementById('field-' + currentVoiceTarget);
+                if (el) el.value = transcript;
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.warn('Speech recognition error:', event.error);
+            stopRecording();
+            if (event.error === 'not-allowed') {
+                showToast('请允许麦克风权限', 'error');
+            }
+        };
+
+        recognition.onend = () => {
+            if (isRecording) {
+                try { recognition.start(); } catch(_) {}
+            }
+        };
+    }
+
+    function startRecording(target, btnEl) {
+        if (!recognition) {
+            showToast('您的浏览器不支持语音识别，请使用Chrome', 'error');
+            return;
+        }
+        currentVoiceTarget = target;
+        isRecording = true;
+        try { recognition.start(); } catch(_) {}
+
+        document.querySelectorAll('.voice-btn, #global-voice-btn').forEach(btn => btn.classList.remove('recording'));
+        if (target === '__global__') {
+            document.getElementById('global-voice-btn').classList.add('recording');
+        } else if (btnEl) {
+            btnEl.classList.add('recording');
+        }
+    }
+
+    function stopRecording() {
+        isRecording = false;
+        currentVoiceTarget = null;
+        try { recognition?.stop(); } catch(_) {}
+        document.querySelectorAll('.voice-btn, #global-voice-btn').forEach(btn => btn.classList.remove('recording'));
+    }
+
+    function toggleFieldVoice(fieldName, btnEl) {
+        if (isRecording && currentVoiceTarget === fieldName) {
+            stopRecording();
+        } else {
+            stopRecording();
+            startRecording(fieldName, btnEl);
+        }
+    }
+
+    function toggleGlobalVoice() {
+        if (isRecording && currentVoiceTarget === '__global__') {
+            stopRecording();
+        } else {
+            stopRecording();
+            startRecording('__global__');
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  AI 整理                                                       */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function aiOrganize() {
+        const rawText = document.getElementById('raw-text').value.trim();
+        if (!rawText) {
+            showToast('请先输入汇报内容', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('ai-organize-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite">refresh</span>AI 整理中…';
+
+        try {
+            const fieldsDef = formFields.map(f => ({
+                name: f.name,
+                label: f.label,
+                type: f.field_type,
+                required: f.required,
+                options: f.options || []
+            }));
+
+            const res = await fetch(SUPABASE_URL + '/functions/v1/report-handler', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+                body: JSON.stringify({
+                    raw_text: rawText,
+                    employee_id: currentEmployee.id,
+                    fields: fieldsDef,
+                    preview_only: true
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            let formatted = data.formatted_fields;
+            if (typeof formatted === 'string') {
+                try { formatted = JSON.parse(formatted); } catch(_) {}
+            }
+
+            if (formatted && typeof formatted === 'object') {
+                for (const [key, val] of Object.entries(formatted)) {
+                    const el = document.getElementById('field-' + key);
+                    if (el) el.value = typeof val === 'string' ? val : JSON.stringify(val);
+                }
+                document.getElementById('ai-preview-tag').classList.remove('hidden');
+                showToast('AI 整理完成，请检查并修改', 'success');
+            } else {
+                showToast('AI 返回格式异常，请手动填写', 'error');
+            }
+        } catch(e) {
+            showToast('AI 整理失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-icons-round">auto_awesome</span>AI 整理';
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  提交汇报                                                      */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function submitReport() {
+        const rawText = document.getElementById('raw-text').value.trim();
+        const formattedFields = {};
+        let hasEmpty = false;
+
+        for (const f of formFields) {
+            const el = document.getElementById('field-' + f.name);
+            if (!el) continue;
+            const val = el.value.trim();
+            formattedFields[f.name] = val;
+            if (f.required && !val) {
+                hasEmpty = true;
+                el.style.borderColor = 'var(--danger)';
+                setTimeout(() => { el.style.borderColor = ''; }, 3000);
+            }
+        }
+
+        if (hasEmpty) {
+            showToast('请填写所有必填字段', 'error');
+            return;
+        }
+
+        const hasAnyValue = Object.values(formattedFields).some(v => v);
+        if (!hasAnyValue && !rawText) {
+            showToast('请至少填写一个字段或输入汇报内容', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite">refresh</span>提交中…';
+
+        try {
+            const today = new Date();
+            const recordDate = today.getFullYear() + '-'
+                + String(today.getMonth()+1).padStart(2,'0') + '-'
+                + String(today.getDate()).padStart(2,'0');
+
+            const { error: insertErr } = await sbClient.from('work_records').insert({
+                employee_id: currentEmployee.id,
+                record_date: recordDate,
+                raw_text: rawText || Object.values(formattedFields).filter(Boolean).join('。'),
+                formatted_fields: formattedFields
+            });
+
+            if (insertErr) throw insertErr;
+
+            showToast('汇报提交成功！', 'success');
+
+            for (const f of formFields) {
+                const el = document.getElementById('field-' + f.name);
+                if (el) el.value = '';
+            }
+            document.getElementById('raw-text').value = '';
+            document.getElementById('ai-preview-tag').classList.add('hidden');
+
+            await loadHistory();
+        } catch(e) {
+            showToast('提交失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-icons-round">send</span>确认提交';
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  历史记录                                                      */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function loadHistory() {
+        const container = document.getElementById('history-list');
+        if (!sbClient || !currentEmployee) return;
+
+        try {
+            const { data, error } = await sbClient
+                .from('work_records')
+                .select('*')
+                .eq('employee_id', currentEmployee.id)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;padding:20px 0;text-align:center">暂无历史汇报</div>';
+                return;
+            }
+
+            // 字段标签映射
+            const fieldMap = {};
+            formFields.forEach(f => { fieldMap[f.name] = f.label; });
+
+            container.innerHTML = data.map(r => {
+                let formatted = r.formatted_fields || r.formatted_text;
+                if (typeof formatted === 'string') {
+                    try { formatted = JSON.parse(formatted); } catch(_) { formatted = null; }
+                }
+
+                // 按 formFields 顺序排列，与 voice500 播报顺序一致
+                let fieldsHtml = '';
+                if (formatted && typeof formatted === 'object') {
+                    // 先按 formFields 顺序输出已知字段
+                    const orderedKeys = formFields.map(f => f.name);
+                    const allKeys = [...new Set([...orderedKeys, ...Object.keys(formatted)])];
+                    for (const key of allKeys) {
+                        const val = formatted[key];
+                        if (val) {
+                            const label = fieldMap[key] || key;
+                            fieldsHtml += `<div class="history-field"><span class="history-field-key">${esc(label)}:</span>${esc(typeof val === 'string' ? val : JSON.stringify(val))}</div>`;
+                        }
+                    }
+                }
+
+                const dateStr = r.record_date
+                    ? r.record_date
+                    : (r.created_at ? new Date(r.created_at).toLocaleDateString('zh-CN') : '-');
+                const timeStr = r.created_at
+                    ? new Date(r.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                    : '';
+
+                return `<div class="history-item">
+                    <div class="history-date">${esc(dateStr)} ${timeStr}</div>
+                    <div class="history-fields">${fieldsHtml || '<div style="color:var(--ink-soft);font-size:13px">无详细内容</div>'}</div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            container.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:20px 0;text-align:center">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Enter键登录                                                   */
+    /* ══════════════════════════════════════════════════════════════ */
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !document.getElementById('login-page').classList.contains('hidden')) {
+            doLogin();
+        }
+    });
+</script>
+</body>
+</html>
