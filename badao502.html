@@ -90,6 +90,8 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
 .close-btn{width:100%;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-size:13px;cursor:pointer;margin-top:4px;}
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+/* Material Icons for mic button */
+@font-face{font-family:'Material Icons Round';font-display:block;src:url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff2) format('woff2');}
 </style>
 </head>
 <body>
@@ -341,6 +343,7 @@ const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => 
 });
 let gSeq = 2;
 
+// ── encode：发送 JSON 控制帧（与 widget encode 完全一致）──
 const encode = (eid, payload, sessionId) => {
   const hdr = new Uint8Array([0x11,0x14,0x10,0x00]), parts = [];
   const eb = new ArrayBuffer(4); new DataView(eb).setUint32(0,eid,false); parts.push(new Uint8Array(eb));
@@ -359,6 +362,7 @@ const encode = (eid, payload, sessionId) => {
   return out.buffer;
 };
 
+// ── encodeAudio：发送 PCM 音频帧（与 widget encodeAudio 完全一致）──
 const encodeAudio = pcm => {
   const hdr = new Uint8Array([0x11,0x25,0x00,0x00]);
   gSeq++;
@@ -375,7 +379,7 @@ const encodeAudio = pcm => {
   return out.buffer;
 };
 
-// parseFrame 完整版（含 sessId 解析，与 widget 一致）
+// ── parseFrame：解析响应帧（与 widget parseFrame 完全一致）──
 const parseFrame = buf => {
   const dv = new DataView(buf);
   const hSz=(dv.getUint8(0)&0x0f)*4, msgType=(dv.getUint8(1)>>4)&0x0f, flags=dv.getUint8(1)&0x0f;
@@ -394,9 +398,10 @@ const parseFrame = buf => {
 };
 
 // ══════════════════════════════════════════════════════
-//  音频播放队列（完整移植自 widget）
+//  音频播放队列（完整移植自 doubao-widget）
 // ══════════════════════════════════════════════════════
 let chunks=[], queue=[], playing=false;
+
 const flushAudio = () => {
   if(!chunks.length) return;
   const tot=chunks.reduce((s,c)=>s+c.byteLength,0), merged=new Uint8Array(tot); let o=0;
@@ -404,16 +409,18 @@ const flushAudio = () => {
   queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
   playNext();
 };
+
 const playNext = () => {
   if(playing||!queue.length) return; playing=true;
   const url=queue.shift(), a=new Audio(url);
   const done = () => { URL.revokeObjectURL(url); playing=false; playNext(); };
   a.onended=done; a.onerror=done; a.play().catch(done);
 };
+
 const stopAudio = () => { queue=[]; chunks=[]; playing=false; };
 
 // ══════════════════════════════════════════════════════
-//  麦克风（完整移植自 widget _startMic / stopMic）
+//  麦克风（完整移植自 doubao-widget _startMic / stopMic）
 // ══════════════════════════════════════════════════════
 let micStream, audioCtx, srcNode, processor, micActive=false;
 
@@ -460,9 +467,10 @@ function stopMic(){
 }
 
 // ══════════════════════════════════════════════════════
-//  WS 连接与消息处理（完整移植自 widget，保留 demo 扩展）
+//  WS 连接与消息处理（完整移植自 doubao-widget）
 // ══════════════════════════════════════════════════════
 let ws, sid, _greetingDone=false, _isGreeting=false;
+
 const sanitize = s => s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 function getSP(){ return $('spArea').value.trim()||'你是工作日报播报助理，严格按字段顺序播报，不总结不评价。'; }
 function getStyle(){ return sw('sw6')?'播报工作日报时逐字读出各字段，按做了什么→遇到的问题→明日计划，不得改写省略总结。其余口语化简短。':'口语化、简短，不超过3句话'; }
@@ -472,10 +480,20 @@ function initWS(){
   sid=uuid(); gSeq=2; chunks=[];
   const u = new URL(WS_URL); u.searchParams.set('session_id','bd_'+Date.now());
   ws = new WebSocket(u.toString()); ws.binaryType='arraybuffer';
-  ws.onopen    = () => ws.send(encode(1,'{}',null));
+
+  // ── ws.onopen：发 eid=1 握手（与 widget 完全一致）──
+  ws.onopen = () => ws.send(encode(1,'{}',null));
+
   ws.onmessage = onMsg;
-  ws.onerror   = () => { setConn(false,'连接失败'); setTimeout(initWS,2000); };
-  ws.onclose   = e => { stopAudio(); stopMic(); setConn(false,'已断开'); setWave(false,false); log('⚠','断线','code='+e.code); setTimeout(initWS,3000); };
+
+  ws.onerror = () => { setConn(false,'连接失败'); setTimeout(initWS,2000); };
+
+  ws.onclose = e => {
+    stopAudio(); stopMic();
+    setConn(false,'已断开'); setWave(false,false);
+    log('⚠','断线','code='+e.code);
+    setTimeout(initWS,3000);
+  };
 }
 
 function onMsg(evt){
@@ -516,7 +534,7 @@ function onMsg(evt){
       flushAudio();
 
     } else if(eid===359){
-      // TTSSentenceEnd → 直接恢复，不重建 session（widget 模式）
+      // TTSSentenceEnd
       flushAudio();
       setWave(false,false); $('micBtn').classList.remove('speaking');
       if(_isGreeting){ _isGreeting=false; }
@@ -535,6 +553,7 @@ function onMsg(evt){
       setStatus('出错'); setConn(false,'出错');
     }
   }
+  // ── 音频帧（msgType===11）──
   if(msgType===11&&payload) chunks.push(payload);
 }
 
