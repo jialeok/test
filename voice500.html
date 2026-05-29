@@ -921,11 +921,18 @@ const onMsg=evt=>{
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
       } else {
-        // ★ 方案B：我们没发过500，这是LLM触发的350，开启屏蔽并压制
-        _blockLLMAudio = true;
-        logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
-        dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
-        send515Throttled('(压制LLM TTS)');
+        // ★ 方案B：我们没发过500，这是LLM触发的350
+        if(_chipTTSActive){
+          // chip 500 TTS 正在播放，只发515压制服务端LLM，不屏蔽本地音频
+          logEvt('←350',350,'LLM触发(chip播放中)，仅发515不屏蔽音频');
+          dbgLog('🔇 350 (LLM) chip播放中仅515压制: '+t.substring(0,30));
+          send515Throttled('(chip中压制LLM，保持500音频)');
+        } else {
+          _blockLLMAudio = true;
+          logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
+          dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
+          send515Throttled('(压制LLM TTS)');
+        }
       }
     } else if(eid===351){flushAudio();
     } else if(eid===359){
