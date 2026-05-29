@@ -916,13 +916,15 @@ const onMsg=evt=>{
         // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
         _our500Sent    = false;
         _blockLLMAudio = false;
-        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽');
+        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽 chipTTSActive='+_chipTTSActive);
+        dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350，开启屏蔽并压制
         _blockLLMAudio = true;
         logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
+        dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
         send515Throttled('(压制LLM TTS)');
       }
     } else if(eid===351){flushAudio();
@@ -956,6 +958,7 @@ const onMsg=evt=>{
         setStatus('按住🎤说话…');
       } else if(_chipTTSActive){
         _chipTTSActive = false;
+        dbgLog('🏁 359 TTSEnded (chip流程结束)，跳过会话刷新，保持上下文');
         setStatus('按住🎤说话…');
       } else {
         _refreshSession();
@@ -998,12 +1001,15 @@ const onMsg=evt=>{
       // ★ LLM回复来了（502流水线）——节流发送515压制，防止风暴
       send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
     } else if(eid===553){
-      // ChatTextQueryConfirmed：服务端确认query，先515压制LLM，再发 500 播报知识库内容
+      // ChatTextQueryConfirmed：服务端确认query → 发515压制LLM → 发500播报
+      dbgLog('📥 收到553 ChatTextQueryConfirmed, pendingRAGAfter553='+(pendingRAGAfter553?'有':'无')+' chipTTSActive='+_chipTTSActive);
       if(pendingRAGAfter553){
-        const ttsText=pendingRAGAfter553;
-        pendingRAGAfter553=null;
-        // 先发 515 打断服务端可能已经开始的 LLM TTS 流水线
-        send515Throttled('(553前压制LLM)');
+        const ttsText = pendingRAGAfter553;
+        pendingRAGAfter553 = null;
+        // ★ 直接发515（不节流）：553→500是关键路径，必须确保515发出
+        _last515Time = Date.now();
+        logEvt('→客户端',515,'ClientInterrupt (553前压制LLM)');
+        ws.send(encode(515,JSON.stringify({}),sid));
         // 短暂延迟后发 500，确保 515 先到服务端
         setTimeout(()=>{
           if(ws&&ws.readyState===WebSocket.OPEN){
@@ -1235,7 +1241,8 @@ function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 
 let _chipQueryInFlight = false; // 防止用户快速重复点击chip
 
 // ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
-// ★ 方案B：完全绕开501，直接走纯500路线，不邀请LLM入场
+// ★ 关键修复：500(ChatTTSText)必须在ASREnded或ChatTextQueryConfirmed(553)之后才能发送
+//   直接发500会被服务端静默丢弃 → 改用501→553→500完整流程
 async function chipQuery(name, dateStr, dayLabel){
   if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
@@ -1243,7 +1250,7 @@ async function chipQuery(name, dateStr, dayLabel){
   try{
   stopAudio();
   _blockLLMAudio = false;
-  _our500Sent    = true;     // ★ 提前占位：防止150ms等待期间残留350误判为LLM TTS
+  _our500Sent    = false;     // 501→553→500：初始false，让LLM的350被正确屏蔽
   _ragFlushed    = false;
   _pendingQueryText = null;
   pendingRAG     = null;
@@ -1255,44 +1262,36 @@ async function chipQuery(name, dateStr, dayLabel){
   resetFlow(); litFlow(0); litFlow(1); litFlow(2);
 
   // 先发 515 打断任何进行中的服务端响应
-  _last515Time = Date.now(); // 同步节流时间
+  _last515Time = Date.now();
   logEvt('→客户端',515,'ClientInterrupt (chip打断)');
   ws.send(encode(515,JSON.stringify({}),sid));
 
-  // ★ 修复竞态：515发出后等150ms，让服务端残留的350到达并被忽略
-  // 同时并行发起 RAG 查询，不浪费等待时间
+  // ★ 并行：等待150ms（让残留350到达并被忽略）+ RAG查询
   const [, result] = await Promise.all([
     new Promise(r => setTimeout(r, 150)),
     dateStr ? lookupRAGDirect({name, date:dateStr}) : Promise.resolve(null)
   ]);
 
-  // 强制解除屏蔽（防止 515 后的残留 350 把 _blockLLMAudio 置 true）
   _blockLLMAudio = false;
-  _our500Sent    = true;     // ★ 保持占位，sendChatTTS会再次设true
 
-  if(!dateStr){
-    // 没有日报记录：直接500播报提示，不走501
-    logEvt('→客户端',500,'ChatTTSText (chip无记录，纯500路线)');
-    sendChatTTS(name + '暂时没有工作日报记录，请联系相关人员确认。', '(chip无记录)');
-    setStatus('未找到 ' + name + ' 的日报记录，正在播报提示…');
-    return;
-  }
+  const queryContent = '查 ' + name + ' ' + (dayLabel || '最近') + ' 的日报';
+  const ttsText = !dateStr
+    ? name + '暂时没有工作日报记录，请联系相关人员确认。'
+    : (result ? result.text : name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。');
 
   if(result){
-    applyRAGUI(result, true); // skipStop=true，chipQuery开头已stopAudio
-    // ★ 方案B：直接500播报，完全不走501，LLM不入场
+    applyRAGUI(result, true);
     litFlow(3);
-    logEvt('→客户端',500,'ChatTTSText (chip，纯500路线，跳过501)');
-    _pendingQueryText = result.text;
-    _chipTTSActive = true;   // ★ 标记chip查询中，TTSEnded后不刷新会话保持上下文
-    sendChatTTS('好的，稍等我查一下～', '(chip过渡)');
-    setStatus('过渡话术已发，等TTSEnded后播报结果…');
-  } else {
-    // 兜底：直接500播报，不走501
-    logEvt('→客户端',500,'ChatTTSText (chip兜底，纯500路线)');
-    sendChatTTS(name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。', '(chip兜底)');
-    setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录，正在播报提示…');
   }
+
+  // ★ 核心修复：走501→553→500流程，不再直接发500
+  pendingRAGAfter553 = ttsText;
+  _chipTTSActive = true;
+  const note = result ? '(chip有结果，501建上下文→553回500)' : '(chip无结果，501建上下文→553回500)';
+  logEvt('→客户端',501,'ChatTextQuery '+note+' query:'+queryContent);
+  dbgLog('📤 发送501 ChatTextQuery: ' + queryContent);
+  ws.send(encode(501, JSON.stringify({ content: queryContent }), sid));
+  setStatus('501已发，等待服务端553确认…');
   } finally { _chipQueryInFlight = false; }
 }
 
