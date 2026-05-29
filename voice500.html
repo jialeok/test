@@ -283,12 +283,15 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ══ 日期工具 ══════════════════════════════════════════════
 function getDateStr(offsetDays=0){
-  const d=new Date();d.setDate(d.getDate()+offsetDays);
+  // 使用本地时间（中国时区 UTC+8），避免 UTC 与本地时间跨天导致日期错误
+  const d=new Date();
+  d.setDate(d.getDate()+offsetDays);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 const TODAY     = getDateStr(0);
 const YESTERDAY = getDateStr(-1);
 const DAY_BEFORE= getDateStr(-2);
+console.log('[日期] TODAY='+TODAY+' YESTERDAY='+YESTERDAY);
 
 // ══ 员工列表（从数据库动态加载，无需硬编码）══════════════
 let employeeNames = []; // ['小张','小明','李四',…] 启动时从 employees 表加载
@@ -600,39 +603,67 @@ async function lookupRAG(input){
       return null;
     }
     const rec=records[0];
-    dbgLog('✅ 找到日报 record_date='+rec.record_date);
+    // 规范化 record_date：DB 有时存 ISO datetime，只取日期部分
+    const recDate = (rec.record_date||'').substring(0,10);
+    dbgLog('✅ 找到日报 record_date='+recDate+' (原始:'+rec.record_date+')');
 
-    // 3. 解析 formatted_fields
+    // 3. 解析 formatted_fields（兼容 JSONB 对象和 JSON 字符串两种情况）
     let fields=rec.formatted_fields;
     if(typeof fields==='string'){ try{ fields=JSON.parse(fields); }catch(_){ fields={}; } }
     fields=fields||{};
-    dbgLog('📦 fields keys: '+Object.keys(fields).join(', '));
+    const fieldKeys=Object.keys(fields);
+    dbgLog('📦 formatted_fields 字段名: ['+fieldKeys.join(', ')+']');
 
-    // 4. 拼播报文本
+    // 4. 拼播报文本（智能适配字段名）
     const parts=[];
-    if(fields.done)    parts.push('今日完成：'+fields.done);
-    if(fields.problem) parts.push('遇到的问题：'+fields.problem);
-    if(fields.plan)    parts.push('明日计划：'+fields.plan);
+    // 兼容多种字段名写法
+    const done    = fields.done    || fields['今日完成'] || fields['完成'] || fields['工作内容'] || '';
+    const problem = fields.problem || fields['问题']    || fields['遇到问题'] || fields['障碍'] || '';
+    const plan    = fields.plan    || fields['明日计划'] || fields['计划'] || fields['下一步'] || '';
+
+    if(done)    parts.push('今日完成：'+done);
+    if(problem) parts.push('遇到的问题：'+problem);
+    if(plan)    parts.push('明日计划：'+plan);
+
+    // 如果以上字段都没有，把所有字段内容都拼进去
+    if(parts.length===0 && fieldKeys.length>0){
+      dbgLog('⚠️ 标准字段名不匹配，使用全部字段拼接');
+      fieldKeys.forEach(k=>{ if(fields[k]) parts.push(k+'：'+fields[k]); });
+    }
+
     if(parts.length===0){
-      dbgLog('❌ formatted_fields 为空或字段名不匹配');
+      dbgLog('❌ formatted_fields 完全为空，原始值: '+JSON.stringify(rec.formatted_fields).substring(0,100));
+      // 兜底：如果有 raw_content 或 content 字段也可以播
+      const rawContent = rec.raw_content || rec.content || rec.text || '';
+      if(rawContent){
+        dbgLog('ℹ️ 使用 raw_content 兜底: '+rawContent.substring(0,30));
+        const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
+        KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
+        KB_GROUPS.push({name:emp.name, date:recDate, items:[{section:'工作内容', content:rawContent}]});
+        renderKB(emp.name+recDate);
+        return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
+      }
       return null;
     }
 
-    const ttsText=emp.name+'，'+query.date+'的工作日报。'+parts.join('。')+'。';
-    dbgLog('✅ 播报文本(前50字): '+ttsText.substring(0,50));
+    const ttsText=emp.name+'，'+recDate+'的工作日报。'+parts.join('。')+'。';
+    dbgLog('✅ 播报文本(前80字): '+ttsText.substring(0,80));
 
-    // 5. 更新 KB_GROUPS 供知识库tab展示
-    KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===query.date));
+    // 5. 更新 KB_GROUPS 并立刻渲染（不依赖 applyRAGUI 的 setTimeout）
+    KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
     KB_GROUPS.push({
-      name:emp.name, date:query.date,
+      name:emp.name, date:recDate,
       items:[
-        {section:'做了什么',  content:fields.done||''},
-        {section:'遇到的问题',content:fields.problem||''},
-        {section:'明日计划',  content:fields.plan||''},
-      ]
+        {section:'做了什么',  content:done},
+        {section:'遇到的问题',content:problem},
+        {section:'明日计划',  content:plan},
+      ].filter(it=>it.content) // 过滤掉空字段
     });
+    // 立刻渲染知识库tab（不等 applyRAGUI 的 setTimeout）
+    renderKB(emp.name+recDate);
+    dbgLog('✅ KB_GROUPS 已更新并渲染，key='+emp.name+recDate);
 
-    return{query, rec:{name:emp.name,date:query.date,items:[]}, text:ttsText};
+    return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
   }catch(e){
     dbgLog('⚠️ Supabase 异常: '+e.message);
     logEvt('⚠️Supabase',0,'查询失败:'+e.message);
@@ -645,17 +676,16 @@ function applyRAGUI(result){
   const{query,rec}=result;
   stopAudio();
   litFlow(1);
-  showRagCard('意图识别：查 '+query.name+' · '+query.date);
-  setStatus('检索知识库…');
+  showRagCard('意图识别：查 '+rec.name+' · '+rec.date);
+  setStatus('检索到日报，准备播报…');
+  litFlow(2);
+  // KB_GROUPS 已在 lookupRAG 里更新并渲染，这里只做高亮匹配
+  renderKB(rec.name+rec.date);
   setTimeout(()=>{
-    litFlow(2);
-    renderKB(rec.name+rec.date);
-    setTimeout(()=>{
-      litFlow(3);
-      showRagCard('知识库已就绪，等待发送…');
-      renderDetail500(query,rec,result.text);
-    },200);
-  },200);
+    litFlow(3);
+    showRagCard('✅ 知识库已就绪，正在发送TTS…');
+    renderDetail500(query,rec,result.text);
+  },150);
 }
 
 let _ragFlushed = false; // 防止 451/459 重复触发
@@ -1266,9 +1296,20 @@ async function dbgRawSearch(){
       else if(!recs||recs.length===0){ out+='⚠️ 该员工没有任何日报记录'; }
       else{
         recs.forEach(r=>{
-          out+='  record_date: "'+r.record_date+'"\n';
-          out+='  formatted_fields字段名: '+JSON.stringify(Object.keys(r.formatted_fields||{}))+'\n';
-          out+='  formatted_fields值: '+JSON.stringify(r.formatted_fields,null,2)+'\n---\n';
+          const nd=(r.record_date||'').substring(0,10);
+          const today=new Date().toISOString().substring(0,10);
+          out+='  record_date 原始: "'+r.record_date+'"\n';
+          out+='  record_date 规范: "'+nd+'" | 今天: "'+today+'" | '+(nd===today?'✅ 匹配今天':'❌ 不是今天')+'\n';
+          const ff=r.formatted_fields||{};
+          const fkeys=Object.keys(ff);
+          out+='  formatted_fields字段名: '+JSON.stringify(fkeys)+'\n';
+          out+='  formatted_fields值: '+JSON.stringify(ff,null,2)+'\n';
+          const std=['done','problem','plan'];
+          const hit=fkeys.filter(k=>std.includes(k));
+          const miss=fkeys.filter(k=>!std.includes(k));
+          if(hit.length) out+='  ✅ 代码能读到的字段: '+hit.join(', ')+'\n';
+          if(miss.length) out+='  ⚠️ 代码读不到(非标准名): '+miss.join(', ')+' ← 兜底逻辑会尝试中文字段名\n';
+          out+='---\n';
         });
       }
     }
