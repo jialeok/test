@@ -497,6 +497,7 @@ const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 
 let pendingRAG = null; // 语音路径：等 459 再发
+let pendingRAGPromise = null; // ★ 修复竞态：lookupRAG的Promise，flushPendingRAG等它完成
 let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 
 function matchQuery(text){
@@ -690,25 +691,39 @@ function applyRAGUI(result){
 
 let _ragFlushed = false; // 防止 451/459 重复触发
 
+// ★ 修复竞态核心：等待 lookupRAG Promise 完成后再决定播什么
+// 无论 451 还是 459 先触发，都等查询结果回来，绝不提前播兜底
 function flushPendingRAG(){
-  if(_ragFlushed) return; // 已经触发过，直接忽略
+  if(_ragFlushed) return;
   if(!ws||ws.readyState!==WebSocket.OPEN) return;
-  _ragFlushed = true; // 立刻锁住，后续重入直接返回
-  if(!pendingRAG){
-    sendChatTTS('对不起，没找到相关内容。','(兜底)');
-    return;
+  _ragFlushed = true;
+
+  // 等待 lookupRAG 的 Promise（如果还在查就等，已完成则立即拿到结果）
+  const doFlush = (ragText) => {
+    if(!ragText){
+      logEvt('→客户端',500,'(兜底) lookupRAG无结果');
+      sendChatTTS('对不起，没找到相关内容。','(兜底)');
+      return;
+    }
+    pendingRAG = null;
+    logEvt('→客户端',515,'ClientInterrupt (flushPendingRAG，打断502残音)');
+    ws.send(encode(515,JSON.stringify({}),sid));
+    stopAudio();
+    _pendingQueryText = ragText;
+    sendChatTTS('好的，稍等我查一下～','(过渡)');
+  };
+
+  if(pendingRAGPromise){
+    // lookupRAG 还在飞，等它落地再播
+    logEvt('⏳RAG',0,'等待lookupRAG Promise完成…');
+    pendingRAGPromise.then(result => {
+      pendingRAGPromise = null;
+      doFlush(result ? result.text : null);
+    });
+  } else {
+    // 已经有结果（pendingRAG）或确实没找到
+    doFlush(pendingRAG);
   }
-  const ragText=pendingRAG;
-  pendingRAG=null;
-  // 先发 515 打断服务端正在跑的 LLM→TTS 流水线（502残音根因）
-  logEvt('→客户端',515,'ClientInterrupt (flushPendingRAG，打断502残音)');
-  ws.send(encode(515,JSON.stringify({}),sid));
-  stopAudio(); // 同步清掉本地音频队列
-  // 先发过渡话术，等服务端 TTSEnded 后再发查询结果，彻底避免竞态
-  // 用 _pendingQueryText 挂起，在 TTSEnded(359) 里消费
-  // ⚡ 必须先赋值，再发TTS——否则服务端极快回TTSEnded时_pendingQueryText还是null
-  _pendingQueryText = ragText;
-  sendChatTTS('好的，稍等我查一下～','(过渡)');
 }
 
 // 用 ChatTTSText(500) 流式发送文本
@@ -858,14 +873,19 @@ const onMsg=evt=>{
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         if(finals.length){
           // 拿到最终识别结果，异步查 Supabase
-          lookupRAG(t).then(result=>{
+          // ★ 修复竞态：把Promise存起来，flushPendingRAG会等它完成
+          pendingRAGPromise = lookupRAG(t).then(result=>{
+            pendingRAGPromise = null; // Promise已完成，清掉
             if(result){ applyRAGUI(result); pendingRAG=result.text; }
             else { pendingRAG=null; }
-            // push_to_talk模式：收到最终451即可触发，无需等459
+            // push_to_talk模式：查询完成后，如果459/451已经触发了flushPendingRAG等待，
+            // 此处返回result供doFlush使用（由Promise链处理，无需再调flushPendingRAG）
+            // 如果459还没到，flushPendingRAG会在459时等这个Promise
             if(waitingForFinalASR){
               waitingForFinalASR=false;
               flushPendingRAG();
             }
+            return result; // ★ 必须return，供Promise链使用
           });
         }
       }
@@ -1009,6 +1029,7 @@ let pendingPTT=false;
 function _doPttStart(){
   pendingPTT=false;
   pendingRAG=null;
+  pendingRAGPromise=null; // ★ 新一轮，清掉上一轮的Promise
   _pendingQueryText=null;
   _ragFlushed=false; // 新一轮录音，重置防重入锁
   waitingForFinalASR=false;
