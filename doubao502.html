@@ -765,9 +765,9 @@ const DW = (() => {
         color:#fff;font-size:13px;font-weight:700;cursor:pointer;
         letter-spacing:.05em;font-family:monospace;
         box-shadow:0 4px 16px rgba(99,102,241,.4);
-        transition:opacity .2s;
-      ">↺ 重启 Session 应用所有设置</button>
-      <div style="text-align:center;font-size:10px;color:#334155;margin-top:-12px;">语速、音量、提示词、方言在下次 Session 初始化时生效</div>
+        transition:opacity .2s,background .3s;
+      ">↺ 保存设置（点助理按钮生效）</button>
+      <div style="text-align:center;font-size:10px;color:#334155;margin-top:-12px;">保存后关闭面板，再点右下角助理按钮开始新对话</div>
 
       <!-- ⑥ 调试日志面板 -->
       <div>
@@ -1000,39 +1000,37 @@ const CTRL = (() => {
     toast(d.id === 'none' ? '标准普通话（重启生效）' : `${d.label}方言（重启生效）`);
   };
 
-  // ── 重启 Session（将所有 pending 设置应用到新 Session）──
+  // ── 保存设置并关闭控制面板（原"重启 Session"）──────────
+  // 改为两步：① 保存 → 关控制面板  ② 用户点助理按钮 → 新 Session 自动带入配置
+  // 彻底避免 close→open 时序竞争导致对话框弹不出的问题
   const restartSession = () => {
     const btn = $('ctrl-restart-btn');
-    btn.textContent = '重启中…'; btn.style.opacity = '.5'; btn.disabled = true;
-
     const c = cfg();
     const dialectLabel = DIALECTS.find(d => d.id === (c.dialect || 'none'))?.label || '标准';
 
-    dwLog('info', '━━━ 重启 Session，即将应用以下配置 ━━━');
+    dwLog('info', '━━━ 保存配置，即将关闭控制面板 ━━━');
     dwLog('info', `音色 = ${c.speaker}`);
     dwLog('info', `方言 = ${c.dialect || 'none'} (${dialectLabel})${c.speaker !== 'zh_female_vv_jupiter_bigtts' && c.dialect !== 'none' ? ' ⚠️ 非vv音色，方言无效！' : ''}`);
     dwLog('info', `说话风格 = "${c.speakingStyle || '（空，不传）'}"`);
     dwLog('info', `语速 = ${c.speechRate}  音量 = ${c.loudnessRate}`);
-    dwLog('info', `System Prompt 前50字 = "${(c.systemPrompt||'').substring(0,50)}…"`);
+    dwLog('info', '配置已保存，关闭面板后点右下角助理按钮开始新对话');
     dwLog('info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // 暂停 refreshConn 轮询，防止在 close→open 间隙抢先调用 _connect() 造成 session 竞争
+    // 断开旧连接（不打开 modal），配置已写入 window._dwConfig
+    // 下次点助理按钮时 DW.open() 会读取最新配置建新 Session
     _connPaused = true;
     DW.close();
+    _connPaused = false;
 
-    // 先关掉控制面板（立即隐藏，不等动画），再打开语音 modal
-    // 否则控制面板会盖在语音 modal 上，用户看不到说话按钮
-    $('ctrl-overlay').style.display = 'none';
-    $('ctrl-drawer').style.transform = 'translateY(100%)';
+    // 关闭控制面板
+    close();
 
+    btn.textContent = '✅ 已保存，点助理按钮开始对话';
+    btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
     setTimeout(() => {
-      dwLog('ok', 'DW.open() 即将调用，语音对话框将打开');
-      DW.open();
-      btn.textContent = '↺ 重启 Session 应用所有设置';
-      btn.style.opacity = '1'; btn.disabled = false;
-      // open() 已经建立了新连接，恢复轮询以便后续状态同步
-      _connPaused = false;
-    }, 700);
+      btn.textContent = '↺ 保存设置（点助理按钮生效）';
+      btn.style.background = 'linear-gradient(135deg,#6366f1,#818cf8)';
+    }, 3000);
   };
 
   // ── 抽屉开关 ─────────────────────────────────────────
