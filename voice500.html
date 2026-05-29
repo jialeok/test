@@ -1014,23 +1014,8 @@ const onMsg=evt=>{
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
-      // ChatTextQueryConfirmed：服务端确认query → 发515压制LLM → 发500播报
-      dbgLog('📥 收到553 ChatTextQueryConfirmed, pendingRAGAfter553='+(pendingRAGAfter553?'有':'无')+' chipTTSActive='+_chipTTSActive);
-      if(pendingRAGAfter553){
-        const ttsText = pendingRAGAfter553;
-        pendingRAGAfter553 = null;
-        // ★ 直接发515（不节流）：553→500是关键路径，必须确保515发出
-        _last515Time = Date.now();
-        logEvt('→客户端',515,'ClientInterrupt (553前压制LLM)');
-        ws.send(encode(515,JSON.stringify({}),sid));
-        // 短暂延迟后发 500，确保 515 先到服务端
-        setTimeout(()=>{
-          if(ws&&ws.readyState===WebSocket.OPEN){
-            sendChatTTS(ttsText,'(收到553后发送)');
-            litFlow(3);
-          }
-        }, 200);
-      }
+      // ChatTextQueryConfirmed：现在chip不走501，553不会到来；仅记录
+      dbgLog('📥 收到553 ChatTextQueryConfirmed (未预期)');
     } else if(eid===152){
       // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
       if(_refreshPending){
@@ -1254,8 +1239,7 @@ function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 
 let _chipQueryInFlight = false; // 防止用户快速重复点击chip
 
 // ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
-// ★ 关键修复：500(ChatTTSText)必须在ASREnded或ChatTextQueryConfirmed(553)之后才能发送
-//   直接发500会被服务端静默丢弃 → 改用501→553→500完整流程
+// ★ 参照PTT语音流程：不经过501(触发LLM)，直接sendChatTTS(500)完成TTS播报
 async function chipQuery(name, dateStr, dayLabel){
   if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
@@ -1263,12 +1247,11 @@ async function chipQuery(name, dateStr, dayLabel){
   try{
   stopAudio();
   _blockLLMAudio = false;
-  _our500Sent    = false;     // 501→553→500：初始false，让LLM的350被正确屏蔽
+  _our500Sent    = false;
   _ragFlushed    = false;
   _pendingQueryText = null;
   pendingRAG     = null;
   pendingRAGPromise = null;
-  pendingRAGAfter553 = null;
 
   setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
   setStatus('查询 ' + name + ' ' + dayLabel + '…');
@@ -1287,7 +1270,6 @@ async function chipQuery(name, dateStr, dayLabel){
 
   _blockLLMAudio = false;
 
-  const queryContent = '查 ' + name + ' ' + (dayLabel || '最近') + ' 的日报';
   let ttsText;
   if(!dateStr){
     ttsText = name + '暂时没有工作日报记录，请联系相关人员确认。';
@@ -1308,14 +1290,10 @@ async function chipQuery(name, dateStr, dayLabel){
     litFlow(3);
   }
 
-  // ★ 核心修复：走501→553→500流程，不再直接发500
-  pendingRAGAfter553 = ttsText;
+  // ★ 参照PTT语音流程：直接sendChatTTS(500)，不发501(不触发LLM)
   _chipTTSActive = true;
-  const note = result ? '(chip有结果，501建上下文→553回500)' : '(chip无结果，501建上下文→553回500)';
-  logEvt('→客户端',501,'ChatTextQuery '+note+' query:'+queryContent);
-  dbgLog('📤 发送501 ChatTextQuery: ' + queryContent);
-  ws.send(encode(501, JSON.stringify({ content: queryContent }), sid));
-  setStatus('501已发，等待服务端553确认…');
+  dbgLog('📤 直接sendChatTTS(500): ' + ttsText.substring(0, 50));
+  sendChatTTS(ttsText, '(chip查询直接500)');
   } finally { _chipQueryInFlight = false; }
 }
 
@@ -1411,8 +1389,6 @@ function fillAndSend(t){
   }
 }
 
-let pendingRAGAfter553 = null; // 收到 553 后立刻发的 RAG
-
 async function sendText(){
   const el=$('textInput');
   const text=el.value.trim();
@@ -1427,7 +1403,6 @@ async function sendText(){
   const result=await lookupRAG(text);
   if(result){
     applyRAGUI(result);
-    pendingRAGAfter553 = null;
     stopAudio();
     _pendingQueryText = result.text;
     _ragFlushed = false;
