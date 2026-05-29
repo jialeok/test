@@ -601,8 +601,10 @@ const onMsg=evt=>{
         _greetingDone = true;
         _isGreeting   = true;
         setTimeout(()=>{
+          const _h=new Date().getHours();
+          const _greet=_h<6?'夜深了':_h<12?'早上好':_h<14?'中午好':_h<18?'下午好':'晚上好';
           logEvt('→客户端',300,'SayHello');
-          ws.send(encode(300,JSON.stringify({content:'老板好，小勤在线！想了解哪位小伙伴的工作，报个名字就行～'}),sid));
+          ws.send(encode(300,JSON.stringify({content:_greet+'，小勤在线！想了解哪位小伙伴的工作，报个名字就行～'}),sid));
         },500);
       }
     } else if(eid===350){
