@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260529-6 -->
+<!-- v=20260529-7 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -263,7 +263,7 @@
 <script>
 // ══ 配置 ══════════════════════════════════════════════════
 const WS_URL      = 'wss://doubao-ws-proxy.onrender.com/proxy';
-const SYSTEM_PROMPT = '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
+const SYSTEM_PROMPT = '你是一个亲切的智能助理，请用不超过1句话回答，每句10字以内。';
 const SPEAKER     = 'zh_female_vv_jupiter_bigtts';
 
 // ══ Supabase 配置 ═════════════════════════════════════════
@@ -912,7 +912,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短。当用户说查+人名+的日报时，只回复正在为您查询，请稍等，不加任何其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -957,6 +957,17 @@ const onMsg=evt=>{
     } else if(eid===351){dbgLog('📌 351 TTSSentenceEnd (服务端flush)');flushAudio();
     } else if(eid===359){
       dbgLog('📌 359 TTSEnded 到达 chip='+_chipTTSActive);
+      // ★ chip模式：LLM等待语("正在为您查询请稍等")播完 → 立刻发500
+      if(_chipTTSActive && _pendingChipTTSText){
+        if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
+        flushAudio();
+        dbgLog('📌 359 (LLM等待语结束) → 立即发500');
+        const ttsText = _pendingChipTTSText;
+        _pendingChipTTSText = null;
+        sendChatTTS(ttsText, '(chip-359触发)');
+        litFlow(3);
+        return;
+      }
       flushAudio();
       // ★ 如果有pendingRAGPromise说明RAG还在查，这个TTSEnded是LLM的，忽略
       if(pendingRAGPromise){
@@ -1031,14 +1042,20 @@ const onMsg=evt=>{
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
-      // ChatTextQueryConfirmed：chip的501已确认 → 立即发500
+      // ChatTextQueryConfirmed：chip的501已确认 → 解封LLM，等359(LLM等待语播完)再发500
       if(_pendingChipTTSText){
+        _blockLLMAudio = false; // 放行LLM TTS，让"正在为您查询请稍等"播完整
         setStatus('助理正在整理…');
-        dbgLog('📥 553 → 立即发500 (_blockLLMAudio保持true)');
-        const ttsText = _pendingChipTTSText;
-        _pendingChipTTSText = null;
-        sendChatTTS(ttsText, '(chip)');
-        litFlow(3);
+        dbgLog('📥 553 → 解封LLM音频 + 2s兜底定时器');
+        _chipTTSTimer = setTimeout(()=>{
+          _chipTTSTimer = null;
+          if(!_pendingChipTTSText) return;
+          const ttsText = _pendingChipTTSText;
+          _pendingChipTTSText = null;
+          dbgLog('⏰ 2s超时兜底 → 发500');
+          sendChatTTS(ttsText, '(chip-超时)');
+          litFlow(3);
+        }, 2000);
       }
     } else if(eid===152){
       // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
@@ -1048,7 +1065,7 @@ const onMsg=evt=>{
         const sessionPayload={
           tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短。当用户说查+人名+的日报时，只回复正在为您查询，请稍等，不加任何其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
         };
         logEvt('→客户端',100,'StartSession (静默刷新)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
