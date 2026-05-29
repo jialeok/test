@@ -372,7 +372,7 @@ function stopMic(){
   setWave(false,false);setStatus('就绪');log('🎙','MIC','停止');
 }
 
-let ws,sid,_greetingDone=false,_isGreeting=false,_refreshPending=false;
+let ws,sid,_greetingDone=false,_isGreeting=false;
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
 function getSP(){return $('spArea').value.trim()||'你是工作日报播报助理，严格按字段顺序播报，不总结不评价。';}
 function getStyle(){return sw('sw6')?'播报工作日报时逐字读出各字段，按做了什么→遇到的问题→明日计划，不得改写省略总结。其余口语化简短。':'口语化、简短，不超过3句话';}
@@ -420,27 +420,15 @@ function onMsg(evt){
     }else if(eid===359){
       flushAudio();setWave(false,false);$('micBtn').classList.remove('speaking');
       if(micActive){$('micBtn').classList.add('listening');setWave(true,true);}
-      if(_isGreeting){_isGreeting=false;setStatus('就绪');}else _refreshSession();
+      if(_isGreeting){_isGreeting=false;}
+      setStatus('就绪 — 选知识库按▶发502，或按🎙说话');
     }else if(eid===450){stopAudio();setSub('',false);
     }else if(eid===451){
       const t=(j.results||[]).map(r=>r.text).join('');
       if(t){setSub(t,true);setStatus('识别：'+t);}
-    }else if(eid===152){
-      if(_refreshPending){
-        _refreshPending=false;sid=uuid();
-        ws.send(encode(100,JSON.stringify({
-          tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-          dialog:{bot_name:'八道',system_role:sanitize(getSP()),speaking_style:getStyle(),extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-        }),sid));
-      }
     }else if(eid===153||eid===599){setStatus('出错');setConn(false,'出错');}
   }
   if(msgType===11&&payload)chunks.push(payload);
-}
-function _refreshSession(){
-  if(!ws||ws.readyState!==WebSocket.OPEN||_refreshPending)return;
-  _refreshPending=true;ws.send(encode(102,JSON.stringify({}),sid));
 }
 
 function sendRAG502(){
