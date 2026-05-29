@@ -745,9 +745,10 @@ async function lookupRAG(input){
 }
 
 // 更新UI（不影响发送时机）
-function applyRAGUI(result){
+// skipStop=true 时跳过 stopAudio()，适用于 chipQuery 已在函数开头停音的场景
+function applyRAGUI(result, skipStop=false){
   const{query,rec}=result;
-  stopAudio();
+  if(!skipStop) stopAudio();
   litFlow(1);
   showRagCard('意图识别：查 '+rec.name+' · '+rec.date);
   setStatus('检索到日报，准备播报…');
@@ -1223,10 +1224,15 @@ function stopMic(){
 
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
+let _chipQueryInFlight = false; // 防止用户快速重复点击chip
+
 // ★ 标签点击：直接用精确的员工名+日期查RAG，绕过matchQuery意图解析
 // ★ 方案B：完全绕开501，直接走纯500路线，不邀请LLM入场
 async function chipQuery(name, dateStr, dayLabel){
+  if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
+  _chipQueryInFlight = true;
+  try{
   stopAudio();
   _blockLLMAudio = false;
   _our500Sent    = false;
@@ -1244,6 +1250,17 @@ async function chipQuery(name, dateStr, dayLabel){
   logEvt('→客户端',515,'ClientInterrupt (chip打断)');
   ws.send(encode(515,JSON.stringify({}),sid));
 
+  // ★ 修复竞态：515发出后等150ms，让服务端残留的350到达并被忽略
+  // 同时并行发起 RAG 查询，不浪费等待时间
+  const [, result] = await Promise.all([
+    new Promise(r => setTimeout(r, 150)),
+    dateStr ? lookupRAGDirect({name, date:dateStr}) : Promise.resolve(null)
+  ]);
+
+  // 强制解除屏蔽（防止 515 后的残留 350 把 _blockLLMAudio 置 true）
+  _blockLLMAudio = false;
+  _our500Sent    = false;
+
   if(!dateStr){
     // 没有日报记录：直接500播报提示，不走501
     logEvt('→客户端',500,'ChatTTSText (chip无记录，纯500路线)');
@@ -1252,10 +1269,8 @@ async function chipQuery(name, dateStr, dayLabel){
     return;
   }
 
-  // 查询 RAG 数据
-  const result = await lookupRAGDirect({name, date:dateStr});
   if(result){
-    applyRAGUI(result);
+    applyRAGUI(result, true); // skipStop=true，chipQuery开头已stopAudio
     // ★ 方案B：直接500播报，完全不走501，LLM不入场
     litFlow(3);
     logEvt('→客户端',500,'ChatTTSText (chip，纯500路线，跳过501)');
@@ -1268,6 +1283,7 @@ async function chipQuery(name, dateStr, dayLabel){
     sendChatTTS(name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。', '(chip兜底)');
     setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录，正在播报提示…');
   }
+  } finally { _chipQueryInFlight = false; }
 }
 
 // ★ 新增：直接用精确query对象查Supabase，不走matchQuery
