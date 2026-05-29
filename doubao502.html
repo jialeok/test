@@ -483,6 +483,8 @@ const DW = (() => {
       } else if (eid === 153) {
         dwLog('error', `收到 eid=153 SessionFailed ❌，服务端返回错误`, j);
         setStatus('连接出错，请重试');
+      } else if (eid === 152) {
+        dwLog('warn', '收到 eid=152 SessionFinished，服务端正常结束会话');
       } else if (eid === 599) {
         dwLog('error', `收到 eid=599 错误帧 ❌`, j);
         setStatus('连接出错，请重试');
@@ -849,7 +851,10 @@ const CTRL = (() => {
   };
 
   // ── 连接状态检查 ──────────────────────────────────────
+  // paused=true 时停止轮询（重启 Session 期间使用，防止和 DW.open() 竞争）
+  let _connPaused = false;
   const refreshConn = () => {
+    if (_connPaused) return;
     const ws = DW._ws();
     const alive = ws && ws.readyState === WebSocket.OPEN;
     const connecting = ws && ws.readyState === WebSocket.CONNECTING;
@@ -1003,7 +1008,6 @@ const CTRL = (() => {
     const c = cfg();
     const dialectLabel = DIALECTS.find(d => d.id === (c.dialect || 'none'))?.label || '标准';
 
-    // 打印即将应用的配置摘要到调试面板
     dwLog('info', '━━━ 重启 Session，即将应用以下配置 ━━━');
     dwLog('info', `音色 = ${c.speaker}`);
     dwLog('info', `方言 = ${c.dialect || 'none'} (${dialectLabel})${c.speaker !== 'zh_female_vv_jupiter_bigtts' && c.dialect !== 'none' ? ' ⚠️ 非vv音色，方言无效！' : ''}`);
@@ -1012,12 +1016,16 @@ const CTRL = (() => {
     dwLog('info', `System Prompt 前50字 = "${(c.systemPrompt||'').substring(0,50)}…"`);
     dwLog('info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    // 暂停 refreshConn 轮询，防止在 close→open 间隙抢先调用 _connect() 造成 session 竞争
+    _connPaused = true;
     DW.close();
     setTimeout(() => {
       DW.open();
       toast(`✓ 语速${c.speechRate} 音量${c.loudnessRate} 方言:${dialectLabel}`);
       btn.textContent = '↺ 重启 Session 应用所有设置';
       btn.style.opacity = '1'; btn.disabled = false;
+      // open() 已经建立了新连接，恢复轮询以便后续状态同步
+      _connPaused = false;
     }, 700);
   };
 
