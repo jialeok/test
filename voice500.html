@@ -921,10 +921,6 @@ const onMsg=evt=>{
         dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
-        // ★ Chip流程：我们的350到了，立刻预发515抢在LLM生成TTS前压制
-        if(_chipTTSActive){
-          send515Throttled('(350后预压制LLM残留)');
-        }
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
