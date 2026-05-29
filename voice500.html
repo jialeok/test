@@ -818,11 +818,25 @@ const onMsg=evt=>{
       }
     } else if(eid===350){
       const t=j.text||'';if(t)setSub(t,true);
+      // ★ 如果RAG正在处理中（有pendingQueryText或pendingRAGPromise），
+      // 这个350是LLM触发的，直接压制，不改state，不播
+      if(_pendingQueryText || pendingRAGPromise){
+        logEvt('←忽略350',350,'RAG处理中，忽略LLM触发的TTSSentenceStart');
+        if(ws&&ws.readyState===WebSocket.OPEN){
+          ws.send(encode(515,JSON.stringify({}),sid));
+        }
+        return;
+      }
       state='speaking';setStatus('助理正在说话…');
       setWave(true,false);litFlow(4);
     } else if(eid===351){flushAudio();
     } else if(eid===359){
       flushAudio();
+      // ★ 如果有pendingRAGPromise说明RAG还在查，这个TTSEnded是LLM的，忽略
+      if(pendingRAGPromise){
+        logEvt('←忽略359',359,'RAG Promise还在，忽略LLM触发的TTSEnded');
+        return;
+      }
       // 如果有待播的查询结果（过渡话术刚播完），立刻发出，不做会话刷新
       if(_pendingQueryText){
         const qt=_pendingQueryText;
@@ -881,6 +895,13 @@ const onMsg=evt=>{
         flushPendingRAG(); // 仅当451未触发时才执行
       }
       // 注意：若451已经把waitingForFinalASR置false，这里不会重复触发
+    } else if(eid===550||eid===559){
+      // ★ LLM回复来了（502流水线）——我们走纯500路线，立刻再发515压制
+      // 防止服务端把LLM结果转成TTS叠在我们的500 TTS上
+      if(ws&&ws.readyState===WebSocket.OPEN){
+        logEvt('→客户端',515,'ClientInterrupt (压制LLM '+eid+' 回复，防叠音)');
+        ws.send(encode(515,JSON.stringify({}),sid));
+      }
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query，立即发 500 播报知识库内容
       if(pendingRAGAfter553){
