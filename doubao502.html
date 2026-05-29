@@ -325,6 +325,29 @@ const DW = (() => {
     micStream = srcNode = processor = audioCtx = null;
   };
 
+  // ── 调试日志工具 ──────────────────────────────────────
+  // 日志会同时输出到控制台 + 页面内调试面板（#dw-debuglog）
+  const dwLog = (level, ...args) => {
+    const tag = { info: '🔵', warn: '🟡', error: '🔴', ok: '🟢' }[level] || '⚪';
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    // 输出到浏览器控制台
+    console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[豆包DW ${time}] ${tag}`, ...args);
+    // 同步写入页面调试面板
+    const panel = document.getElementById('dw-debuglog');
+    if (panel) {
+      const line = document.createElement('div');
+      line.style.cssText = `padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);color:${
+        level==='error'?'#f87171':level==='warn'?'#fbbf24':level==='ok'?'#4ade80':'#94a3b8'
+      };word-break:break-all;white-space:pre-wrap;font-size:11px;`;
+      line.textContent = `${time} ${tag} ${msg}`;
+      panel.appendChild(line);
+      panel.scrollTop = panel.scrollHeight;
+      // 最多保留 80 条
+      while (panel.children.length > 80) panel.removeChild(panel.firstChild);
+    }
+  };
+
   // ── 构建 StartSession payload ────────────────────────
   const sanitize = s => s
     .replace(/[\r\n\t]/g, ' ')
@@ -337,45 +360,74 @@ const DW = (() => {
   const buildStartPayload = () => {
     const cfg = getConfig();
 
-    // tts.extra: explicit_dialect 在这里（文档位置）
+    dwLog('info', '=== 开始构建 StartSession payload ===');
+    dwLog('info', '当前配置 window._dwConfig =', window._dwConfig);
+
+    // ── 方言 (tts.extra.explicit_dialect) ──
+    // ⚠️ 注意：仅在 vv 音色 + O2.0(1.2.1.1) 模型下生效
     const ttsExtra = {};
     if (cfg.dialect && cfg.dialect !== 'none') {
-      ttsExtra.explicit_dialect = cfg.dialect;      // ✅ tts.extra.explicit_dialect
+      ttsExtra.explicit_dialect = cfg.dialect;
+      dwLog('ok', `方言已设置 → tts.extra.explicit_dialect = "${cfg.dialect}"`);
+      if (cfg.speaker !== 'zh_female_vv_jupiter_bigtts') {
+        dwLog('warn', `⚠️ 当前音色 "${cfg.speaker}" 不是 vv，方言设置将被服务端忽略！请切换到 vv 音色。`);
+      }
+    } else {
+      dwLog('info', '方言 = 标准（不传 explicit_dialect）');
     }
 
-    // dialog.speaking_style: 用户自定义，O版本生效
-    const speakingStyle = cfg.speakingStyle
-      ? sanitize(cfg.speakingStyle)
-      : '口语化、简短，每次不超过3句话';
+    // ── 说话风格 (dialog.speaking_style) ──
+    // ⚠️ 注意：仅 O 版本（1.2.1.1）生效；空字符串时不传该字段
+    let speakingStyle = '';
+    if (cfg.speakingStyle && cfg.speakingStyle.trim()) {
+      speakingStyle = sanitize(cfg.speakingStyle);
+      dwLog('ok', `说话风格已设置 → dialog.speaking_style = "${speakingStyle}"`);
+    } else {
+      // 不传 speaking_style，让模型用 system_role 里的指令控制风格
+      dwLog('info', '说话风格为空，不传 speaking_style 字段（由 system_role 控制口吻）');
+    }
+
+    const dialogExtra = {
+      model:        '1.2.1.1',
+      input_mod:    'keep_alive',
+      strict_audit: false,
+    };
+    dwLog('info', `模型版本 = ${dialogExtra.model}（O2.0版本）`);
+
+    const dialogBlock = {
+      bot_name:    sanitize(cfg.botName),
+      system_role: sanitize(cfg.systemPrompt),
+      extra:       dialogExtra,
+    };
+    // speaking_style 为空时不加入 payload，避免传空串覆盖服务端默认
+    if (speakingStyle) {
+      dialogBlock.speaking_style = speakingStyle;
+    }
 
     const payload = {
       tts: {
-        speaker: cfg.speaker,                       // tts.speaker
+        speaker: cfg.speaker,
         audio_config: {
           channel:       1,
           format:        'ogg_opus',
           sample_rate:   24000,
-          speech_rate:   cfg.speechRate,            // tts.audio_config.speech_rate
-          loudness_rate: cfg.loudnessRate,          // tts.audio_config.loudness_rate
+          speech_rate:   cfg.speechRate,
+          loudness_rate: cfg.loudnessRate,
         },
-        extra: ttsExtra,                            // tts.extra（含 explicit_dialect）
+        extra: ttsExtra,
       },
       asr: {
         audio_info: { format: 'pcm', sample_rate: 16000, channel: 1 },
         extra: {},
       },
-      dialog: {
-        bot_name:       sanitize(cfg.botName),
-        system_role:    sanitize(cfg.systemPrompt), // dialog.system_role（O版本）
-        speaking_style: speakingStyle,              // dialog.speaking_style（O版本）
-        extra: {
-          model:        '1.2.1.1',
-          input_mod:    'keep_alive',
-          strict_audit: false,
-        },
-      },
+      dialog: dialogBlock,
     };
-    return JSON.stringify(payload);
+
+    const result = JSON.stringify(payload);
+    dwLog('ok', '最终发送的 StartSession payload ↓');
+    dwLog('ok', result);
+    dwLog('info', '=== payload 构建完成，正在发送 ===');
+    return result;
   };
 
   // ── WS 消息处理 ──────────────────────────────────────
@@ -387,16 +439,19 @@ const DW = (() => {
       try { j = JSON.parse(new TextDecoder().decode(payload)); } catch (_) {}
 
       if (eid === 50) {          // ConnectionStarted
+        dwLog('ok', `收到 eid=50 ConnectionStarted，准备发送 StartSession(eid=100)，sid=${sid}`);
         setStatus('连接成功，初始化会话…');
         ws.send(encode(100, buildStartPayload(), sid));
 
       } else if (eid === 150) { // SessionStarted
+        dwLog('ok', `收到 eid=150 SessionStarted ✅ 会话启动成功，说话风格/方言/语速已生效`, j);
         state = 'listening';
         setStatus('点击下方开始说话');
         $('dw-tapbtn').style.display = 'flex';
 
       } else if (eid === 350) { // TTSSentenceStart
         const t = j.text || '';
+        dwLog('info', `收到 eid=350 TTSSentenceStart，文本="${t}"`);
         if (t) setSub(t);
         state = 'speaking';
         setStatus('助理正在说话…');
@@ -404,23 +459,35 @@ const DW = (() => {
         setWave(true, false);
 
       } else if (eid === 351) { // TTSSentenceEnd
+        dwLog('info', '收到 eid=351 TTSSentenceEnd，冲刷音频');
         flushAudio();
 
       } else if (eid === 359) { // TTSEnded
+        dwLog('info', '收到 eid=359 TTSEnded，本轮回复结束');
         flushAudio();
         state = 'listening';
         setStatus('正在聆听…');
         setListening(true);
 
       } else if (eid === 450) { // ASRInfo（用户开始说话，打断播放）
+        dwLog('info', '收到 eid=450 ASRInfo，用户开始说话，打断当前播放');
         stopAudio();
 
       } else if (eid === 451) { // ASRResponse
         const t = (j.results || []).map(r => r.text).join('');
-        if (t) { setStatus('我听到：' + t); setSub(t); }
+        if (t) {
+          dwLog('info', `收到 eid=451 ASRResponse，识别结果="${t}"`);
+          setStatus('我听到：' + t); setSub(t);
+        }
 
-      } else if (eid === 153 || eid === 599) {
+      } else if (eid === 153) {
+        dwLog('error', `收到 eid=153 SessionFailed ❌，服务端返回错误`, j);
         setStatus('连接出错，请重试');
+      } else if (eid === 599) {
+        dwLog('error', `收到 eid=599 错误帧 ❌`, j);
+        setStatus('连接出错，请重试');
+      } else {
+        dwLog('info', `收到未处理事件 eid=${eid}`, j);
       }
     }
     if (msgType === 11 && payload) chunks.push(payload); // TTSResponse 音频包
@@ -429,21 +496,25 @@ const DW = (() => {
   // ── 公开方法 ─────────────────────────────────────────
   const open = () => {
     const cfg = getConfig();
+    dwLog('info', `DW.open() 被调用，当前配置：音色=${cfg.speaker} 方言=${cfg.dialect} 说话风格="${cfg.speakingStyle}" 语速=${cfg.speechRate}`);
     $('dw-name').textContent = cfg.botName || '智能助理';
     const m = $('dw-modal');
     m.style.display = 'flex';
     setSub(''); setStatus('正在连接…'); setDot(false); setWave(false, false);
     $('dw-tapbtn').style.display = 'none';
     sid = uuid(); seq = 2; chunks = [];
+    dwLog('info', `新 Session 生成，sid=${sid}`);
 
     const u = new URL(WS_URL);
     u.searchParams.set('session_id', 'dw_' + Date.now());
+    dwLog('info', `正在连接 WebSocket: ${u.toString()}`);
     ws = new WebSocket(u.toString());
     ws.binaryType = 'arraybuffer';
-    ws.onopen    = () => { ws.send(encode(1, '{}', null)); };
+    ws.onopen    = () => { dwLog('ok', 'WebSocket 已连接，发送 StartConnection(eid=1)'); ws.send(encode(1, '{}', null)); };
     ws.onmessage = onMsg;
-    ws.onerror   = () => setStatus('连接失败，请检查网络');
+    ws.onerror   = (e) => { dwLog('error', 'WebSocket 连接失败', e); setStatus('连接失败，请检查网络'); };
     ws.onclose   = e  => {
+      dwLog('warn', `WebSocket 已断开，code=${e.code} reason=${e.reason}`);
       stopMic(); setStatus('已断开 (' + e.code + ')');
       state = 'idle'; setWave(false, false); setDot(false);
     };
@@ -696,6 +767,28 @@ const DW = (() => {
       ">↺ 重启 Session 应用所有设置</button>
       <div style="text-align:center;font-size:10px;color:#334155;margin-top:-12px;">语速、音量、提示词、方言在下次 Session 初始化时生效</div>
 
+      <!-- ⑥ 调试日志面板 -->
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span>⑥ 调试日志</span>
+          <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
+          <button id="ctrl-log-copy" onclick="CTRL.copyLog()" style="font-size:9px;color:#475569;background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);margin-right:4px;">📋 复制</button>
+          <button onclick="document.getElementById('dw-debuglog').innerHTML=''" style="font-size:9px;color:#475569;background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);">清空</button>
+        </div>
+        <div style="font-size:10px;color:#475569;margin-bottom:6px;">
+          实时显示 StartSession payload 和服务端响应，方便排查说话风格/方言不生效的问题
+        </div>
+        <div id="dw-debuglog" style="
+          height:180px;overflow-y:auto;
+          background:rgba(0,0,0,.4);border-radius:10px;
+          border:1px solid rgba(99,102,241,.2);
+          padding:8px 10px;font-family:monospace;font-size:11px;
+          color:#94a3b8;line-height:1.6;
+        ">
+          <div style="color:#475569;font-style:italic;">等待操作…重启 Session 后会显示发送的完整 payload</div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -907,13 +1000,22 @@ const CTRL = (() => {
     const btn = $('ctrl-restart-btn');
     btn.textContent = '重启中…'; btn.style.opacity = '.5'; btn.disabled = true;
 
-    // DW.close() → DW.open() 时会从 window._dwConfig 读取最新配置
-    // 无需任何 monkeypatch，因为 buildStartPayload() 直接调用 getConfig() 读 _dwConfig
+    const c = cfg();
+    const dialectLabel = DIALECTS.find(d => d.id === (c.dialect || 'none'))?.label || '标准';
+
+    // 打印即将应用的配置摘要到调试面板
+    dwLog('info', '━━━ 重启 Session，即将应用以下配置 ━━━');
+    dwLog('info', `音色 = ${c.speaker}`);
+    dwLog('info', `方言 = ${c.dialect || 'none'} (${dialectLabel})${c.speaker !== 'zh_female_vv_jupiter_bigtts' && c.dialect !== 'none' ? ' ⚠️ 非vv音色，方言无效！' : ''}`);
+    dwLog('info', `说话风格 = "${c.speakingStyle || '（空，不传）'}"`);
+    dwLog('info', `语速 = ${c.speechRate}  音量 = ${c.loudnessRate}`);
+    dwLog('info', `System Prompt 前50字 = "${(c.systemPrompt||'').substring(0,50)}…"`);
+    dwLog('info', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     DW.close();
     setTimeout(() => {
       DW.open();
-      const dialectLabel = DIALECTS.find(d => d.id === (cfg().dialect || 'none'))?.label || '标准';
-      toast(`✓ 语速${cfg().speechRate} 音量${cfg().loudnessRate} 方言:${dialectLabel}`);
+      toast(`✓ 语速${c.speechRate} 音量${c.loudnessRate} 方言:${dialectLabel}`);
       btn.textContent = '↺ 重启 Session 应用所有设置';
       btn.style.opacity = '1'; btn.disabled = false;
     }, 700);
@@ -954,6 +1056,31 @@ const CTRL = (() => {
     setTimeout(() => { $('ctrl-overlay').style.display = 'none'; }, 300);
   };
 
+  // ── 复制调试日志 ──────────────────────────────────────
+  const copyLog = () => {
+    const panel = document.getElementById('dw-debuglog');
+    const text = Array.from(panel.children).map(el => el.textContent).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('ctrl-log-copy');
+      btn.textContent = '✅ 已复制';
+      btn.style.color = '#4ade80';
+      setTimeout(() => { btn.textContent = '📋 复制'; btn.style.color = '#475569'; }, 2000);
+    }).catch(() => {
+      // 降级方案：创建临时 textarea 复制
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      const btn = document.getElementById('ctrl-log-copy');
+      btn.textContent = '✅ 已复制';
+      btn.style.color = '#4ade80';
+      setTimeout(() => { btn.textContent = '📋 复制'; btn.style.color = '#475569'; }, 2000);
+    });
+  };
+
   // ── 初始化渲染 ───────────────────────────────────────
   renderSpeakers();
   renderDialects();
@@ -961,7 +1088,7 @@ const CTRL = (() => {
   updateFill('ctrl-vol-fill',  0, -50, 100);
 
   return { toggle, open, close, selectSpeaker, selectDialect, onRate, onVol,
-           onPrompt, onStyle, setStylePreset, restartSession };
+           onPrompt, onStyle, setStylePreset, restartSession, copyLog };
 })();
 </script>
 
