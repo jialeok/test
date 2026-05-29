@@ -500,6 +500,8 @@ const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g
 
 let pendingRAG = null; // 语音路径：等 459 再发
 let pendingRAGPromise = null; // ★ 修复竞态：lookupRAG的Promise，flushPendingRAG等它完成
+let _blockLLMAudio = false;  // ★ 方案B：屏蔽LLM音频帧（352），防止残音入队
+let _our500Sent    = false;  // ★ 方案B：我们是否已发过500 TTS，用于区分350来源
 let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 
 function matchQuery(text){
@@ -728,6 +730,7 @@ function flushPendingRAG(){
 
 // 用 ChatTTSText(500) 流式发送文本
 function sendChatTTS(ttsText, note=''){
+  _our500Sent = true;   // ★ 方案B：标记我们发过500，下一个350是我们的
   logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+ttsText.substring(0,30)+'…');
   ws.send(encode(500,JSON.stringify({start:true,content:ttsText,end:false}),sid));
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
@@ -826,17 +829,21 @@ const onMsg=evt=>{
       }
     } else if(eid===350){
       const t=j.text||'';if(t)setSub(t,true);
-      // ★ 如果RAG正在处理中（有pendingQueryText或pendingRAGPromise），
-      // 这个350是LLM触发的，直接压制，不改state，不播
-      if(_pendingQueryText || pendingRAGPromise){
-        logEvt('←忽略350',350,'RAG处理中，忽略LLM触发的TTSSentenceStart');
+      if(_our500Sent){
+        // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
+        _our500Sent    = false;
+        _blockLLMAudio = false;
+        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽');
+        state='speaking';setStatus('助理正在说话…');
+        setWave(true,false);litFlow(4);
+      } else {
+        // ★ 方案B：我们没发过500，这是LLM触发的350，开启屏蔽并压制
+        _blockLLMAudio = true;
+        logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
         if(ws&&ws.readyState===WebSocket.OPEN){
           ws.send(encode(515,JSON.stringify({}),sid));
         }
-        return;
       }
-      state='speaking';setStatus('助理正在说话…');
-      setWave(true,false);litFlow(4);
     } else if(eid===351){flushAudio();
     } else if(eid===359){
       flushAudio();
@@ -938,7 +945,14 @@ const onMsg=evt=>{
       setStatus('连接出错：'+errMsg);setConnStatus(false,'出错');
     }
   }
-  if(msgType===11&&payload)chunks.push(payload);
+  if(msgType===11&&payload){
+    if(_blockLLMAudio){
+      // ★ 方案B：屏蔽中，丢弃LLM音频帧，不入队，彻底消灭残音
+      logEvt('←丢弃352',352,'_blockLLMAudio=true，丢弃LLM音频帧');
+    } else {
+      chunks.push(payload);
+    }
+  }
 };
 
 // ══ 会话静默刷新（防空闲断线）════════════════════════════
@@ -1045,9 +1059,11 @@ let pendingPTT=false;
 function _doPttStart(){
   pendingPTT=false;
   pendingRAG=null;
-  pendingRAGPromise=null; // ★ 新一轮，清掉上一轮的Promise
+  pendingRAGPromise=null;
   _pendingQueryText=null;
-  _ragFlushed=false; // 新一轮录音，重置防重入锁
+  _ragFlushed=false;
+  _blockLLMAudio=false;  // ★ 方案B：新一轮，解除屏蔽
+  _our500Sent=false;     // ★ 方案B：新一轮，重置标记
   waitingForFinalASR=false;
   pttFrameCount=0;
   audioBytesSent=0;audioFramesSent=0; // 每次按下重置统计
