@@ -10,76 +10,280 @@
 <!-- v=20260529-7 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
   :root {
-    --bg:#f5f7fa; --panel:#ffffff; --border:#dde1ea;
-    --accent:#0a7c4e; --accent2:#0070c0; --warn:#d07000;
-    --text:#1a1d27; --muted:#7a8299; --code-bg:#f0f2f5;
-    --mono:'JetBrains Mono',monospace;
-    --sans:-apple-system,'PingFang SC','Noto Sans SC',sans-serif;
+    --bg:#080c14;
+    --panel:rgba(255,255,255,.04);
+    --panel2:rgba(255,255,255,.07);
+    --border:rgba(255,255,255,.09);
+    --accent:#00e5a0;
+    --accent2:#38b6ff;
+    --accent3:#a855f7;
+    --warn:#f59e0b;
+    --text:#e8edf5;
+    --muted:#6b7a96;
+    --code-bg:rgba(0,0,0,.4);
+    --mono:'Space Grotesk',monospace;
+    --sans:'Space Grotesk',-apple-system,'PingFang SC',sans-serif;
+    --glow-g: rgba(0,229,160,.18);
+    --glow-b: rgba(56,182,255,.18);
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column}
 
   /* ── 顶栏 ── */
-  header{padding:11px 16px;background:rgba(255,255,255,.98);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;z-index:10}
-  .logo-dot{width:8px;height:8px;border-radius:50%;background:#0a7c4e;box-shadow:0 0 8px rgba(10,124,78,.4);flex-shrink:0}
-  header h1{font-family:var(--mono);font-size:13px;font-weight:600}
-  .conn-badge{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--border);padding:2px 9px;border-radius:20px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+  header{
+    padding:0 16px;height:62px;
+    background:linear-gradient(180deg,rgba(0,229,160,.06) 0%,rgba(8,12,20,.95) 100%);
+    border-bottom:1px solid rgba(0,229,160,.2);
+    display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10;
+    position:relative;
+  }
+  header::before{
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(90deg,rgba(0,229,160,.04) 0%,transparent 60%);
+    pointer-events:none;
+  }
+  /* Logo icon */
+  .logo-icon{
+    width:36px;height:36px;border-radius:10px;flex-shrink:0;
+    background:linear-gradient(135deg,#00e5a0,#38b6ff);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;line-height:1;
+    box-shadow:0 0 16px rgba(0,229,160,.4),0 0 40px rgba(0,229,160,.1);
+    position:relative;
+  }
+  .logo-icon::after{
+    content:'';position:absolute;inset:-1px;border-radius:11px;
+    background:linear-gradient(135deg,rgba(0,229,160,.6),rgba(56,182,255,.6));
+    z-index:-1;filter:blur(4px);
+  }
+  .logo-text-wrap{display:flex;flex-direction:column;gap:0px}
+  .logo-name{
+    font-family:'Orbitron',monospace;font-size:15px;font-weight:800;
+    background:linear-gradient(90deg,#00e5a0,#38b6ff);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    letter-spacing:.06em;line-height:1.1;
+  }
+  .logo-sub{font-size:9px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;font-weight:500}
+  .conn-badge{
+    margin-left:auto;font-family:var(--mono);font-size:10px;
+    color:var(--muted);border:1px solid var(--border);
+    padding:4px 10px;border-radius:20px;
+    display:flex;align-items:center;gap:5px;white-space:nowrap;
+    background:rgba(0,0,0,.3);
+  }
   .conn-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
-  .conn-dot.on{background:#0a7c4e;box-shadow:0 0 5px rgba(10,124,78,.5)}
+  .conn-dot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
 
   /* ── Tab 栏 ── */
-  .tabs{display:flex;border-bottom:1px solid var(--border);background:#ffffff;flex-shrink:0}
-  .tab{flex:1;padding:12px 6px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.01em;font-weight:500}
-  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
+  .tabs{
+    display:flex;border-bottom:1px solid rgba(0,229,160,.15);
+    background:rgba(8,12,20,.98);flex-shrink:0;
+  }
+  .tab{
+    flex:1;padding:13px 6px;text-align:center;
+    font-family:var(--sans);font-size:13px;font-weight:600;
+    color:var(--muted);cursor:pointer;
+    border-bottom:2px solid transparent;transition:all .2s;
+    letter-spacing:.01em;
+  }
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);text-shadow:0 0 12px rgba(0,229,160,.5)}
 
   /* ── 内容区 ── */
   .tab-content{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0}
   .tab-content.active{display:flex}
 
   /* ── Tab0: 语音对话 ── */
-  /* 流程条 */
-  .flow-strip{display:flex;align-items:center;justify-content:center;gap:4px;padding:8px 10px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;background:rgba(245,247,250,.9)}
-  .flow-node{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:10px;color:var(--muted);transition:all .3s;white-space:nowrap}
-  .flow-node.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px rgba(10,124,78,.15)}
-  .flow-arrow{font-size:10px;color:var(--border);transition:color .3s}
+  .flow-strip{
+    display:flex;align-items:center;justify-content:center;gap:4px;
+    padding:8px 10px;border-bottom:1px solid var(--border);
+    flex-shrink:0;flex-wrap:wrap;
+    background:rgba(0,0,0,.2);
+  }
+  .flow-node{
+    background:rgba(255,255,255,.04);border:1px solid var(--border);
+    border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:10px;
+    color:var(--muted);transition:all .3s;white-space:nowrap;
+  }
+  .flow-node.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px rgba(0,229,160,.2)}
+  .flow-arrow{font-size:10px;color:rgba(255,255,255,.15);transition:color .3s}
   .flow-arrow.lit{color:var(--accent)}
 
   /* 字幕区 */
-  .subtitle-box{margin:12px 14px 0;padding:12px 14px;background:var(--panel);border:1px solid var(--border);border-radius:14px;font-size:13px;line-height:1.7;min-height:52px;color:var(--muted);font-style:italic;word-break:break-all;transition:all .3s;flex-shrink:0}
-  .subtitle-box.active{color:var(--text);font-style:normal;border-color:rgba(10,124,78,.25);background:rgba(10,124,78,.04)}
+  .subtitle-box{
+    margin:12px 14px 0;padding:14px 16px;
+    background:rgba(0,229,160,.04);
+    border:1px solid rgba(0,229,160,.15);border-radius:14px;
+    font-size:14px;line-height:1.7;min-height:56px;
+    color:var(--muted);font-style:italic;word-break:break-all;
+    transition:all .3s;flex-shrink:0;
+  }
+  .subtitle-box.active{color:var(--text);font-style:normal;border-color:rgba(0,229,160,.3);background:rgba(0,229,160,.06)}
 
   /* 波形 */
   .wave-row{display:flex;align-items:center;justify-content:center;gap:5px;height:44px;flex-shrink:0}
-  .dw-bar{width:4px;height:26px;border-radius:3px;transform-origin:bottom;background:linear-gradient(to top,#5b8fff,#6fa8f5);transform:scaleY(.2);opacity:.4;transition:background .3s}
+  .dw-bar{width:4px;height:26px;border-radius:3px;transform-origin:bottom;background:linear-gradient(to top,#38b6ff,#00e5a0);transform:scaleY(.2);opacity:.3;transition:background .3s}
   .dw-bar.active{animation:dw-wave 1.1s ease-in-out infinite}
   .dw-bar.active:nth-child(1){animation-delay:0s}.dw-bar.active:nth-child(2){animation-delay:.14s}.dw-bar.active:nth-child(3){animation-delay:.28s}.dw-bar.active:nth-child(4){animation-delay:.42s}.dw-bar.active:nth-child(5){animation-delay:.56s}.dw-bar.active:nth-child(6){animation-delay:.70s}.dw-bar.active:nth-child(7){animation-delay:.84s}
-  .dw-bar.green{background:linear-gradient(to top,#0a7c4e,#0aaa6e)!important}
-  @keyframes dw-wave{0%,100%{transform:scaleY(.2);opacity:.4}50%{transform:scaleY(1);opacity:1}}
+  .dw-bar.green{background:linear-gradient(to top,#00e5a0,#a0ffd9)!important}
+  @keyframes dw-wave{0%,100%{transform:scaleY(.2);opacity:.3}50%{transform:scaleY(1);opacity:1}}
 
-  /* 状态文字 */
-  .status-row{text-align:center;font-size:12px;color:var(--muted);padding:2px 0 8px;font-family:var(--mono);flex-shrink:0}
+  .status-row{text-align:center;font-size:11px;color:var(--muted);padding:2px 0 8px;font-family:var(--mono);flex-shrink:0;letter-spacing:.04em}
 
   /* RAG 状态卡 */
-  .rag-card{margin:10px 14px 0;padding:10px 12px;border-radius:12px;background:rgba(10,124,78,.05);border:1px solid rgba(10,124,78,.2);font-family:var(--mono);font-size:11px;color:var(--accent);display:none;flex-shrink:0}
+  .rag-card{
+    margin:10px 14px 0;padding:10px 14px;border-radius:12px;
+    background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.2);
+    font-family:var(--mono);font-size:11px;color:var(--accent);
+    display:none;flex-shrink:0;
+  }
   .rag-card.show{display:block}
 
-  /* 快捷chip */
-  .hints{padding:6px 14px 4px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
-  .hint-chip{font-size:12px;padding:8px 14px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .2s;text-align:left;overflow:hidden;text-overflow:ellipsis}
-  .hint-chip:active{border-color:var(--accent);color:var(--accent)}
+  /* ── 员工列表 chip ── */
+  .hints{padding:8px 14px 4px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
 
-  /* 底部按住说话按钮（全宽，在 tab0 内部底部）*/
-  .bottom-bar{margin-top:auto;flex-shrink:0;background:rgba(255,255,255,.98);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
-  .ptt-btn{width:100%;height:52px;border-radius:26px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:15px;font-family:var(--sans);font-weight:600;letter-spacing:.05em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;user-select:none;-webkit-user-select:none;box-shadow:0 1px 4px rgba(0,0,0,.06);}
-  .ptt-btn.pressing{background:linear-gradient(135deg,#0a7c4e,#0aaa6e);border-color:transparent;color:#fff;box-shadow:0 0 20px rgba(10,124,78,.35);transform:scale(.98);}
-  .ptt-btn:disabled{opacity:.4;cursor:not-allowed}
+  /* 员工卡片（列表态） */
+  .emp-chip{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 16px;border-radius:16px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    cursor:pointer;transition:all .22s;
+    position:relative;overflow:hidden;
+  }
+  .emp-chip::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:linear-gradient(180deg,var(--accent),var(--accent2));
+    border-radius:0 2px 2px 0;opacity:0;transition:opacity .2s;
+  }
+  .emp-chip:active,.emp-chip.pressed{
+    background:rgba(0,229,160,.08);border-color:rgba(0,229,160,.35);
+    box-shadow:0 0 20px rgba(0,229,160,.1);
+  }
+  .emp-chip:active::before,.emp-chip.pressed::before{opacity:1}
+  .emp-avatar{
+    width:42px;height:42px;border-radius:50%;flex-shrink:0;
+    background:linear-gradient(135deg,rgba(0,229,160,.2),rgba(56,182,255,.2));
+    border:1.5px solid rgba(0,229,160,.3);
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:700;color:var(--accent);
+    font-family:var(--sans);
+  }
+  .emp-info{flex:1;min-width:0}
+  .emp-name-row{font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px}
+  .emp-meta-row{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .emp-date-badge{
+    background:rgba(56,182,255,.12);border:1px solid rgba(56,182,255,.2);
+    color:var(--accent2);padding:1px 8px;border-radius:20px;font-size:10px;font-weight:600;
+    white-space:nowrap;
+  }
+  .emp-arrow{color:var(--muted);font-size:16px;flex-shrink:0;transition:transform .2s}
+  .emp-chip:active .emp-arrow{transform:translateX(3px);color:var(--accent)}
+  .emp-chip.no-record .emp-avatar{opacity:.4}
+  .emp-chip.no-record .emp-name-row{color:var(--muted)}
 
-  /* ── Tab1: 知识库 ── */
+  /* ── 查询看板（覆盖列表） ── */
+  .detail-board{
+    display:none;flex-direction:column;flex:1;
+    padding:14px;gap:0;
+  }
+  .detail-board.show{display:flex}
+
+  .board-header{
+    display:flex;align-items:center;gap:12px;
+    padding:16px 18px;border-radius:16px 16px 0 0;
+    background:linear-gradient(135deg,rgba(0,229,160,.12),rgba(56,182,255,.08));
+    border:1px solid rgba(0,229,160,.25);border-bottom:none;
+    flex-shrink:0;
+  }
+  .board-avatar{
+    width:48px;height:48px;border-radius:50%;
+    background:linear-gradient(135deg,rgba(0,229,160,.25),rgba(56,182,255,.25));
+    border:2px solid rgba(0,229,160,.4);
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:800;color:var(--accent);flex-shrink:0;
+  }
+  .board-title{flex:1;min-width:0}
+  .board-name{font-size:18px;font-weight:700;color:var(--text)}
+  .board-date{font-size:11px;color:var(--accent2);margin-top:2px;letter-spacing:.04em}
+  .board-status-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 8px var(--accent);animation:pulse-dot 2s ease-in-out infinite;flex-shrink:0;
+  }
+  @keyframes pulse-dot{0%,100%{box-shadow:0 0 6px var(--accent)}50%{box-shadow:0 0 16px var(--accent),0 0 30px rgba(0,229,160,.3)}}
+
+  .board-body{
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(0,229,160,.15);border-top:none;border-bottom:none;
+    padding:16px;display:flex;flex-direction:column;gap:12px;
+    flex:1;overflow-y:auto;
+  }
+  .board-field{border-radius:12px;background:var(--panel2);border:1px solid var(--border);overflow:hidden}
+  .board-field-label{
+    padding:7px 14px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    background:rgba(255,255,255,.03);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:7px;
+  }
+  .board-field-label .fl-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+  .board-field-content{padding:12px 14px;font-size:14px;line-height:1.7;color:var(--text)}
+  .board-field-empty{padding:12px 14px;font-size:12px;color:var(--muted);font-style:italic}
+
+  /* 做了什么: green, 问题: warn, 计划: blue */
+  .fl-done .board-field-label{color:var(--accent)}.fl-done .fl-dot{background:var(--accent)}
+  .fl-problem .board-field-label{color:var(--warn)}.fl-problem .fl-dot{background:var(--warn)}
+  .fl-plan .board-field-label{color:var(--accent2)}.fl-plan .fl-dot{background:var(--accent2)}
+  .fl-other .board-field-label{color:var(--accent3)}.fl-other .fl-dot{background:var(--accent3)}
+
+  /* loading shimmer inside board */
+  .board-loading{
+    display:flex;flex-direction:column;gap:10px;padding:4px 0;
+  }
+  .shimmer{height:72px;border-radius:12px;background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);background-size:200%;animation:shimmer 1.4s infinite}
+  @keyframes shimmer{0%{background-position:200%}100%{background-position:-200%}}
+
+  /* 返回按钮 */
+  .board-footer{
+    padding:12px;border-radius:0 0 16px 16px;
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(0,229,160,.15);border-top:1px solid rgba(0,229,160,.1);
+    flex-shrink:0;
+  }
+  .back-btn{
+    width:100%;height:46px;border-radius:23px;border:1.5px solid rgba(0,229,160,.3);
+    background:rgba(0,229,160,.06);color:var(--accent);
+    font-size:14px;font-family:var(--sans);font-weight:700;
+    letter-spacing:.04em;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:all .18s;
+  }
+  .back-btn:active{background:rgba(0,229,160,.14);box-shadow:0 0 18px rgba(0,229,160,.25)}
+
+  /* ── 底部按住说话 ── */
+  .bottom-bar{margin-top:auto;flex-shrink:0;background:rgba(8,12,20,.98);border-top:1px solid rgba(0,229,160,.15);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+  .ptt-btn{
+    width:100%;height:54px;border-radius:27px;
+    border:1.5px solid rgba(0,229,160,.3);
+    background:rgba(0,229,160,.07);
+    color:var(--text);font-size:16px;font-family:var(--sans);font-weight:700;
+    letter-spacing:.05em;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:9px;
+    transition:all .15s;user-select:none;-webkit-user-select:none;
+    box-shadow:0 0 20px rgba(0,229,160,.08);
+  }
+  .ptt-btn.pressing{
+    background:linear-gradient(135deg,rgba(0,229,160,.25),rgba(56,182,255,.2));
+    border-color:var(--accent);color:#fff;
+    box-shadow:0 0 30px rgba(0,229,160,.35),0 0 60px rgba(0,229,160,.1);
+    transform:scale(.98);
+  }
+  .ptt-btn:disabled{opacity:.35;cursor:not-allowed}
+
+  /* ── Tab1: 知识库（保留，可能被显示） ── */
   .kb-list{padding:14px;display:flex;flex-direction:column;gap:10px}
   .kb-item{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;position:relative;transition:all .3s}
-  .kb-item.matched{border-color:var(--accent);box-shadow:0 0 10px rgba(10,124,78,.10)}
+  .kb-item.matched{border-color:rgba(0,229,160,.4);box-shadow:0 0 12px rgba(0,229,160,.1)}
   .kb-item.matched::after{content:'✓ 已检索';position:absolute;top:10px;right:12px;font-family:var(--mono);font-size:10px;color:var(--accent)}
   .kb-name{font-weight:700;color:var(--accent2);font-size:14px;margin-bottom:3px}
   .kb-date{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:10px}
@@ -92,29 +296,28 @@
   .detail-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px}
   .detail-label::after{content:'';flex:1;height:1px;background:var(--border)}
   .detail-value{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.7;word-break:break-all}
-  .code-block{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:var(--mono);font-size:11px;line-height:1.7;overflow-x:auto;white-space:pre;color:#4a5568}
-  .code-block .k{color:#9333ea}.code-block .s{color:#16a34a}.code-block .n{color:var(--accent2)}.code-block .v{color:var(--warn)}
+  .code-block{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:var(--mono);font-size:11px;line-height:1.7;overflow-x:auto;white-space:pre;color:#94a3b8}
+  .code-block .k{color:#c084fc}.code-block .s{color:#34d399}.code-block .n{color:var(--accent2)}.code-block .v{color:var(--warn)}
 
   .empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:2.2;text-align:center;padding:40px 20px}
-  .empty-icon{font-size:36px;margin-bottom:12px;opacity:.5}
+  .empty-icon{font-size:36px;margin-bottom:12px;opacity:.4}
 
   ::-webkit-scrollbar{width:3px}
-  ::-webkit-scrollbar-thumb{background:#c4c9d6;border-radius:3px}
+  ::-webkit-scrollbar-thumb{background:rgba(0,229,160,.2);border-radius:3px}
 
   /* ── 隐藏Tab后布局优化 ── */
-  /* 当只有少数 tab 可见时，自动拉伸每个 tab */
-  .tabs .tab { min-width: 0; }
-  /* 字幕区在无流程条时加大上边距，更居中 */
-  .no-flow .subtitle-box { margin-top: 20px; }
-  /* 波形区在无Tab时上移 */
-  .few-tabs .wave-row { margin-top: 6px; }
+  .tabs .tab{min-width:0}
+  .no-flow .subtitle-box{margin-top:20px}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo-dot"></div>
-  <h1>语音智询 VoiQ</h1>
+  <div class="logo-icon">🤖</div>
+  <div class="logo-text-wrap">
+    <div class="logo-name">VoiQ</div>
+    <div class="logo-sub">语音智询系统</div>
+  </div>
   <div class="conn-badge">
     <span class="conn-dot" id="connDot"></span>
     <span id="connStatus">未连接</span>
@@ -158,9 +361,29 @@
   <!-- RAG 触发提示 -->
   <div class="rag-card" id="ragCard"></div>
 
-  <!-- 快捷chip：员工名字从数据库动态生成 -->
+  <!-- 员工快捷查询列表 -->
   <div class="hints" id="chipContainer">
-    <span style="font-size:11px;color:var(--muted);align-self:center">加载中…</span>
+    <span style="font-size:11px;color:var(--muted);align-self:center;padding:20px 0">加载中…</span>
+  </div>
+
+  <!-- 查询看板（点击员工后显示，覆盖列表） -->
+  <div class="detail-board" id="detailBoard">
+    <div class="board-header" id="boardHeader">
+      <div class="board-avatar" id="boardAvatar">?</div>
+      <div class="board-title">
+        <div class="board-name" id="boardName">—</div>
+        <div class="board-date" id="boardDate">—</div>
+      </div>
+      <div class="board-status-dot" id="boardDot" style="display:none"></div>
+    </div>
+    <div class="board-body" id="boardBody">
+      <div class="board-loading">
+        <div class="shimmer"></div><div class="shimmer"></div><div class="shimmer"></div>
+      </div>
+    </div>
+    <div class="board-footer">
+      <button class="back-btn" onclick="closeDetailBoard()">← 返回列表</button>
+    </div>
   </div>
 
   <!-- 底部按住说话（只在语音对话 tab 内显示） -->
@@ -384,17 +607,27 @@ async function renderChips(){
   }
 
   if(!chips.length){
-    container.innerHTML = '<span style="font-size:11px;color:var(--muted)">暂无员工数据</span>';
+    container.innerHTML = '<span style="font-size:11px;color:var(--muted);padding:20px 0;align-self:center">暂无员工数据</span>';
     return;
   }
-  // 每人一行，完整短句，只显示有记录的；无记录的也显示但标灰
+  // 每人一张卡片，支持点击展开查询看板
   let html = '';
   for(const c of chips){
-    if(c.hasRecord){
-      html += `<div class="hint-chip" style="width:100%;box-sizing:border-box" onclick="chipQuery('${c.name}','${c.dateStr}','${c.dateLabel}')">查 ${c.name} ${c.dateLabel} 的工作日报</div>`;
-    } else {
-      html += `<div class="hint-chip" style="width:100%;box-sizing:border-box;opacity:.5" onclick="chipQuery('${c.name}','','${c.dateLabel}')">查 ${c.name} 的工作日报（暂无记录）</div>`;
-    }
+    const initial = c.name.charAt(0);
+    const dateLabel = c.hasRecord ? c.dateLabel : '暂无记录';
+    const noRecClass = c.hasRecord ? '' : ' no-record';
+    const dateStr = c.dateStr || '';
+    html += `<div class="emp-chip${noRecClass}" onclick="openDetailBoard('${c.name}','${dateStr}','${dateLabel}')">
+      <div class="emp-avatar">${initial}</div>
+      <div class="emp-info">
+        <div class="emp-name-row">查 ${c.name} 的工作日报</div>
+        <div class="emp-meta-row">
+          <span class="emp-date-badge">${dateLabel}</span>
+          <span>${c.hasRecord ? '最近有记录' : '暂无日报'}</span>
+        </div>
+      </div>
+      <span class="emp-arrow">›</span>
+    </div>`;
   }
   container.innerHTML = html;
 }
@@ -1360,6 +1593,94 @@ async function chipQuery(name, dateStr, dayLabel){
   logEvt('→客户端',501,'ChatTextQuery');
   ws.send(encode(501, JSON.stringify({ content: '查' + name + '的日报' }), sid));
   } finally { _chipQueryInFlight = false; }
+}
+
+// ══ 看板：打开 / 关闭 ════════════════════════════════════
+function openDetailBoard(name, dateStr, dayLabel){
+  // 隐藏列表，显示看板
+  const container = $('chipContainer');
+  const board = $('detailBoard');
+  if(container) container.style.display = 'none';
+  if(board){ board.classList.add('show'); }
+
+  // 填写 header
+  const initial = name.charAt(0);
+  const el = id => document.getElementById(id);
+  el('boardAvatar').textContent = initial;
+  el('boardName').textContent = name;
+  el('boardDate').textContent = dateStr ? dayLabel + ' · ' + dateStr : dayLabel;
+  el('boardDot').style.display = dateStr ? 'block' : 'none';
+
+  // Loading shimmer
+  el('boardBody').innerHTML = '<div class="board-loading"><div class="shimmer"></div><div class="shimmer"></div><div class="shimmer"></div></div>';
+
+  // 同时发起语音播报（不影响看板显示）
+  if(dateStr){
+    chipQuery(name, dateStr, dayLabel);
+  }
+
+  // 直接查数据库填充看板
+  if(dateStr){
+    lookupRAGDirect({name, date: dateStr}).then(result=>{
+      renderDetailBoard(name, dateStr, dayLabel, result);
+    }).catch(()=>{
+      renderDetailBoard(name, dateStr, dayLabel, null);
+    });
+  } else {
+    renderDetailBoard(name, dateStr, dayLabel, null);
+  }
+}
+
+function renderDetailBoard(name, dateStr, dayLabel, result){
+  const body = $('boardBody');
+  if(!body) return;
+
+  if(!result){
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px 20px;color:var(--muted);text-align:center">
+        <div style="font-size:36px;opacity:.4">📭</div>
+        <div style="font-size:14px;font-weight:600;color:var(--muted)">${dayLabel}暂无日报记录</div>
+        <div style="font-size:12px;opacity:.7">请确认员工是否已提交</div>
+      </div>`;
+    return;
+  }
+
+  // Build fields from KB_GROUPS or result
+  const rec = result.rec || {};
+  const groups = KB_GROUPS.find(g => g.name === name);
+  const items = groups ? groups.items : [];
+
+  let html = '';
+  if(items.length > 0){
+    const classMap = { '做了什么':'fl-done', '遇到的问题':'fl-problem', '明日计划':'fl-plan' };
+    items.forEach(it=>{
+      if(!it.content) return;
+      const cls = classMap[it.section] || 'fl-other';
+      html += `<div class="board-field ${cls}">
+        <div class="board-field-label"><span class="fl-dot"></span>${it.section}</div>
+        <div class="board-field-content">${it.content}</div>
+      </div>`;
+    });
+  } else if(result.text){
+    // Fallback: show TTS text as single block
+    html = `<div class="board-field fl-done">
+      <div class="board-field-label"><span class="fl-dot"></span>日报内容</div>
+      <div class="board-field-content">${result.text}</div>
+    </div>`;
+  }
+
+  if(!html){
+    html = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">内容为空</div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+function closeDetailBoard(){
+  const container = $('chipContainer');
+  const board = $('detailBoard');
+  if(board) board.classList.remove('show');
+  if(container) container.style.display = '';
 }
 
 // ★ 新增：直接用精确query对象查Supabase，不走matchQuery
