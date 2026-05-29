@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
+<!-- v=20260529-4 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -273,6 +277,14 @@ function getDateStr(offsetDays=0){
   const d=new Date();
   d.setDate(d.getDate()+offsetDays);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function normalizeDateStr(s){
+  // 统一解析各种日期格式 → YYYY-MM-DD
+  if(!s)return'';
+  s=String(s).trim();
+  const m=s.match(/(\d{4})-?(\d{1,2})-?(\d{1,2})/);
+  if(!m)return s;
+  return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
 }
 const TODAY     = getDateStr(0);
 const YESTERDAY = getDateStr(-1);
@@ -560,6 +572,7 @@ const playNext=()=>{
 };
 const stopAudio=()=>{
   if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
+  if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
   dbgLog('⏹ stopAudio: 清空 chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
   if(_currentAudio){
     try{_currentAudio.pause();_currentAudio.src='';}catch(_){}
@@ -580,6 +593,7 @@ let _chipTTSActive  = false; // ★ chip查询500会话生命周期：完成后�
 let _pendingChipTTSText = null; // 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
 let _flushTimer     = null;  // ★ 自驱动flush：不依赖351/359，定时刷音频
+let _chipTTSTimer   = null;  // chip延迟发500定时器（当前为立即发送，定时器仅作清理保留）
 
 function matchQuery(text){
   dbgLog('🧠 matchQuery 输入: '+text);
@@ -930,12 +944,9 @@ const onMsg=evt=>{
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
-          // ★ 不发515！！！515会话级终端杀所有TTS包括我们的
-          // ★ 只用200ms封音频压制LLM句首，之后LLM微量插嘴可接受
-          _blockLLMAudio = true;
-          logEvt('←350',350,'LLM触发(chip播放中)，封音频200ms（不发515）');
-          dbgLog('🔇 350 (LLM) chip中封音频200ms（不发515）: '+t.substring(0,30));
-          setTimeout(()=>{ _blockLLMAudio = false; dbgLog('🔓 LLM封200ms到期: blockLLMAudio=false'); }, 200);
+          // ★ chip TTS进行中：不额外封音频（_blockLLMAudio已由553保持true，我们350后解封）
+          logEvt('←350',350,'LLM触发(chip中，不额外操作)');
+          dbgLog('🔊 350 (LLM) chip中: '+t.substring(0,30));
         } else {
           _blockLLMAudio = true;
           logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
@@ -1020,12 +1031,13 @@ const onMsg=evt=>{
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
-      // ChatTextQueryConfirmed：chip的501已确认 → 立刻发500（区块仍封死，我们的350解封）
+      // ChatTextQueryConfirmed：chip的501已确认 → 立即发500
       if(_pendingChipTTSText){
+        setStatus('助理正在整理…');
+        dbgLog('📥 553 → 立即发500 (_blockLLMAudio保持true)');
         const ttsText = _pendingChipTTSText;
         _pendingChipTTSText = null;
-        dbgLog('📥 553 → 立刻sendChatTTS(500) 无延迟');
-        sendChatTTS(ttsText, '(收到553后-无延迟)');
+        sendChatTTS(ttsText, '(chip)');
         litFlow(3);
       }
     } else if(eid===152){
@@ -1293,14 +1305,16 @@ async function chipQuery(name, dateStr, dayLabel){
   } else if(!result){
     ttsText = name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。';
   } else {
-    const todayStr = getDateStr(0);
-    const actualDate = (result.query && result.query.date) || '';
-    dbgLog('📅 前缀决策: actualDate="'+actualDate+'" today="'+todayStr+'" equal='+(actualDate===todayStr)+' truthy='+!!actualDate);
-    if(actualDate && actualDate !== todayStr){
-      ttsText = '提醒一下，' + name + '今天还没有提交日报。以下是最近的记录：' + result.text;
-      dbgLog('📅 加前缀: 今天≠'+actualDate);
-    } else {
+    // ★ 用 chip 渲染时已计算好的 dayLabel 来判断是否为今天
+    // dayLabel 由 _friendlyDate 用 getDateStr(0) 比较得出，比重新 normalize DB date 更可靠
+    const isToday = (dayLabel === '今天');
+    logEvt('📅前缀决策',0,'name='+name+' dayLabel='+dayLabel+' isToday='+isToday+' resultDate='+(result.query?result.query.date:'?'));
+    if(isToday){
       ttsText = result.text;
+      dbgLog('📅 dayLabel="今天" → 不加前缀: '+ttsText.substring(0,30));
+    } else {
+      ttsText = '提醒一下，' + name + '今天还没有提交日报。以下是最近的记录：' + result.text;
+      dbgLog('📅 dayLabel="'+dayLabel+'" → 加前缀: '+ttsText.substring(0,30));
     }
   }
 
