@@ -148,12 +148,13 @@ const DW = (() => {
   const getConfig = () => {
     const c = window._dwConfig || {};
     return {
-      speaker:      c.speaker      || 'zh_female_vv_jupiter_bigtts',
-      systemPrompt: c.systemPrompt || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。',
-      speechRate:   c.speechRate   !== undefined ? c.speechRate   : 0,
-      loudnessRate: c.loudnessRate !== undefined ? c.loudnessRate : 0,
-      dialect:      c.dialect      || 'none',
-      botName:      c.botName      || '智能助理',
+      speaker:       c.speaker       || 'zh_female_vv_jupiter_bigtts',
+      systemPrompt:  c.systemPrompt  || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。',
+      speakingStyle: c.speakingStyle || '',
+      speechRate:    c.speechRate    !== undefined ? c.speechRate    : 0,
+      loudnessRate:  c.loudnessRate  !== undefined ? c.loudnessRate  : 0,
+      dialect:       c.dialect       || 'none',
+      botName:       c.botName       || '智能助理',
     };
   };
 
@@ -335,26 +336,38 @@ const DW = (() => {
 
   const buildStartPayload = () => {
     const cfg = getConfig();
+
+    // tts.extra: explicit_dialect 在这里（文档位置）
+    const ttsExtra = {};
+    if (cfg.dialect && cfg.dialect !== 'none') {
+      ttsExtra.explicit_dialect = cfg.dialect;      // ✅ tts.extra.explicit_dialect
+    }
+
+    // dialog.speaking_style: 用户自定义，O版本生效
+    const speakingStyle = cfg.speakingStyle
+      ? sanitize(cfg.speakingStyle)
+      : '口语化、简短，每次不超过3句话';
+
     const payload = {
       tts: {
-        speaker: cfg.speaker,                       // ✅ speaker 在 tts 根层级
+        speaker: cfg.speaker,                       // tts.speaker
         audio_config: {
-          channel: 1,
-          format: 'ogg_opus',
-          sample_rate: 24000,
-          speech_rate:   cfg.speechRate,            // ✅ 语速
-          loudness_rate: cfg.loudnessRate,          // ✅ 音量
+          channel:       1,
+          format:        'ogg_opus',
+          sample_rate:   24000,
+          speech_rate:   cfg.speechRate,            // tts.audio_config.speech_rate
+          loudness_rate: cfg.loudnessRate,          // tts.audio_config.loudness_rate
         },
-        extra: {},
+        extra: ttsExtra,                            // tts.extra（含 explicit_dialect）
       },
       asr: {
         audio_info: { format: 'pcm', sample_rate: 16000, channel: 1 },
         extra: {},
       },
       dialog: {
-        bot_name:      sanitize(cfg.botName),
-        system_role:   sanitize(cfg.systemPrompt), // ✅ 提示词
-        speaking_style: '口语化、简短，每次不超过3句话',
+        bot_name:       sanitize(cfg.botName),
+        system_role:    sanitize(cfg.systemPrompt), // dialog.system_role（O版本）
+        speaking_style: speakingStyle,              // dialog.speaking_style（O版本）
         extra: {
           model:        '1.2.1.1',
           input_mod:    'keep_alive',
@@ -362,10 +375,6 @@ const DW = (() => {
         },
       },
     };
-    // 方言：仅 vv 音色 + 2.0 模型支持
-    if (cfg.dialect && cfg.dialect !== 'none') {
-      payload.tts.extra.explicit_dialect = cfg.dialect;
-    }
     return JSON.stringify(payload);
   };
 
@@ -600,21 +609,57 @@ const DW = (() => {
             <span>-50 小</span><span>0</span><span>大 100</span>
           </div>
         </div>
-
-        <!-- 方言 -->
-        <div style="margin-top:16px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px;">
-            <span style="font-size:12px;color:#94a3b8;">方言</span>
-            <span style="font-size:10px;color:#475569;">仅 vv 音色 + 2.0 模型生效</span>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="ctrl-dialect-grid"></div>
-        </div>
       </div>
 
-      <!-- ③ 提示词编辑（重启生效） -->
+      <!-- ③ 方言（重启生效，仅 vv+O2.0） -->
       <div>
         <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-          <span>③ System Prompt</span>
+          <span>③ 方言</span>
+          <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
+          <span style="font-size:9px;color:#f59e0b;font-weight:400;">重启后生效</span>
+        </div>
+        <div style="font-size:10px;color:#475569;margin-bottom:8px;">仅 <span style="color:#a5b4fc;">vv 音色</span> + <span style="color:#a5b4fc;">O2.0 模型（1.2.1.1）</span>生效，其他音色选此选项无效果</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" id="ctrl-dialect-grid"></div>
+      </div>
+
+      <!-- ④ 说话风格 speaking_style（重启生效，O版本专用） -->
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span>④ 说话风格</span>
+          <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
+          <span style="font-size:9px;color:#f59e0b;font-weight:400;">重启后生效</span>
+        </div>
+        <div style="font-size:10px;color:#475569;margin-bottom:8px;">O版本专用，描述口吻/风格，例如"你说话偏拽拽的"、"你像林黛玉一样说话"</div>
+        <!-- 预设风格快捷选择 -->
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;" id="ctrl-style-presets">
+          <button onclick="CTRL.setStylePreset('')"         id="ctrl-style-p-default" style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(99,102,241,.8);background:rgba(99,102,241,.15);color:#a5b4fc;font-size:11px;cursor:pointer;transition:all .2s;">默认</button>
+          <button onclick="CTRL.setStylePreset('你说话偏拽拽的，有点酷。')"       style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#64748b;font-size:11px;cursor:pointer;transition:all .2s;">拽拽</button>
+          <button onclick="CTRL.setStylePreset('你说话温柔体贴，像知心姐姐。')"  style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#64748b;font-size:11px;cursor:pointer;transition:all .2s;">温柔</button>
+          <button onclick="CTRL.setStylePreset('你说话幽默风趣，喜欢开玩笑。')"  style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#64748b;font-size:11px;cursor:pointer;transition:all .2s;">幽默</button>
+          <button onclick="CTRL.setStylePreset('你说话严肃专业，像资深顾问。')"  style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#64748b;font-size:11px;cursor:pointer;transition:all .2s;">专业</button>
+          <button onclick="CTRL.setStylePreset('你说话像林黛玉，文雅含蓄多愁善感。')" style="padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);color:#64748b;font-size:11px;cursor:pointer;transition:all .2s;">黛玉</button>
+        </div>
+        <textarea id="ctrl-style" rows="2"
+          placeholder="自定义风格，例如：你说话像小孩一样天真可爱，经常用叠字。"
+          oninput="CTRL.onStyle(this.value)"
+          style="
+            width:100%;box-sizing:border-box;
+            background:rgba(255,255,255,.05);
+            border:1px solid rgba(99,102,241,.3);
+            border-radius:12px;padding:12px;
+            color:#e2e8f0;font-size:12px;line-height:1.6;
+            font-family:-apple-system,sans-serif;
+            resize:vertical;outline:none;transition:border-color .2s;
+          "
+          onfocus="this.style.borderColor='rgba(99,102,241,.8)'"
+          onblur="this.style.borderColor='rgba(99,102,241,.3)'"
+        ></textarea>
+      </div>
+
+      <!-- ⑤ System Prompt（重启生效） -->
+      <div>
+        <div style="font-size:9px;font-weight:700;color:#818cf8;letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+          <span>⑤ System Prompt</span>
           <div style="flex:1;height:1px;background:rgba(99,102,241,.2);"></div>
           <span style="font-size:9px;color:#f59e0b;font-weight:400;">重启后生效</span>
         </div>
@@ -686,12 +731,13 @@ const CTRL = (() => {
   const initConfig = () => {
     if (!window._dwConfig) {
       window._dwConfig = {
-        speaker:      SPEAKERS[0].id,
-        systemPrompt: DEFAULT_PROMPT,
-        speechRate:   0,
-        loudnessRate: 0,
-        dialect:      'none',
-        botName:      '智能助理',
+        speaker:       SPEAKERS[0].id,
+        systemPrompt:  DEFAULT_PROMPT,
+        speakingStyle: '',
+        speechRate:    0,
+        loudnessRate:  0,
+        dialect:       'none',
+        botName:       '智能助理',
       };
     }
   };
@@ -814,6 +860,40 @@ const CTRL = (() => {
     $('ctrl-prompt-count').textContent = trimmed.length + ' / 2000';
   };
 
+  // ── ④ 说话风格 ────────────────────────────────────────
+  const STYLE_PRESETS = [
+    { text: '',                            label: '默认' },
+    { text: '你说话偏拽拽的，有点酷。',         label: '拽拽' },
+    { text: '你说话温柔体贴，像知心姐姐。',      label: '温柔' },
+    { text: '你说话幽默风趣，喜欢开玩笑。',      label: '幽默' },
+    { text: '你说话严肃专业，像资深顾问。',      label: '专业' },
+    { text: '你说话像林黛玉，文雅含蓄多愁善感。', label: '黛玉' },
+  ];
+
+  const setStylePreset = text => {
+    cfg().speakingStyle = text;
+    $('ctrl-style').value = text;
+    renderStylePresets();
+    toast(text ? `✓ 风格已选：${STYLE_PRESETS.find(p=>p.text===text)?.label}（重启生效）` : '✓ 恢复默认风格');
+  };
+
+  const onStyle = val => {
+    cfg().speakingStyle = val;
+    renderStylePresets(); // 有自定义输入时高亮"自定义"
+  };
+
+  const renderStylePresets = () => {
+    const cur = cfg().speakingStyle || '';
+    const btns = document.querySelectorAll('#ctrl-style-presets button');
+    btns.forEach(btn => {
+      const presetText = btn.getAttribute('onclick').match(/'([^']*)'/)?.[1] ?? '';
+      const active = presetText === cur;
+      btn.style.borderColor  = active ? 'rgba(99,102,241,.8)' : 'rgba(255,255,255,.07)';
+      btn.style.background   = active ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.03)';
+      btn.style.color        = active ? '#a5b4fc' : '#64748b';
+    });
+  };
+
   // ── ④ 方言切换 ────────────────────────────────────────
   const selectDialect = id => {
     cfg().dialect = id;
@@ -860,6 +940,9 @@ const CTRL = (() => {
     const ta = $('ctrl-prompt');
     ta.value = c.systemPrompt || DEFAULT_PROMPT;
     $('ctrl-prompt-count').textContent = ta.value.length + ' / 2000';
+    // 同步说话风格
+    $('ctrl-style').value = c.speakingStyle || '';
+    renderStylePresets();
 
     const ol = $('ctrl-overlay'), dr = $('ctrl-drawer');
     ol.style.display = 'flex';
@@ -877,7 +960,8 @@ const CTRL = (() => {
   updateFill('ctrl-rate-fill', 0, -50, 100);
   updateFill('ctrl-vol-fill',  0, -50, 100);
 
-  return { toggle, open, close, selectSpeaker, selectDialect, onRate, onVol, onPrompt, restartSession };
+  return { toggle, open, close, selectSpeaker, selectDialect, onRate, onVol,
+           onPrompt, onStyle, setStylePreset, restartSession };
 })();
 </script>
 
