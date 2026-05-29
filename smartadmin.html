@@ -549,6 +549,80 @@
                     <div style="font-size:11px;color:var(--ink-soft);margin-top:4px">建议简短亲切，1～2句，让客户知道 AI 已就位</div>
                 </div>
 
+                <!-- ── VoiQ 界面显示控制 ── -->
+                <div class="form-group" style="padding:14px 16px;background:rgba(91,79,255,.04);border:1.5px solid rgba(91,79,255,.18);border-radius:14px">
+                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                        <span class="material-icons-round" style="font-size:16px!important;color:var(--accent)">tune</span>
+                        VoiQ 前台界面控制
+                    </div>
+                    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">
+                        控制前台查询页的 Tab 和流程条的显示/隐藏。隐藏后界面更简洁，适合日常展示。
+                    </div>
+
+                    <!-- Tab 显示控制 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Tab 显示</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+
+                        <!-- RAG详情 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🔍 RAG详情</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示检索到的 Payload 详情</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-rag" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-rag')">
+                                <span class="ui-toggle-track" id="ui-tab-rag-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-rag-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+
+                        <!-- 事件日志 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🪲 事件日志</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示实时 WebSocket 事件流</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-log" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-log')">
+                                <span class="ui-toggle-track" id="ui-tab-log-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-log-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+
+                        <!-- 调试 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🔧 调试面板</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示手动测试、Supabase 诊断工具</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-debug" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-debug')">
+                                <span class="ui-toggle-track" id="ui-tab-debug-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-debug-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 流程条显示控制 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">流程条</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">语音 → 意图 → 检索 → 500 → 播报</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示顶部流程高亮动画条</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-flow-strip" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-flow-strip')">
+                            <span class="ui-toggle-track" id="ui-flow-strip-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-flow-strip-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
+
+                    <div style="margin-top:12px;padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
+                        <span class="material-icons-round" style="font-size:13px!important">info</span>
+                        保存后，前台刷新即可生效。隐藏的 Tab 不会丢失数据。
+                    </div>
+                </div>
+
                 <!-- ── Debug 模式开关 ── -->
                 <div class="form-group" style="padding:14px 16px;background:rgba(245,158,11,.05);border:1.5px solid rgba(245,158,11,.2);border-radius:14px">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -587,7 +661,11 @@
                             执行以下语句：<br>
                             <code id="debug-sql" onclick="copySql()" title="点击复制"
                                 style="display:block;margin-top:5px;padding:6px 8px;background:#fff8;border-radius:4px;font-family:monospace;font-size:11px;word-break:break-all;cursor:pointer;border:1px solid rgba(0,0,0,.1)">
-                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;
                             </code>
                             <span style="font-size:10px;color:#b45309;margin-top:3px;display:block">👆 点击代码可复制</span>
                         </div>
@@ -980,6 +1058,18 @@
                 dbgToggle.checked = !!(cfg.debug_mode);
                 syncDebugToggleUI(dbgToggle.checked);
             }
+
+            // 加载 UI 显示控制（默认全部隐藏=false）
+            const uiMap = {
+                'ui-tab-rag':   cfg.ui_tab_rag   ?? false,
+                'ui-tab-log':   cfg.ui_tab_log   ?? false,
+                'ui-tab-debug': cfg.ui_tab_debug ?? false,
+                'ui-flow-strip':cfg.ui_flow_strip ?? false,
+            };
+            for (const [id, val] of Object.entries(uiMap)) {
+                const el = document.getElementById(id);
+                if (el) { el.checked = !!val; syncUiToggleUI(id); }
+            }
         } catch(_) {
             fillDoubaoDefaults();
         }
@@ -996,6 +1086,16 @@
         if (track) track.style.background = on ? '#f59e0b' : '#ccc';
         if (thumb) thumb.style.transform  = on ? 'translateX(20px)' : 'translateX(0)';
         if (hint)  hint.style.display     = on ? 'flex' : 'none';
+    }
+
+    function syncUiToggleUI(id) {
+        const checkbox = document.getElementById(id);
+        if (!checkbox) return;
+        const on = checkbox.checked;
+        const track = document.getElementById(id + '-track');
+        const thumb = document.getElementById(id + '-thumb');
+        if (track) track.style.background = on ? 'var(--accent)' : '#ccc';
+        if (thumb) thumb.style.transform  = on ? 'translateX(20px)' : 'translateX(0)';
     }
 
     function fillDoubaoDefaults() {
@@ -1018,19 +1118,31 @@
             const spk       = document.getElementById('doubao-speaker')?.value || 'zh_female_vv_jupiter_bigtts';
             const greeting  = document.getElementById('doubao-greeting')?.value?.trim() || '您好，请问有什么可以帮您？';
             const debugMode = !!(document.getElementById('debug-mode-toggle')?.checked);
+            const uiTabRag   = !!(document.getElementById('ui-tab-rag')?.checked);
+            const uiTabLog   = !!(document.getElementById('ui-tab-log')?.checked);
+            const uiTabDebug = !!(document.getElementById('ui-tab-debug')?.checked);
+            const uiFlowStrip= !!(document.getElementById('ui-flow-strip')?.checked);
+
+            const uiPayload = {
+                model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
+                ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
+                ui_flow_strip: uiFlowStrip, updated_at: new Date().toISOString()
+            };
 
             const { data: existing } = await sbClient.from('model_configs').select('id').limit(1).single();
 
             if (existing) {
                 const { error } = await sbClient
                     .from('model_configs')
-                    .update({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode, updated_at: new Date().toISOString() })
+                    .update(uiPayload)
                     .eq('id', existing.id);
                 if (error) throw error;
             } else {
                 const { error } = await sbClient
                     .from('model_configs')
-                    .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode });
+                    .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
+                              ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
+                              ui_flow_strip: uiFlowStrip });
                 if (error) throw error;
             }
 
@@ -1038,10 +1150,10 @@
             showToast('配置已保存', 'success');
             setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
         } catch(err) {
-            const isColMissing = err.message && err.message.includes('debug_mode');
+            const isColMissing = err.message && (err.message.includes('debug_mode') || err.message.includes('ui_tab'));
             if (statusEl) {
                 statusEl.innerHTML = isColMissing
-                    ? '❌ 缺少 debug_mode 列，请在 Supabase SQL Editor 执行：<br><code style="background:#f4f4f8;padding:2px 6px;border-radius:4px;font-size:11px;user-select:all">ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;</code>'
+                    ? '❌ 缺少新字段，请在 Supabase SQL Editor 执行初始化语句（点击「复制SQL」按钮）'
                     : '❌ 保存失败: ' + err.message;
                 statusEl.style.color = 'var(--danger)';
             }
@@ -1063,7 +1175,7 @@
     }
 
     function copySql() {
-        var sql = 'ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;';
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {
