@@ -604,7 +604,8 @@
                     </div>
 
                     <!-- 流程条显示控制 -->
-                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">流程条</div>
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">流程条 &amp; 状态提示</div>
+                    <div style="display:flex;flex-direction:column;gap:10px">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
                         <div>
                             <div style="font-size:13px;font-weight:600">语音 → 意图 → 检索 → 500 → 播报</div>
@@ -615,6 +616,20 @@
                             <span class="ui-toggle-track" id="ui-flow-strip-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
                             <span class="ui-toggle-thumb" id="ui-flow-strip-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
                         </label>
+                    </div>
+
+                    <!-- TTS 状态提示卡 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">✅ TTS 状态提示</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示「TTS已发送(500)！切换 RAG详情 tab查看」提示条</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-rag-card" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-rag-card')">
+                            <span class="ui-toggle-track" id="ui-rag-card-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-rag-card-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
                     </div>
 
                     <div style="margin-top:12px;padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
@@ -665,7 +680,8 @@
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;<br>
-                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;
                             </code>
                             <span style="font-size:10px;color:#b45309;margin-top:3px;display:block">👆 点击代码可复制</span>
                         </div>
@@ -1065,6 +1081,7 @@
                 'ui-tab-log':   cfg.ui_tab_log   ?? false,
                 'ui-tab-debug': cfg.ui_tab_debug ?? false,
                 'ui-flow-strip':cfg.ui_flow_strip ?? false,
+                'ui-rag-card':  cfg.ui_rag_card  ?? false,
             };
             for (const [id, val] of Object.entries(uiMap)) {
                 const el = document.getElementById(id);
@@ -1122,11 +1139,12 @@
             const uiTabLog   = !!(document.getElementById('ui-tab-log')?.checked);
             const uiTabDebug = !!(document.getElementById('ui-tab-debug')?.checked);
             const uiFlowStrip= !!(document.getElementById('ui-flow-strip')?.checked);
+            const uiRagCard  = !!(document.getElementById('ui-rag-card')?.checked);
 
             const uiPayload = {
                 model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                 ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
-                ui_flow_strip: uiFlowStrip, updated_at: new Date().toISOString()
+                ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard, updated_at: new Date().toISOString()
             };
 
             const { data: existing } = await sbClient.from('model_configs').select('id').limit(1).single();
@@ -1142,7 +1160,7 @@
                     .from('model_configs')
                     .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                               ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
-                              ui_flow_strip: uiFlowStrip });
+                              ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard });
                 if (error) throw error;
             }
 
@@ -1175,7 +1193,7 @@
     }
 
     function copySql() {
-        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;`;
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {
