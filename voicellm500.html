@@ -31,8 +31,8 @@
 
   /* ── Tab 栏 ── */
   .tabs{display:flex;border-bottom:1px solid var(--border);background:#ffffff;flex-shrink:0}
-  .tab{flex:1;padding:10px 4px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.02em}
-  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab{flex:1;padding:12px 6px;text-align:center;font-family:var(--mono);font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.01em;font-weight:500}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
 
   /* ── 内容区 ── */
   .tab-content{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0}
@@ -70,8 +70,8 @@
   .hint-chip{font-size:12px;padding:8px 14px;border-radius:20px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .2s;text-align:left;overflow:hidden;text-overflow:ellipsis}
   .hint-chip:active{border-color:var(--accent);color:var(--accent)}
 
-  /* 底部按住说话按钮（全宽）*/
-  .bottom-bar{flex-shrink:0;background:rgba(255,255,255,.98);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
+  /* 底部按住说话按钮（全宽，在 tab0 内部底部）*/
+  .bottom-bar{margin-top:auto;flex-shrink:0;background:rgba(255,255,255,.98);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
   .ptt-btn{width:100%;height:52px;border-radius:26px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font-size:15px;font-family:var(--sans);font-weight:600;letter-spacing:.05em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;user-select:none;-webkit-user-select:none;box-shadow:0 1px 4px rgba(0,0,0,.06);}
   .ptt-btn.pressing{background:linear-gradient(135deg,#0a7c4e,#0aaa6e);border-color:transparent;color:#fff;box-shadow:0 0 20px rgba(10,124,78,.35);transform:scale(.98);}
   .ptt-btn:disabled{opacity:.4;cursor:not-allowed}
@@ -162,11 +162,11 @@
   <div class="hints" id="chipContainer">
     <span style="font-size:11px;color:var(--muted);align-self:center">加载中…</span>
   </div>
-</div>
 
-<!-- 底部按住说话（全宽） -->
-<div class="bottom-bar">
-  <button class="ptt-btn" id="pttBtn">🎤 按住说话</button>
+  <!-- 底部按住说话（只在语音对话 tab 内显示） -->
+  <div class="bottom-bar">
+    <button class="ptt-btn" id="pttBtn">🎤 按住说话</button>
+  </div>
 </div>
 
 <!-- Tab1: 知识库 -->
