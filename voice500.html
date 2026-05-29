@@ -541,21 +541,26 @@ const parseFrame=buf=>{
 
 // ══ 音频队列 ═════════════════════════════════════════════
 const flushAudio=()=>{
+  if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
   if(!chunks.length)return;
+  const nChunks = chunks.length;
   const tot=chunks.reduce((s,c)=>s+c.byteLength,0),merged=new Uint8Array(tot);let o=0;
   chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;});chunks=[];
+  dbgLog('🔊 flushAudio: '+nChunks+'块 '+tot+'B → 入队播放 chip='+_chipTTSActive);
   queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
   playNext();
 };
 const playNext=()=>{
   if(playing||!queue.length)return;playing=true;
   const url=queue.shift(),a=new Audio(url);
-  _currentAudio=a; // ★ 记住，stopAudio时能pause它
+  _currentAudio=a;
+  dbgLog('playNext: 开始播放 queue剩余='+queue.length);
   const done=()=>{URL.revokeObjectURL(url);playing=false;_currentAudio=null;playNext();};
   a.onended=done;a.onerror=done;a.play().catch(done);
 };
 const stopAudio=()=>{
-  // ★ 真正停止：pause当前正在播的Audio，清队列
+  if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
+  dbgLog('⏹ stopAudio: 清空 chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
   if(_currentAudio){
     try{_currentAudio.pause();_currentAudio.src='';}catch(_){}
     _currentAudio=null;
@@ -574,6 +579,7 @@ let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 let _chipTTSActive  = false; // ★ chip查询500会话生命周期：完成后不刷新会话，保持上下文
 let _pendingChipTTSText = null; // 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
+let _flushTimer     = null;  // ★ 自驱动flush：不依赖351/359，定时刷音频
 
 function matchQuery(text){
   dbgLog('🧠 matchQuery 输入: '+text);
@@ -929,7 +935,7 @@ const onMsg=evt=>{
           logEvt('←350',350,'LLM触发(chip播放中)，封音频100ms+515压制');
           dbgLog('🔇 350 (LLM) chip中封音频100ms+515: '+t.substring(0,30));
           send515Throttled('(chip中压制LLM)');
-          setTimeout(()=>{ _blockLLMAudio = false; }, 100);
+          setTimeout(()=>{ _blockLLMAudio = false; dbgLog('🔓 LLM封100ms到期: blockLLMAudio=false'); }, 100);
         } else {
           _blockLLMAudio = true;
           logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
@@ -937,8 +943,9 @@ const onMsg=evt=>{
           send515Throttled('(压制LLM TTS)');
         }
       }
-    } else if(eid===351){flushAudio();
+    } else if(eid===351){dbgLog('📌 351 TTSSentenceEnd (服务端flush)');flushAudio();
     } else if(eid===359){
+      dbgLog('📌 359 TTSEnded 到达 chip='+_chipTTSActive);
       flushAudio();
       // ★ 如果有pendingRAGPromise说明RAG还在查，这个TTSEnded是LLM的，忽略
       if(pendingRAGPromise){
@@ -1042,11 +1049,16 @@ const onMsg=evt=>{
     }
   }
   if(msgType===11&&payload){
+    const size = payload.byteLength;
     if(_blockLLMAudio){
-      // ★ 方案B：屏蔽中，丢弃LLM音频帧，不入队，彻底消灭残音
       logEvt('←丢弃352',352,'_blockLLMAudio=true，丢弃LLM音频帧');
+      dbgLog('🔇 丢弃352: '+size+'B blockLLMAudio='+_blockLLMAudio+' chip='+_chipTTSActive);
     } else {
       chunks.push(payload);
+      const wasTimer = !!_flushTimer;
+      if(_flushTimer) clearTimeout(_flushTimer);
+      _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 120);
+      dbgLog('📥 352入队: '+size+'B chunks='+chunks.length+' 定时器='+(wasTimer?'重置':'新设'));
     }
   }
 };
@@ -1302,7 +1314,8 @@ async function chipQuery(name, dateStr, dayLabel){
   _our500Sent    = false;
   _chipTTSActive = true;
   _pendingChipTTSText = ttsText;
-  dbgLog('📤 sendChatTextQuery(501): ' + ttsText.substring(0, 50));
+  dbgLog('� chipQuery发501前: blockLLMAudio='+_blockLLMAudio+' our500Sent='+_our500Sent+' chipTTSActive='+_chipTTSActive);
+  dbgLog('�� sendChatTextQuery(501): ' + ttsText.substring(0, 50));
   logEvt('→客户端',501,'ChatTextQuery');
   ws.send(encode(501, JSON.stringify({ content: ttsText }), sid));
   } finally { _chipQueryInFlight = false; }
