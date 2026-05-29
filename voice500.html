@@ -930,12 +930,12 @@ const onMsg=evt=>{
       } else {
         // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
-          // chip 500 TTS 正在播放：封音频100ms + 发515，最小化LLM插嘴
+          // ★ 不发515！！！515会话级终端杀所有TTS包括我们的
+          // ★ 只用200ms封音频压制LLM句首，之后LLM微量插嘴可接受
           _blockLLMAudio = true;
-          logEvt('←350',350,'LLM触发(chip播放中)，封音频100ms+515压制');
-          dbgLog('🔇 350 (LLM) chip中封音频100ms+515: '+t.substring(0,30));
-          send515Throttled('(chip中压制LLM)');
-          setTimeout(()=>{ _blockLLMAudio = false; dbgLog('🔓 LLM封100ms到期: blockLLMAudio=false'); }, 100);
+          logEvt('←350',350,'LLM触发(chip播放中)，封音频200ms（不发515）');
+          dbgLog('🔇 350 (LLM) chip中封音频200ms（不发515）: '+t.substring(0,30));
+          setTimeout(()=>{ _blockLLMAudio = false; dbgLog('🔓 LLM封200ms到期: blockLLMAudio=false'); }, 200);
         } else {
           _blockLLMAudio = true;
           logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
@@ -1057,7 +1057,7 @@ const onMsg=evt=>{
       chunks.push(payload);
       const wasTimer = !!_flushTimer;
       if(_flushTimer) clearTimeout(_flushTimer);
-      _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 120);
+      _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
       dbgLog('📥 352入队: '+size+'B chunks='+chunks.length+' 定时器='+(wasTimer?'重置':'新设'));
     }
   }
@@ -1293,10 +1293,12 @@ async function chipQuery(name, dateStr, dayLabel){
   } else if(!result){
     ttsText = name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。';
   } else {
+    const todayStr = getDateStr(0);
     const actualDate = (result.query && result.query.date) || '';
-    if(actualDate && actualDate !== getDateStr(0)){
+    dbgLog('📅 前缀决策: actualDate="'+actualDate+'" today="'+todayStr+'" equal='+(actualDate===todayStr)+' truthy='+!!actualDate);
+    if(actualDate && actualDate !== todayStr){
       ttsText = '提醒一下，' + name + '今天还没有提交日报。以下是最近的记录：' + result.text;
-      dbgLog('📅 日期不匹配: 今天='+getDateStr(0)+' 实际='+actualDate+' → 加前缀');
+      dbgLog('📅 加前缀: 今天≠'+actualDate);
     } else {
       ttsText = result.text;
     }
