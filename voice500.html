@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260529-8 -->
+<!-- v=20260529-9 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -1092,9 +1092,9 @@ const onMsg=evt=>{
             dbgLog('⏰ 自驱tick flush chunks入队前='+n);
           }
           if(chunks.length > 0){
-            _flushTimer = setTimeout(tick, 100);
+            _flushTimer = setTimeout(tick, 200);
           }
-        }, 100);
+        }, 200);
         dbgLog('📥 352入队: '+size+'B ▶启动自驱tick');
       } else {
         dbgLog('📥 352入队: '+size+'B chunks='+chunks.length);
