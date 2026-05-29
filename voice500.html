@@ -146,13 +146,9 @@
   <!-- RAG 触发提示 -->
   <div class="rag-card" id="ragCard"></div>
 
-  <!-- 快捷chip -->
-  <div class="hints">
-    <div class="hint-chip" onclick="fillAndSend('查小张今天的工作')">小张今天</div>
-    <div class="hint-chip" onclick="fillAndSend('查小张昨天的工作')">小张昨天</div>
-    <div class="hint-chip" onclick="fillAndSend('查小张前天的工作')">小张前天</div>
-    <div class="hint-chip" onclick="fillAndSend('查李四今天的工作')">李四今天</div>
-    <div class="hint-chip" onclick="fillText('今天天气怎么样')">天气（非RAG）</div>
+  <!-- 快捷chip：员工名字从数据库动态生成 -->
+  <div class="hints" id="chipContainer">
+    <span style="font-size:11px;color:var(--muted);align-self:center">加载中…</span>
   </div>
 </div>
 
@@ -321,9 +317,39 @@ async function loadEmployeeNames(){
     if(error) throw error;
     employeeNames=(data||[]).map(e=>e.name);
     dbgLog('✅ 员工列表: '+employeeNames.join(', '));
+    renderChips(); // ★ 员工加载完成后渲染快捷标签
   }catch(e){
     dbgLog('⚠️ 员工加载失败: '+e.message);
+    renderChips(); // 失败也渲染（显示空提示）
   }
+}
+
+// ★ 动态渲染员工快捷标签：每位员工生成「今天/昨天/前天」三个chip
+function renderChips(){
+  const container = $('chipContainer');
+  if(!container) return;
+  if(!employeeNames.length){
+    container.innerHTML = '<span style="font-size:11px;color:var(--muted)">暂无员工数据</span>';
+    return;
+  }
+  const days = [
+    {label:'今天', offset:0},
+    {label:'昨天', offset:1},
+    {label:'前天', offset:2},
+  ];
+  let html = '';
+  for(const name of employeeNames){
+    for(const d of days){
+      // 生成日期字符串
+      const dt = new Date(); dt.setDate(dt.getDate() - d.offset);
+      const dateStr = dt.getFullYear()+'-'
+        +String(dt.getMonth()+1).padStart(2,'0')+'-'
+        +String(dt.getDate()).padStart(2,'0');
+      // chip文字：「小明 今天」，点击直接用员工名+日期走RAG
+      html += `<div class="hint-chip" onclick="chipQuery('${name}','${dateStr}','${d.label}')">${name} ${d.label}</div>`;
+    }
+  }
+  container.innerHTML = html;
 }
 
 // KB_GROUPS 保留为空，知识库展示用（Supabase数据加载后填入）
@@ -705,8 +731,11 @@ function flushPendingRAG(){
   // 等待 lookupRAG 的 Promise（如果还在查就等，已完成则立即拿到结果）
   const doFlush = (ragText) => {
     if(!ragText){
+      // ★ 兜底前先解除音频屏蔽，否则兜底TTS的352帧也会被丢弃播不出来
+      _blockLLMAudio = false;
+      _our500Sent    = false;
       logEvt('→客户端',500,'(兜底) lookupRAG无结果');
-      sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(兜底)');
+      sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
       return;
     }
     pendingRAG = null;
@@ -1142,6 +1171,37 @@ function stopMic(){
 
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
+// ★ 标签点击：直接用精确的员工名+日期查RAG，不走语音也不走LLM
+async function chipQuery(name, dateStr, dayLabel){
+  if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
+  stopAudio();
+  _blockLLMAudio = false;
+  _our500Sent    = false;
+  _ragFlushed    = false;
+  _pendingQueryText = null;
+  pendingRAG     = null;
+  pendingRAGPromise = null;
+
+  const queryText = name + ' ' + dateStr; // 精确查询字符串，姓名+日期
+  setSub(name + ' ' + dayLabel, true);
+  setStatus('查询 ' + name + ' ' + dayLabel + '…');
+  resetFlow(); litFlow(0); litFlow(1); litFlow(2);
+
+  const result = await lookupRAG(queryText);
+  if(result){
+    applyRAGUI(result);
+    _pendingQueryText = result.text;
+    _ragFlushed = false;
+    sendChatTTS('好的，稍等我查一下～','(chip过渡)');
+    litFlow(3);
+  } else {
+    _blockLLMAudio = false;
+    _our500Sent    = false;
+    sendChatTTS(name + dayLabel + '的工作记录暂未录入，请联系相关人员确认。','(chip兜底-精确)');
+    setStatus('未找到 ' + name + ' ' + dayLabel + ' 的记录');
+  }
+}
+
 function fillAndSend(t){
   _ragFlushed=false;
   _pendingQueryText=null;
@@ -1165,7 +1225,9 @@ function fillAndSend(t){
         _ragFlushed=false;
         sendChatTTS('好的，稍等我查一下～','(chip过渡)');
       } else {
-        sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(chip兜底)');
+        _blockLLMAudio = false;
+        _our500Sent    = false;
+        sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(chip兜底)');
         setStatus('未找到相关内容');
       }
     })();
@@ -1196,9 +1258,10 @@ async function sendText(){
     sendChatTTS('好的，稍等我查一下～','(过渡-等TTSEnded再发结果)');
     setStatus('过渡话术已发，等待服务端TTSEnded后播报结果…');
   } else {
-    // ★ 全走500路线，不走502闲聊，直接播提示
+    _blockLLMAudio = false;
+    _our500Sent    = false;
     logEvt('→客户端',500,'(兜底) 未匹配到RAG内容');
-    sendChatTTS('抱歉，没有找到相关的工作记录，请说明要查询的员工姓名和日期。','(兜底)');
+    sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
     setStatus('未找到相关内容');
   }
 }
