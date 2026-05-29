@@ -1005,8 +1005,10 @@ const onMsg=evt=>{
       }
       // 注意：若451已经把waitingForFinalASR置false，这里不会重复触发
     } else if(eid===550||eid===559){
-      // ★ LLM回复来了（502流水线）——节流发送515压制，防止风暴
-      send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
+      // ★ Chip流程由553→515→500接管，不重复发515以免干扰500 TTS生成
+      if(!_chipTTSActive){
+        send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
+      }
     } else if(eid===553){
       // ChatTextQueryConfirmed：服务端确认query → 发515压制LLM → 发500播报
       dbgLog('📥 收到553 ChatTextQueryConfirmed, pendingRAGAfter553='+(pendingRAGAfter553?'有':'无')+' chipTTSActive='+_chipTTSActive);
@@ -1282,9 +1284,20 @@ async function chipQuery(name, dateStr, dayLabel){
   _blockLLMAudio = false;
 
   const queryContent = '查 ' + name + ' ' + (dayLabel || '最近') + ' 的日报';
-  const ttsText = !dateStr
-    ? name + '暂时没有工作日报记录，请联系相关人员确认。'
-    : (result ? result.text : name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。');
+  let ttsText;
+  if(!dateStr){
+    ttsText = name + '暂时没有工作日报记录，请联系相关人员确认。';
+  } else if(!result){
+    ttsText = name + ' ' + dayLabel + '的工作记录暂未找到，请确认是否已录入。';
+  } else {
+    const actualDate = (result.query && result.query.date) || '';
+    if(actualDate && dateStr !== actualDate){
+      ttsText = '提醒一下，' + name + dayLabel + '还没有提交日报。以下是最近的记录：' + result.text;
+      dbgLog('📅 日期不匹配: 期望'+dateStr+' 实际'+actualDate+' → 加前缀');
+    } else {
+      ttsText = result.text;
+    }
+  }
 
   if(result){
     applyRAGUI(result, true);
