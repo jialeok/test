@@ -38,7 +38,10 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
 .send-rag-chip{flex-shrink:0;padding:6px 14px;border-radius:20px;border:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;font-size:11px;font-weight:800;font-family:var(--mono);cursor:pointer;white-space:nowrap;transition:opacity .15s;}
 .send-rag-chip:disabled{opacity:.35;cursor:not-allowed;}
 .payload-wrap{flex:1;overflow-y:auto;padding:10px 14px 8px;display:flex;flex-direction:column;gap:8px;min-height:0;}
-.payload-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}
+.payload-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.payload-label-actions{display:flex;gap:8px;align-items:center;}
+.copy-btn{font-family:var(--mono);font-size:9px;color:var(--blue);cursor:pointer;padding:1px 6px;border:1px solid var(--blue);border-radius:4px;background:transparent;transition:all .15s;white-space:nowrap;}
+.copy-btn.copied{color:var(--green);border-color:var(--green);}
 .code-box{background:#07090e;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:10px;line-height:1.75;overflow-x:auto;white-space:pre-wrap;word-break:break-all;color:#8fa3bf;flex-shrink:0;}
 .code-box .k{color:#c792ea;}.code-box .s{color:#c3e88d;}.code-box .n{color:var(--blue);}.code-box .v{color:var(--accent);}.code-box .c{color:#546e7a;font-style:italic;}
 .evtlog{min-height:80px;max-height:130px;padding:10px 12px;background:#07090e;border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:10px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all;}
@@ -50,7 +53,6 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
 .icon-btn:active{border-color:var(--accent);}
 .send-btn{width:38px;height:38px;border-radius:50%;border:none;background:var(--accent);color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;font-weight:700;}
 .send-btn:active{transform:scale(.88);}
-
 /* 悬浮麦克风 */
 #micBtn{position:fixed;bottom:calc(88px + env(safe-area-inset-bottom,0px));right:18px;z-index:8888;width:58px;height:58px;border-radius:50%;border:none;padding:0;background:linear-gradient(135deg,#5b4fff,#9b59f5);box-shadow:0 4px 20px rgba(91,79,255,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;animation:mic-pulse 3s ease-in-out infinite;}
 #micBtn.listening{background:linear-gradient(135deg,#00c48c,#00a87a)!important;animation:mic-pulse-green 1.2s ease-in-out infinite!important;}
@@ -59,7 +61,6 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
 .mic-label{font-size:9px;color:rgba(255,255,255,.9);font-weight:600;line-height:1;}
 @keyframes mic-pulse{0%,100%{box-shadow:0 4px 20px rgba(91,79,255,.55),0 0 0 0 rgba(91,79,255,.4)}50%{box-shadow:0 4px 20px rgba(91,79,255,.55),0 0 0 12px rgba(91,79,255,0)}}
 @keyframes mic-pulse-green{0%,100%{box-shadow:0 4px 20px rgba(0,196,140,.5),0 0 0 0 rgba(0,196,140,.4)}50%{box-shadow:0 4px 20px rgba(0,196,140,.5),0 0 0 10px rgba(0,196,140,0)}}
-
 /* 抽屉 */
 .drawer-overlay{display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);}
 .drawer-overlay.open{display:block;}
@@ -113,7 +114,6 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
   </div>
   <div class="status-txt" id="statusTxt">连接中…</div>
 
-  <!-- 快捷知识库 + 发502 -->
   <div class="quick-row">
     <div class="preset-chip active" id="pc0" onclick="selectPreset(0)">小张·今天</div>
     <div class="preset-chip" id="pc1" onclick="selectPreset(1)">小张·昨天</div>
@@ -122,16 +122,24 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
     <button class="send-rag-chip" id="sendRagBtn" onclick="sendRAG502()" disabled>▶ 发502</button>
   </div>
 
-  <!-- Payload预览 + Event Log -->
   <div class="payload-wrap">
     <div>
-      <div class="payload-label"><span>PAYLOAD PREVIEW</span><span>external_rag 实际内容</span></div>
+      <div class="payload-label">
+        <span>PAYLOAD PREVIEW</span>
+        <div class="payload-label-actions">
+          <span style="color:var(--muted)">external_rag 实际内容</span>
+          <button class="copy-btn" id="copyPayloadBtn" onclick="copyPayload(this)">复制</button>
+        </div>
+      </div>
       <div class="code-box" id="payloadBox">尚未发送</div>
     </div>
     <div>
       <div class="payload-label">
         <span>EVENT LOG</span>
-        <span onclick="evtLog=[];document.getElementById('evtLog').textContent=''" style="cursor:pointer;color:var(--accent);">清空</span>
+        <div class="payload-label-actions">
+          <button class="copy-btn" id="copyLogBtn" onclick="copyLog(this)">复制</button>
+          <span onclick="evtLog=[];document.getElementById('evtLog').textContent=''" style="cursor:pointer;color:var(--accent);">清空</span>
+        </div>
       </div>
       <pre class="evtlog" id="evtLog"></pre>
     </div>
@@ -199,10 +207,16 @@ header{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;
 </div>
 
 <script>
-const WS_URL='wss://doubao-ws-proxy.onrender.com/proxy';
-const SPEAKER='zh_female_vv_jupiter_bigtts';
+// ══════════════════════════════════════════════════════
+//  配置
+// ══════════════════════════════════════════════════════
+const WS_URL  = 'wss://doubao-ws-proxy.onrender.com/proxy';
+const SPEAKER = 'zh_female_vv_jupiter_bigtts';
 
-const RAG_PRESETS=[
+// ══════════════════════════════════════════════════════
+//  RAG 预设
+// ══════════════════════════════════════════════════════
+const RAG_PRESETS = [
   {label:'小张 5月29日',items:[{name:'小张',date:'2025-05-29',w:'完成客户A需求评审、接口文档编写、两个模块代码提交',p:'后端接口文档缺失，已与老李沟通确认，正在补文档',n:'对接客户B联调测试，修复QA提的3个bug'}]},
   {label:'小张 5月28日',items:[{name:'小张',date:'2025-05-28',w:'参加需求评审会议，搭建测试环境',p:'服务器权限不足，已申请运维开通',n:'完成接口开发，准备联调'}]},
   {label:'李四 5月29日',items:[{name:'李四',date:'2025-05-29',w:'修复线上bug，优化查询性能，完成两篇技术文档',p:'数据库慢查询，已加索引解决',n:'压测新版本，准备上线'}]},
@@ -211,257 +225,357 @@ const RAG_PRESETS=[
     {name:'小张',date:'2025-05-29',w:'完成客户A需求评审、接口文档编写、两个模块代码提交',p:'后端接口文档缺失，已与老李沟通确认，正在补文档',n:'对接客户B联调测试，修复QA提的3个bug'}
   ]},
 ];
-let currentPreset=0;
+let currentPreset = 0;
+
+// ══════════════════════════════════════════════════════
+//  DOM helpers
+// ══════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const sw = id => $(id).checked;
 
 function selectPreset(idx){
-  currentPreset=idx;
-  document.querySelectorAll('.preset-chip').forEach((b,i)=>b.classList.toggle('active',i===idx));
+  currentPreset = idx;
+  document.querySelectorAll('.preset-chip').forEach((b,i) => b.classList.toggle('active', i===idx));
   refreshPayloadPreview();
 }
 
-const sw=id=>document.getElementById(id).checked;
-const $=id=>document.getElementById(id);
-
 function refreshWayTags(){
-  [1,2,3,4,5,6,7,8].forEach(i=>{
-    let on=false;
-    if(i===1)on=sw('sw1');else if(i===2)on=sw('sw2');else if(i===3)on=sw('sw3');
-    else if(i===4)on=sw('sw4');else if(i===5)on=true;else if(i===6)on=sw('sw6');
-    else if(i===7)on=sw('sw7');else if(i===8)on=sw('sw8');
-    $('wt'+i).classList.toggle('on',on);
+  [1,2,3,4,5,6,7,8].forEach(i => {
+    let on = false;
+    if(i===1)on=sw('sw1'); else if(i===2)on=sw('sw2'); else if(i===3)on=sw('sw3');
+    else if(i===4)on=sw('sw4'); else if(i===5)on=true; else if(i===6)on=sw('sw6');
+    else if(i===7)on=sw('sw7'); else if(i===8)on=sw('sw8');
+    $('wt'+i).classList.toggle('on', on);
   });
   refreshPayloadPreview();
 }
-document.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',refreshWayTags));
+document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', refreshWayTags));
 
 function buildExternalRAG(){
-  const preset=RAG_PRESETS[currentPreset];
-  const u1=sw('sw1'),u2=sw('sw2'),u3=sw('sw3'),u4=sw('sw4');
-  const data=preset.items.map(it=>{
-    if(u4)return `${it.name}，${it.date}。做了什么：${it.w}。遇到的问题：${it.p}。明日计划：${it.n}。`;
+  const preset = RAG_PRESETS[currentPreset];
+  const u1=sw('sw1'), u2=sw('sw2'), u3=sw('sw3'), u4=sw('sw4');
+  const data = preset.items.map(it => {
+    if(u4) return `${it.name}，${it.date}。做了什么：${it.w}。遇到的问题：${it.p}。明日计划：${it.n}。`;
     return `姓名：${it.name}，日期：${it.date}，做了什么：${it.w}，遇到的问题：${it.p}，明日计划：${it.n}`;
   }).join('\n');
-  const fmt='【播报格式要求】严格按顺序逐字播报，不总结不评价不省略：姓名日期→做了什么→遇到的问题→明日计划，每项一句话共4句。';
-  let items=[];
-  if(u3)items=[{title:'工作日报播报',content:fmt+'\n\n'+data}];
-  else if(u2)items=[{title:preset.label+' 工作日报',content:data},...(u1?[{title:'播报格式要求',content:fmt}]:[])];
-  else items=[...(u1?[{title:'播报格式要求',content:fmt}]:[]),{title:preset.label+' 工作日报',content:data}];
+  const fmt = '【播报格式要求】严格按顺序逐字播报，不总结不评价不省略：姓名日期→做了什么→遇到的问题→明日计划，每项一句话共4句。';
+  let items = [];
+  if(u3) items = [{title:'工作日报播报', content:fmt+'\n\n'+data}];
+  else if(u2) items = [{title:preset.label+' 工作日报', content:data}, ...(u1?[{title:'播报格式要求', content:fmt}]:[])];
+  else items = [...(u1?[{title:'播报格式要求', content:fmt}]:[]), {title:preset.label+' 工作日报', content:data}];
   return JSON.stringify(items);
 }
 
 function build500Text(){
-  return RAG_PRESETS[currentPreset].items.map(it=>
+  return RAG_PRESETS[currentPreset].items.map(it =>
     `${it.name}，${it.date}工作日报。做了什么：${it.w}。遇到的问题：${it.p}。明日计划：${it.n}。`
   ).join('另外，');
 }
 
 function refreshPayloadPreview(){
-  const rb=$('routeBadge');
+  const rb = $('routeBadge');
   if(sw('sw8')){
-    const txt=build500Text();
-    $('payloadBox').innerHTML=`<span class="c">// 道⑧: 500 直念（LLM不参与）</span>\n<span class="k">{</span>\n  <span class="n">"content"</span>: <span class="s">"${txt.substring(0,80).replace(/"/g,'&quot;')}…"</span>\n<span class="k">}</span>`;
-    rb.textContent='→ 500 直念';rb.className='type-badge tts';return;
+    const txt = build500Text();
+    $('payloadBox').innerHTML = `<span class="c">// 道⑧: 500 直念（LLM不参与）</span>\n<span class="k">{</span>\n  <span class="n">"content"</span>: <span class="s">"${txt.substring(0,80).replace(/"/g,'&quot;')}…"</span>\n<span class="k">}</span>`;
+    rb.textContent='→ 500 直念'; rb.className='type-badge tts'; return;
   }
-  const parsed=JSON.parse(buildExternalRAG());
-  let html=`<span class="c">// 502 ChatRAGText — ${parsed.length}条目</span>\n`;
-  parsed.forEach((it,i)=>{
-    html+=`<span class="c">// [${i+1}] ${it.title}</span>\n`;
-    html+=`<span class="k">{</span><span class="n">"content"</span>:<span class="s">"${it.content.substring(0,55).replace(/"/g,'&quot;')}…"</span><span class="k">}</span>${i<parsed.length-1?',':''}\n`;
+  const parsed = JSON.parse(buildExternalRAG());
+  let html = `<span class="c">// 502 ChatRAGText — ${parsed.length}条目</span>\n`;
+  parsed.forEach((it,i) => {
+    html += `<span class="c">// [${i+1}] ${it.title}</span>\n`;
+    html += `<span class="k">{</span><span class="n">"content"</span>:<span class="s">"${it.content.substring(0,55).replace(/"/g,'&quot;')}…"</span><span class="k">}</span>${i<parsed.length-1?',':''}\n`;
   });
-  $('payloadBox').innerHTML=html;
-  rb.textContent='→ 502 RAG改写';rb.className='type-badge rag';
+  $('payloadBox').innerHTML = html;
+  rb.textContent='→ 502 RAG改写'; rb.className='type-badge rag';
 }
 
-function setStatus(t){$('statusTxt').textContent=t;}
-function setConn(on,t){$('connDot').classList.toggle('on',on);$('connStatus').textContent=t;}
-function setSub(t,active){$('subtitle').textContent=t||'等待对话…';$('subtitle').classList.toggle('active',!!t&&active!==false);}
-function setWave(on,green){document.querySelectorAll('.dw-bar').forEach(b=>{b.classList.toggle('active',on);b.classList.toggle('green',!!green);});}
+// ══════════════════════════════════════════════════════
+//  一键复制
+// ══════════════════════════════════════════════════════
+function doCopy(text, btn){
+  const ok = () => { btn.textContent='已复制'; btn.classList.add('copied'); setTimeout(()=>{btn.textContent='复制';btn.classList.remove('copied');}, 1500); };
+  if(navigator.clipboard){ navigator.clipboard.writeText(text).then(ok).catch(()=>fallback(text,ok)); }
+  else { fallback(text, ok); }
+}
+function fallback(text, cb){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); cb(); }catch(_){}
+  document.body.removeChild(ta);
+}
+function copyPayload(btn){ doCopy(sw('sw8') ? build500Text() : buildExternalRAG(), btn); }
+function copyLog(btn){ doCopy($('evtLog').textContent, btn); }
+
+// ══════════════════════════════════════════════════════
+//  UI 状态
+// ══════════════════════════════════════════════════════
+function setStatus(t){ $('statusTxt').textContent = t; }
+function setConn(on, t){ $('connDot').classList.toggle('on', on); $('connStatus').textContent = t; }
+function setSub(t, active){ $('subtitle').textContent = t||'等待对话…'; $('subtitle').classList.toggle('active', !!t && active!==false); }
+function setWave(on, green){ document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); }); }
 function setTypeBadge(type){
-  const el=$('typeBadge');el.textContent=type||'—';el.className='type-badge';
-  if(type==='external_rag')el.classList.add('rag');
-  else if(type==='default')el.classList.add('chat');
-  else if(type==='chat_tts_text')el.classList.add('tts');
+  const el = $('typeBadge'); el.textContent = type||'—'; el.className='type-badge';
+  if(type==='external_rag') el.classList.add('rag');
+  else if(type==='default') el.classList.add('chat');
+  else if(type==='chat_tts_text') el.classList.add('tts');
 }
+function setRagBtnState(enabled){ $('sendRagBtn').disabled=!enabled; $('sendRagBtn2').disabled=!enabled; }
 
-let evtLog=[];
-function log(dir,eid,note=''){
-  const ts=new Date().toISOString().slice(11,23);
+let evtLog = [];
+function log(dir, eid, note=''){
+  const ts = new Date().toISOString().slice(11,23);
   evtLog.push(`${ts} ${dir}[${eid}] ${note}`);
-  if(evtLog.length>150)evtLog.shift();
-  $('evtLog').textContent=evtLog.slice().reverse().join('\n');
+  if(evtLog.length>150) evtLog.shift();
+  $('evtLog').textContent = evtLog.slice().reverse().join('\n');
 }
 
-function openDrawer(){$('drawerOverlay').classList.add('open');}
-function closeDrawer(){$('drawerOverlay').classList.remove('open');}
+function openDrawer(){ $('drawerOverlay').classList.add('open'); }
+function closeDrawer(){ $('drawerOverlay').classList.remove('open'); }
 
-const uuid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
-let gSeq=2;
-function encode(eid,payload,sessionId){
-  const hdr=new Uint8Array([0x11,0x14,0x10,0x00]),parts=[];
-  const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
-  if(sessionId){const sb=new TextEncoder().encode(sessionId);const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);parts.push(new Uint8Array(sl));parts.push(sb);}
-  const pb=typeof payload==='string'?new TextEncoder().encode(payload):new Uint8Array(payload);
-  const pl=new ArrayBuffer(4);new DataView(pl).setUint32(0,pb.byteLength,false);parts.push(new Uint8Array(pl));parts.push(pb);
-  const tot=parts.reduce((s,p)=>s+p.byteLength,hdr.byteLength),out=new Uint8Array(tot);let o=0;
-  out.set(hdr,o);o+=hdr.byteLength;parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});return out.buffer;
-}
-function encodeAudio(pcm){
-  const hdr=new Uint8Array([0x11,0x25,0x00,0x00]);gSeq++;
-  const sq=new ArrayBuffer(4);new DataView(sq).setInt32(0,gSeq,false);
-  const ev=new ArrayBuffer(4);new DataView(ev).setUint32(0,200,false);
-  const sb=sid?new TextEncoder().encode(sid):new Uint8Array(0);
-  const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);
-  const pb=new Uint8Array(pcm),pl=new ArrayBuffer(4);new DataView(pl).setUint32(0,pb.byteLength,false);
-  const tot=4+4+4+4+sb.byteLength+4+pb.byteLength,out=new Uint8Array(tot);let o=0;
-  [hdr,new Uint8Array(sq),new Uint8Array(ev),new Uint8Array(sl),sb,new Uint8Array(pl),pb].forEach(p=>{out.set(p,o);o+=p.byteLength;});
+// ══════════════════════════════════════════════════════
+//  二进制协议（完整移植自 doubao-widget）
+// ══════════════════════════════════════════════════════
+const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+  const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
+});
+let gSeq = 2;
+
+const encode = (eid, payload, sessionId) => {
+  const hdr = new Uint8Array([0x11,0x14,0x10,0x00]), parts = [];
+  const eb = new ArrayBuffer(4); new DataView(eb).setUint32(0,eid,false); parts.push(new Uint8Array(eb));
+  if(sessionId){
+    const sb = new TextEncoder().encode(sessionId);
+    const sl = new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
+    parts.push(new Uint8Array(sl)); parts.push(sb);
+  }
+  const pb = typeof payload==='string' ? new TextEncoder().encode(payload) : new Uint8Array(payload);
+  const pl = new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
+  parts.push(new Uint8Array(pl)); parts.push(pb);
+  const tot = parts.reduce((s,p)=>s+p.byteLength, hdr.byteLength);
+  const out = new Uint8Array(tot); let o = 0;
+  out.set(hdr,o); o+=hdr.byteLength;
+  parts.forEach(p=>{ out.set(p,o); o+=p.byteLength; });
   return out.buffer;
-}
-function parseFrame(buf){
-  const dv=new DataView(buf),hSz=(dv.getUint8(0)&0x0f)*4,msgType=(dv.getUint8(1)>>4)&0x0f,flags=dv.getUint8(1)&0x0f;
-  let o=hSz;if(msgType===15)o+=4;if(flags&0x03)o+=4;
-  let eid=0;if(flags&0x04){eid=dv.getUint32(o,false);o+=4;}
-  if(o+4<=buf.byteLength){const sl=dv.getUint32(o,false);if(sl>0&&sl<200&&o+4+sl<=buf.byteLength)o+=4+sl;}
+};
+
+const encodeAudio = pcm => {
+  const hdr = new Uint8Array([0x11,0x25,0x00,0x00]);
+  gSeq++;
+  const sq=new ArrayBuffer(4); new DataView(sq).setInt32(0,gSeq,false);
+  const ev=new ArrayBuffer(4); new DataView(ev).setUint32(0,200,false);
+  const sb = sid ? new TextEncoder().encode(sid) : new Uint8Array(0);
+  const sl=new ArrayBuffer(4); new DataView(sl).setUint32(0,sb.byteLength,false);
+  const pb=new Uint8Array(pcm);
+  const pl=new ArrayBuffer(4); new DataView(pl).setUint32(0,pb.byteLength,false);
+  const tot = 4+4+4+4+sb.byteLength+4+pb.byteLength;
+  const out = new Uint8Array(tot); let o=0;
+  [hdr,new Uint8Array(sq),new Uint8Array(ev),new Uint8Array(sl),sb,new Uint8Array(pl),pb]
+    .forEach(p=>{ out.set(p,o); o+=p.byteLength; });
+  return out.buffer;
+};
+
+// parseFrame 完整版（含 sessId 解析，与 widget 一致）
+const parseFrame = buf => {
+  const dv = new DataView(buf);
+  const hSz=(dv.getUint8(0)&0x0f)*4, msgType=(dv.getUint8(1)>>4)&0x0f, flags=dv.getUint8(1)&0x0f;
+  let o = hSz;
+  if(msgType===15) o+=4;
+  if(flags&0x03) o+=4;
+  let eid=0; if(flags&0x04){ eid=dv.getUint32(o,false); o+=4; }
+  let sessId=null;
+  if(o+4<=buf.byteLength){
+    const sl=dv.getUint32(o,false);
+    if(sl>0&&sl<200&&o+4+sl<=buf.byteLength){ o+=4; sessId=new TextDecoder().decode(new Uint8Array(buf,o,sl)); o+=sl; }
+  }
   let payload=null;
-  if(o+4<=buf.byteLength){const pl=dv.getUint32(o,false);o+=4;if(pl>0&&o+pl<=buf.byteLength)payload=buf.slice(o,o+pl);}
-  return{msgType,eid,payload};
-}
+  if(o+4<=buf.byteLength){ const pl=dv.getUint32(o,false); o+=4; if(pl>0&&o+pl<=buf.byteLength) payload=buf.slice(o,o+pl); }
+  return { msgType, eid, sessId, payload };
+};
 
-let chunks=[],queue=[],playing=false;
-function flushAudio(){
-  if(!chunks.length)return;
-  const tot=chunks.reduce((s,c)=>s+c.byteLength,0),merged=new Uint8Array(tot);let o=0;
-  chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;});chunks=[];
-  queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));playNext();
-}
-function playNext(){
-  if(playing||!queue.length)return;playing=true;
-  const url=queue.shift(),a=new Audio(url);
-  const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
-  a.onended=done;a.onerror=done;a.play().catch(done);
-}
-function stopAudio(){queue=[];chunks=[];playing=false;}
+// ══════════════════════════════════════════════════════
+//  音频播放队列（完整移植自 widget）
+// ══════════════════════════════════════════════════════
+let chunks=[], queue=[], playing=false;
+const flushAudio = () => {
+  if(!chunks.length) return;
+  const tot=chunks.reduce((s,c)=>s+c.byteLength,0), merged=new Uint8Array(tot); let o=0;
+  chunks.forEach(c=>{ merged.set(new Uint8Array(c),o); o+=c.byteLength; }); chunks=[];
+  queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
+  playNext();
+};
+const playNext = () => {
+  if(playing||!queue.length) return; playing=true;
+  const url=queue.shift(), a=new Audio(url);
+  const done = () => { URL.revokeObjectURL(url); playing=false; playNext(); };
+  a.onended=done; a.onerror=done; a.play().catch(done);
+};
+const stopAudio = () => { queue=[]; chunks=[]; playing=false; };
 
-let micStream,audioCtx,srcNode,processor,micActive=false;
+// ══════════════════════════════════════════════════════
+//  麦克风（完整移植自 widget _startMic / stopMic）
+// ══════════════════════════════════════════════════════
+let micStream, audioCtx, srcNode, processor, micActive=false;
+
 async function toggleMic(){
-  if(!ws||ws.readyState!==WebSocket.OPEN){setStatus('请等待连接就绪');return;}
-  if(micActive){stopMic();return;}
+  if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('请等待连接就绪'); return; }
+  if(micActive){ stopMic(); return; }
+  // 先切换 UI，再请求权限（与 widget 一致）
+  $('micBtn').classList.add('listening');
+  $('micIcon').textContent='🔴'; $('micLabel').textContent='停止';
+  setStatus('正在聆听…'); setWave(true,true);
   try{
-    micStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
-    srcNode=audioCtx.createMediaStreamSource(micStream);
-    processor=audioCtx.createScriptProcessor(512,1,1);
-    processor.onaudioprocess=e=>{
-      if(!ws||ws.readyState!==WebSocket.OPEN)return;
-      const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
-      f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
+    micStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    audioCtx  = new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    srcNode   = audioCtx.createMediaStreamSource(micStream);
+    processor = audioCtx.createScriptProcessor(512,1,1);
+    processor.onaudioprocess = e => {
+      if(!ws||ws.readyState!==WebSocket.OPEN) return;
+      const f32=e.inputBuffer.getChannelData(0), i16=new Int16Array(f32.length);
+      f32.forEach((v,i) => { i16[i]=Math.max(-32768,Math.min(32767,v*32767)); });
       ws.send(encodeAudio(i16.buffer));
     };
-    srcNode.connect(processor);processor.connect(audioCtx.destination);
-    micActive=true;
-    $('micBtn').classList.add('listening');
-    $('micIcon').textContent='🔴';$('micLabel').textContent='停止';
-    setStatus('正在聆听…');setWave(true,true);log('🎙','MIC','开始');
-  }catch(e){setStatus('麦克风错误: '+(e.name||e.message));log('⚠','MIC',e.message);}
+    srcNode.connect(processor); processor.connect(audioCtx.destination);
+    micActive = true;
+    log('🎙','MIC','开始');
+  }catch(e){
+    $('micBtn').classList.remove('listening');
+    $('micIcon').textContent='🎙'; $('micLabel').textContent='说话';
+    setWave(false,false);
+    setStatus('麦克风错误: '+(e.name||e.message));
+    log('⚠','MIC', e.name||e.message);
+  }
 }
+
 function stopMic(){
-  try{processor?.disconnect();}catch(_){}try{srcNode?.disconnect();}catch(_){}try{audioCtx?.close();}catch(_){}
+  try{processor?.disconnect();}catch(_){}
+  try{srcNode?.disconnect();}catch(_){}
+  try{audioCtx?.close();}catch(_){}
   micStream?.getTracks().forEach(t=>t.stop());
-  micStream=srcNode=processor=audioCtx=null;micActive=false;
+  micStream=srcNode=processor=audioCtx=null; micActive=false;
   $('micBtn').classList.remove('listening','speaking');
-  $('micIcon').textContent='🎙';$('micLabel').textContent='说话';
-  setWave(false,false);setStatus('就绪');log('🎙','MIC','停止');
+  $('micIcon').textContent='🎙'; $('micLabel').textContent='说话';
+  setWave(false,false); setStatus('就绪');
+  log('🎙','MIC','停止');
 }
 
-let ws,sid,_greetingDone=false,_isGreeting=false;
-const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
-function getSP(){return $('spArea').value.trim()||'你是工作日报播报助理，严格按字段顺序播报，不总结不评价。';}
-function getStyle(){return sw('sw6')?'播报工作日报时逐字读出各字段，按做了什么→遇到的问题→明日计划，不得改写省略总结。其余口语化简短。':'口语化、简短，不超过3句话';}
-
-function setRagBtnState(enabled){
-  $('sendRagBtn').disabled=!enabled;
-  $('sendRagBtn2').disabled=!enabled;
-}
+// ══════════════════════════════════════════════════════
+//  WS 连接与消息处理（完整移植自 widget，保留 demo 扩展）
+// ══════════════════════════════════════════════════════
+let ws, sid, _greetingDone=false, _isGreeting=false;
+const sanitize = s => s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
+function getSP(){ return $('spArea').value.trim()||'你是工作日报播报助理，严格按字段顺序播报，不总结不评价。'; }
+function getStyle(){ return sw('sw6')?'播报工作日报时逐字读出各字段，按做了什么→遇到的问题→明日计划，不得改写省略总结。其余口语化简短。':'口语化、简短，不超过3句话'; }
 
 function initWS(){
-  setConn(false,'连接中…');setStatus('正在连接…');
-  sid=uuid();gSeq=2;chunks=[];
-  const u=new URL(WS_URL);u.searchParams.set('session_id','bd_'+Date.now());
-  ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
-  ws.onopen=()=>ws.send(encode(1,'{}',null));
-  ws.onmessage=onMsg;
-  ws.onerror=()=>{setConn(false,'连接失败');setTimeout(initWS,2000);};
-  ws.onclose=e=>{stopAudio();stopMic();setConn(false,'已断开');setWave(false,false);log('⚠','断线','code='+e.code);setTimeout(initWS,3000);};
+  setConn(false,'连接中…'); setStatus('正在连接…');
+  sid=uuid(); gSeq=2; chunks=[];
+  const u = new URL(WS_URL); u.searchParams.set('session_id','bd_'+Date.now());
+  ws = new WebSocket(u.toString()); ws.binaryType='arraybuffer';
+  ws.onopen    = () => ws.send(encode(1,'{}',null));
+  ws.onmessage = onMsg;
+  ws.onerror   = () => { setConn(false,'连接失败'); setTimeout(initWS,2000); };
+  ws.onclose   = e => { stopAudio(); stopMic(); setConn(false,'已断开'); setWave(false,false); log('⚠','断线','code='+e.code); setTimeout(initWS,3000); };
 }
 
 function onMsg(evt){
-  if(!(evt.data instanceof ArrayBuffer))return;
-  const{msgType,eid,payload}=parseFrame(evt.data);
-  if(msgType===15){log('←ERR',eid);return;}
+  if(!(evt.data instanceof ArrayBuffer)) return;
+  const {msgType,eid,payload} = parseFrame(evt.data);
+  if(msgType===15){ log('←ERR',eid); return; }
   if(msgType===9&&payload){
-    let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
-    log('← ',eid,j.text||j.error||j.tts_type||'');
+    let j={}; try{ j=JSON.parse(new TextDecoder().decode(payload)); }catch(_){}
+    log('← ',eid, j.text||j.error||j.tts_type||'');
+
     if(eid===50){
-      setConn(true,'已连接');setStatus('初始化…');
-      ws.send(encode(100,JSON.stringify({
-        tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-        dialog:{bot_name:'八道',system_role:sanitize(getSP()),speaking_style:getStyle(),extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-      }),sid));
-    }else if(eid===150){
+      // ConnectionStarted → SessionStart（完整与 widget 一致，含 asr 字段）
+      setConn(true,'已连接'); setStatus('初始化…');
+      ws.send(encode(100, JSON.stringify({
+        tts:    { speaker:SPEAKER, audio_config:{channel:1,format:'ogg_opus',sample_rate:24000}, extra:{} },
+        asr:    { audio_info:{format:'pcm',sample_rate:16000,channel:1} },
+        dialog: { bot_name:'八道', system_role:sanitize(getSP()), speaking_style:getStyle(), extra:{model:'1.2.1.1',input_mod:'keep_alive',strict_audit:false} }
+      }), sid));
+
+    } else if(eid===150){
+      // SessionStarted
       setStatus('就绪 — 选知识库按▶发502，或按🎙说话');
       setRagBtnState(true);
-      if(!_greetingDone){_greetingDone=true;_isGreeting=true;setTimeout(()=>{ws.send(encode(300,JSON.stringify({content:'你好，八道502测试台就绪。'}),sid));},400);}
-    }else if(eid===350){
-      const t=j.text||'';if(t)setSub(t,true);
-      setStatus('播报中…');setWave(true,false);
-      $('micBtn').classList.remove('listening');$('micBtn').classList.add('speaking');
+      if(!_greetingDone){
+        _greetingDone=true; _isGreeting=true;
+        setTimeout(()=>{ ws.send(encode(300,JSON.stringify({content:'你好，八道502测试台就绪。'}),sid)); },400);
+      }
+
+    } else if(eid===350){
+      // TTSSentenceStart
+      const t=j.text||''; if(t) setSub(t,true);
+      setStatus('播报中…'); setWave(true,false);
+      $('micBtn').classList.remove('listening'); $('micBtn').classList.add('speaking');
       setTypeBadge(j.tts_type||'');
-    }else if(eid===351){flushAudio();
-    }else if(eid===359){
-      flushAudio();setWave(false,false);$('micBtn').classList.remove('speaking');
-      if(micActive){$('micBtn').classList.add('listening');setWave(true,true);}
-      if(_isGreeting){_isGreeting=false;}
-      setStatus('就绪 — 选知识库按▶发502，或按🎙说话');
-    }else if(eid===450){stopAudio();setSub('',false);
-    }else if(eid===451){
+
+    } else if(eid===351){
+      // TTSSentenceReady → flush chunk
+      flushAudio();
+
+    } else if(eid===359){
+      // TTSSentenceEnd → 直接恢复，不重建 session（widget 模式）
+      flushAudio();
+      setWave(false,false); $('micBtn').classList.remove('speaking');
+      if(_isGreeting){ _isGreeting=false; }
+      if(micActive){ $('micBtn').classList.add('listening'); setWave(true,true); setStatus('正在聆听…'); }
+      else{ setStatus('就绪 — 选知识库按▶发502，或按🎙说话'); }
+
+    } else if(eid===450){
+      stopAudio(); setSub('',false);
+
+    } else if(eid===451){
+      // ASRResult
       const t=(j.results||[]).map(r=>r.text).join('');
-      if(t){setSub(t,true);setStatus('识别：'+t);}
-    }else if(eid===153||eid===599){setStatus('出错');setConn(false,'出错');}
+      if(t){ setSub(t,true); setStatus('识别：'+t); }
+
+    } else if(eid===153||eid===599){
+      setStatus('出错'); setConn(false,'出错');
+    }
   }
-  if(msgType===11&&payload)chunks.push(payload);
+  if(msgType===11&&payload) chunks.push(payload);
 }
 
+// ══════════════════════════════════════════════════════
+//  发送函数
+// ══════════════════════════════════════════════════════
 function sendRAG502(){
-  if(!ws||ws.readyState!==WebSocket.OPEN){setStatus('未连接');return;}
+  if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接'); return; }
   closeDrawer();
   if(sw('sw8')){
-    const txt=build500Text();log('→',500,'道⑧ 500直念');
-    $('routeBadge').textContent='→ 500 直念';$('routeBadge').className='type-badge tts';
-    stopAudio();ws.send(encode(500,JSON.stringify({start:true,content:txt,end:false}),sid));
+    const txt=build500Text(); log('→',500,'道⑧ 500直念');
+    $('routeBadge').textContent='→ 500 直念'; $('routeBadge').className='type-badge tts';
+    stopAudio();
+    ws.send(encode(500,JSON.stringify({start:true,content:txt,end:false}),sid));
     ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
-    setStatus('500已发…');return;
+    setStatus('500已发…'); return;
   }
-  const ragStr=buildExternalRAG();log('→',502,'len='+ragStr.length);
-  $('routeBadge').textContent='→ 502 RAG改写';$('routeBadge').className='type-badge rag';
-  stopAudio();ws.send(encode(502,JSON.stringify({external_rag:ragStr}),sid));
-  setStatus('502已发，等待LLM…');refreshPayloadPreview();
+  const ragStr=buildExternalRAG(); log('→',502,'len='+ragStr.length);
+  $('routeBadge').textContent='→ 502 RAG改写'; $('routeBadge').className='type-badge rag';
+  stopAudio(); ws.send(encode(502,JSON.stringify({external_rag:ragStr}),sid));
+  setStatus('502已发，等待LLM…'); refreshPayloadPreview();
 }
 
 function sendText(){
-  const el=$('textInput'),text=el.value.trim();
-  if(!text||!ws||ws.readyState!==WebSocket.OPEN)return;
-  el.value='';el.style.height='auto';setSub(text,true);
+  const el=$('textInput'), text=el.value.trim();
+  if(!text||!ws||ws.readyState!==WebSocket.OPEN) return;
+  el.value=''; el.style.height='auto'; setSub(text,true);
   if(sw('sw7')){
     log('→',501,'闲聊: '+text);
-    $('routeBadge').textContent='→ 501 闲聊';$('routeBadge').className='type-badge chat';
-    ws.send(encode(501,JSON.stringify({content:text}),sid));setStatus('501已发…');
-  }else{
+    $('routeBadge').textContent='→ 501 闲聊'; $('routeBadge').className='type-badge chat';
+    ws.send(encode(501,JSON.stringify({content:text}),sid)); setStatus('501已发…');
+  } else {
     log('→',500,'兜底');
     ws.send(encode(500,JSON.stringify({start:true,content:'对不起，暂时没有找到相关内容。',end:false}),sid));
     ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
   }
 }
 
+// ══════════════════════════════════════════════════════
+//  初始化
+// ══════════════════════════════════════════════════════
 refreshWayTags();
 initWS();
 </script>
