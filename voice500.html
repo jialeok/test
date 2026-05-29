@@ -912,7 +912,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短。当用户说查+人名+的日报时，只回复正在为您查询，请稍等，不加任何其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -1048,7 +1048,7 @@ const onMsg=evt=>{
         const sessionPayload={
           tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短。当用户说查+人名+的日报时，只回复正在为您查询，请稍等，不加任何其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
         };
         logEvt('→客户端',100,'StartSession (静默刷新)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -1331,9 +1331,9 @@ async function chipQuery(name, dateStr, dayLabel){
   _chipTTSActive = true;
   _pendingChipTTSText = ttsText;
   dbgLog('� chipQuery发501前: blockLLMAudio='+_blockLLMAudio+' our500Sent='+_our500Sent+' chipTTSActive='+_chipTTSActive);
-  dbgLog('📤 sendChatTextQuery(501): 空串（保上下文，禁LLM回复）');
-  logEvt('→客户端',501,'ChatTextQuery(空)');
-  ws.send(encode(501, JSON.stringify({ content: '' }), sid));
+  dbgLog('📤 sendChatTextQuery(501): 查' + name + '的日报');
+  logEvt('→客户端',501,'ChatTextQuery');
+  ws.send(encode(501, JSON.stringify({ content: '查' + name + '的日报' }), sid));
   } finally { _chipQueryInFlight = false; }
 }
 
