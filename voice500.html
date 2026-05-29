@@ -700,9 +700,7 @@ function flushPendingRAG(){
       return;
     }
     pendingRAG = null;
-    logEvt('→客户端',515,'ClientInterrupt (flushPendingRAG，打断502残音)');
-    ws.send(encode(515,JSON.stringify({}),sid));
-    stopAudio();
+    // 515已在pttEnd松开时发过，不重复发
     _pendingQueryText = ragText;
     sendChatTTS('好的，稍等我查一下～','(过渡)');
   };
@@ -1002,15 +1000,13 @@ function initMic(){
 
 function pttStart(){
   if(!ws||ws.readyState!==WebSocket.OPEN)return;
-  // ★ 任何状态都可按下：speaking/greeting 时直接打断，无需等待
-  if(state==='speaking'){
-    stopAudio();
-    _isGreeting = false;
-    _pendingQueryText = null;
-    logEvt('→客户端',515,'ClientInterrupt (打断播报，立刻录音)');
-    ws.send(encode(515,JSON.stringify({}),sid));
-    state='listening';
-  }
+  // ★ 任何状态按下：立刻停音、发515打断服务端，然后开始录音
+  stopAudio();                    // 本地音频立刻静音
+  _isGreeting = false;
+  _pendingQueryText = null;
+  logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
+  ws.send(encode(515,JSON.stringify({}),sid));
+  state='listening';
   pendingPTT=false;
   _doPttStart();
 }
@@ -1033,11 +1029,6 @@ function _doPttStart(){
     setStatus('🎤 正在录音，松开发送…');
     setWave(true,true);
     resetFlow();litFlow(0);
-    // push_to_talk模式：每次按下先发 ClientInterrupt(515)，告知服务端上一轮结束，准备接收新音频
-    if(ws&&ws.readyState===WebSocket.OPEN){
-      logEvt('→客户端',515,'ClientInterrupt');
-      ws.send(encode(515,JSON.stringify({}),sid));
-    }
     logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无')+' 采样率:'+(audioCtx?audioCtx.sampleRate:'?'));
   };
   if(audioCtx&&audioCtx.state==='suspended'){
@@ -1056,10 +1047,13 @@ function pttEnd(){
   setPttLabel(false);
   setWave(false,false);
   const _sr=audioCtx?audioCtx.sampleRate:16000;
-  // bufferSize=1024，修正帧时长计算
   logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*1024/_sr*1000).toFixed(0)+'ms 采样率:'+_sr);
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
+    // ★ 松开立刻发515，掐掉服务端LLM流水线，不等RAG查询结果
+    logEvt('→客户端',515,'ClientInterrupt (pttEnd，掐断LLM)');
+    ws.send(encode(515,JSON.stringify({}),sid));
+
     waitingForFinalASR=true;
     clearAsrTimeout();
     asrTimeoutTimer=setTimeout(()=>{
@@ -1069,8 +1063,6 @@ function pttEnd(){
         setStatus('识别超时，请重试…');
       }
     },8000);
-    // 关键修复：等 bufferedAmount 清零后再发 EndASR
-    // 避免"EndASR 先到服务端，音频帧后到"导致服务端关闭 ASR 后丢弃音频
     _sendEndASRAfterFlush();
   }
 }
