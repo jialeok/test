@@ -119,6 +119,7 @@
   <div class="tab" onclick="switchTab(1)">📚 知识库</div>
   <div class="tab" onclick="switchTab(2)">🔍 RAG详情</div>
   <div class="tab" onclick="switchTab(3)">🪲 事件日志</div>
+  <div class="tab" onclick="switchTab(4)">🔧 调试</div>
 </div>
 
 <!-- Tab0: 语音对话 -->
@@ -195,6 +196,69 @@
   <pre id="evtLog" style="flex:1;margin:0 14px 14px;padding:12px;background:var(--code-bg);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
 </div>
 
+<!-- Tab4: 调试面板 -->
+<div class="tab-content" id="tab4">
+  <div style="padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto">
+
+    <!-- 员工列表 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:8px;letter-spacing:.1em">📋 数据库员工列表</div>
+      <div id="dbg-emp-list" style="font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:2">加载中…</div>
+      <button onclick="dbgLoadEmployees()" style="margin-top:8px;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">🔄 刷新</button>
+    </div>
+
+    <!-- 手动测试查询 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:8px;letter-spacing:.1em">🔍 手动测试查询</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="dbg-query-input" placeholder="输入查询文本，如：查小张今天的工作"
+          style="flex:1;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none">
+        <button onclick="dbgTestQuery()" style="font-family:var(--mono);font-size:10px;padding:6px 12px;border-radius:6px;border:none;background:var(--accent);color:#000;cursor:pointer;font-weight:700">查</button>
+      </div>
+      <pre id="dbg-query-result" style="font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;white-space:pre-wrap;word-break:break-all;min-height:40px">结果显示在这里…</pre>
+    </div>
+
+    <!-- 最近日报 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:8px;letter-spacing:.1em">📅 最近5条日报记录</div>
+      <div id="dbg-records" style="font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.9;white-space:pre-wrap;word-break:break-all">加载中…</div>
+      <button onclick="dbgLoadRecords()" style="margin-top:8px;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">🔄 刷新</button>
+    </div>
+
+    <!-- 意图解析测试 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:8px;letter-spacing:.1em">🧠 意图解析（纯前端）</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="dbg-intent-input" placeholder="输入文本测试意图识别"
+          style="flex:1;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none">
+        <button onclick="dbgTestIntent()" style="font-family:var(--mono);font-size:10px;padding:6px 12px;border-radius:6px;border:none;background:var(--accent2);color:#000;cursor:pointer;font-weight:700">解析</button>
+      </div>
+      <pre id="dbg-intent-result" style="font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;white-space:pre-wrap">结果显示在这里…</pre>
+    </div>
+
+    <!-- 原始Supabase查询 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:8px;letter-spacing:.1em">🗄️ 直接查 Supabase 原始数据</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">输入员工姓名片段（如小李、李），查看数据库原始字段</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="dbg-raw-name" placeholder="姓名片段，如：小李 或 李"
+          style="flex:1;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none">
+        <button onclick="dbgRawSearch()" style="font-family:var(--mono);font-size:10px;padding:6px 12px;border-radius:6px;border:none;background:var(--warn);color:#000;cursor:pointer;font-weight:700">查原始</button>
+      </div>
+      <pre id="dbg-raw-result" style="font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto">结果显示在这里…</pre>
+    </div>
+
+    <!-- 诊断工具 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:8px;letter-spacing:.1em">🩺 一键诊断</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">检查员工表结构 + work_records字段名，帮助定位找不到原因</div>
+      <button onclick="dbgDiagnose()" style="font-family:var(--mono);font-size:10px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent2);color:#000;cursor:pointer;font-weight:700">🩺 开始诊断</button>
+      <pre id="dbg-diagnose-result" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:#8fa3bf;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto">等待诊断…</pre>
+    </div>
+
+  </div>
+</div>
+
 <script>
 // ══ 配置 ══════════════════════════════════════════════════
 const WS_URL      = 'wss://doubao-ws-proxy.onrender.com/proxy';
@@ -215,11 +279,48 @@ const TODAY     = getDateStr(0);
 const YESTERDAY = getDateStr(-1);
 const DAY_BEFORE= getDateStr(-2);
 
-// ══ 姓名别名映射（新增员工在这里加）════════════════════════
-const NAME_ALIAS = {
-  '小张':'小张', '张工':'小张', '大张':'小张', '张三':'小张',
-  '小李':'李四', '李工':'李四', '老李':'李四', '李四':'李四',
-};
+// ══ 员工列表（从数据库动态加载，无需硬编码）══════════════
+let employeeNames = []; // ['小张','小明','李四',…] 启动时从 employees 表加载
+
+// 从文本中提取员工名（支持姓名的任意子串匹配，如"小李"→"李小明"）
+function extractEmployeeName(text){
+  // 优先：文本直接包含完整员工名
+  for(const name of employeeNames){
+    if(text.includes(name)) return name;
+  }
+  // 兜底：员工名的任意字符出现在文本中（单字除外避免误匹配）
+  for(const name of employeeNames){
+    if(name.length>=2){
+      // 提取姓氏或名字片段做模糊匹配
+      const chars = name.replace(/^(小|老|大)/, ''); // 去称谓前缀
+      if(chars.length>=1 && text.includes(chars[0])){
+        // 进一步确认：文本中含有姓
+        const surname = chars[0];
+        if(text.includes('小'+surname)||text.includes('老'+surname)||text.includes('大'+surname)||text.includes(surname+'总')){
+          dbgLog('🔁 模糊匹配: 文本"'+text+'" → 员工"'+name+'"（含姓氏"'+surname+'"）');
+          return name;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// 启动时拉取员工名单
+async function loadEmployeeNames(){
+  try{
+    const {data,error}=await sbClient
+      .from('employees')
+      .select('name')
+      .eq('enabled',true)
+      .order('created_at',{ascending:true});
+    if(error) throw error;
+    employeeNames=(data||[]).map(e=>e.name);
+    dbgLog('✅ 员工列表: '+employeeNames.join(', '));
+  }catch(e){
+    dbgLog('⚠️ 员工加载失败: '+e.message);
+  }
+}
 
 // KB_GROUPS 保留为空，知识库展示用（Supabase数据加载后填入）
 let KB_GROUPS = [];
@@ -237,7 +338,11 @@ const $= id=>document.getElementById(id);
 // Tab 切换
 const tabEls = document.querySelectorAll('.tab');
 const contentEls = document.querySelectorAll('.tab-content');
-function switchTab(i){ tabEls.forEach((t,j)=>t.classList.toggle('active',i===j)); contentEls.forEach((c,j)=>c.classList.toggle('active',i===j)); }
+function switchTab(i){
+  tabEls.forEach((t,j)=>t.classList.toggle('active',i===j));
+  contentEls.forEach((c,j)=>c.classList.toggle('active',i===j));
+  if(i===4){ dbgLoadEmployees(); dbgLoadRecords(); }
+}
 
 // 流程高亮
 const fnIds=['fn-user','fn-match','fn-search','fn-rag','fn-reply'];
@@ -381,14 +486,15 @@ let pendingRAG = null; // 语音路径：等 459 再发
 let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
 
 function matchQuery(text){
-  console.log('[matchQuery] 输入:', text, '今天='+TODAY, '昨天='+YESTERDAY, '前天='+DAY_BEFORE);
+  dbgLog('🧠 matchQuery 输入: '+text);
 
-  // ── 1. 姓名识别（支持别名）─────────────────────────────
-  let canonName = null;
-  for(const alias of Object.keys(NAME_ALIAS)){
-    if(text.includes(alias)){ canonName=NAME_ALIAS[alias]; break; }
+  // ── 1. 姓名识别：从数据库加载的员工列表中匹配 ─────────
+  const canonName = extractEmployeeName(text);
+  if(!canonName){
+    dbgLog('❌ 未匹配到员工名，当前列表: '+employeeNames.join(', '));
+    return null;
   }
-  if(!canonName) return null;
+  dbgLog('✅ 匹配员工: '+canonName);
 
   // ── 2. 日期解析（按优先级）────────────────────────────
 
@@ -433,45 +539,78 @@ function matchQuery(text){
 // 从 Supabase 异步检索日报
 async function lookupRAG(input){
   const query=matchQuery(input);
-  if(!query) return null;
+  if(!query){
+    dbgLog('❌ lookupRAG: matchQuery 返回 null，无法查询');
+    return null;
+  }
+  dbgLog('🔍 lookupRAG: 查 '+query.name+' / '+query.date);
 
   try{
-    // 1. 查员工（支持别名，用 ilike 模糊匹配）
-    const {data:empList}=await sbClient
+    // 1. 查员工 ID（先精确匹配，再模糊匹配）
+    let empList, empErr;
+    ({data:empList, error:empErr}=await sbClient
       .from('employees')
       .select('id,name')
       .eq('name', query.name)
       .eq('enabled', true)
-      .limit(1);
-    if(!empList||empList.length===0) return null;
-    const emp=empList[0];
+      .limit(1));
+    if(empErr){ dbgLog('⚠️ 查员工报错: '+empErr.message); return null; }
 
-    // 2. 查当天日报
-    const {data:records}=await sbClient
+    // 精确匹配失败 → 模糊匹配（ilike）
+    if(!empList||empList.length===0){
+      dbgLog('⚠️ 精确匹配无结果，尝试模糊: %'+query.name+'%');
+      ({data:empList, error:empErr}=await sbClient
+        .from('employees')
+        .select('id,name')
+        .ilike('name', '%'+query.name+'%')
+        .eq('enabled', true)
+        .limit(1));
+      if(empErr){ dbgLog('⚠️ 模糊查员工报错: '+empErr.message); return null; }
+    }
+
+    if(!empList||empList.length===0){
+      dbgLog('❌ 找不到员工（精确+模糊均失败）: '+query.name+'  ← 请去[调试]面板确认数据库实际姓名');
+      return null;
+    }
+    const emp=empList[0];
+    dbgLog('✅ 员工ID: '+emp.id.substring(0,8)+'…');
+
+    // 2. 查日报
+    const {data:records, error:recErr}=await sbClient
       .from('work_records')
       .select('*')
       .eq('employee_id', emp.id)
       .eq('record_date', query.date)
       .order('created_at',{ascending:false})
       .limit(1);
-    if(!records||records.length===0) return null;
+    if(recErr){ dbgLog('⚠️ 查日报报错: '+recErr.message); return null; }
+    if(!records||records.length===0){
+      dbgLog('❌ work_records 无记录: '+query.name+' '+query.date);
+      return null;
+    }
     const rec=records[0];
+    dbgLog('✅ 找到日报 record_date='+rec.record_date);
 
     // 3. 解析 formatted_fields
     let fields=rec.formatted_fields;
     if(typeof fields==='string'){ try{ fields=JSON.parse(fields); }catch(_){ fields={}; } }
     fields=fields||{};
+    dbgLog('📦 fields keys: '+Object.keys(fields).join(', '));
 
-    // 4. 拼播报文本（字段名对应建表时的 done / problem / plan）
+    // 4. 拼播报文本
     const parts=[];
     if(fields.done)    parts.push('今日完成：'+fields.done);
     if(fields.problem) parts.push('遇到的问题：'+fields.problem);
     if(fields.plan)    parts.push('明日计划：'+fields.plan);
-    if(parts.length===0) return null;
+    if(parts.length===0){
+      dbgLog('❌ formatted_fields 为空或字段名不匹配');
+      return null;
+    }
 
     const ttsText=emp.name+'，'+query.date+'的工作日报。'+parts.join('。')+'。';
+    dbgLog('✅ 播报文本(前50字): '+ttsText.substring(0,50));
 
-    // 5. 同步更新 KB_GROUPS 供知识库tab展示
+    // 5. 更新 KB_GROUPS 供知识库tab展示
     KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===query.date));
     KB_GROUPS.push({
       name:emp.name, date:query.date,
@@ -484,6 +623,7 @@ async function lookupRAG(input){
 
     return{query, rec:{name:emp.name,date:query.date,items:[]}, text:ttsText};
   }catch(e){
+    dbgLog('⚠️ Supabase 异常: '+e.message);
     logEvt('⚠️Supabase',0,'查询失败:'+e.message);
     return null;
   }
@@ -976,6 +1116,175 @@ function initWS(){
   document.addEventListener('touchcancel', function(e){ pttEnd(); }, {passive:true});
 })();
 
+// ══ 调试日志 ══════════════════════════════════════════════
+let dbgLines = [];
+function dbgLog(msg){
+  const ts = new Date().toISOString().slice(11,23);
+  const line = ts+' '+msg;
+  dbgLines.unshift(line);
+  if(dbgLines.length>100) dbgLines.pop();
+  console.log('[DBG]',msg);
+}
+
+// ══ 调试面板函数 ══════════════════════════════════════════
+async function dbgLoadEmployees(){
+  const el = document.getElementById('dbg-emp-list');
+  if(!el) return;
+  try{
+    const {data,error}=await sbClient.from('employees').select('id,name,department,enabled').order('created_at',{ascending:true});
+    if(error) throw error;
+    if(!data||data.length===0){ el.textContent='（无员工数据）'; return; }
+    el.textContent = data.map(e=>
+      (e.enabled?'🟢':'🔴')+' '+e.name+(e.department?' ['+e.department+']':'')+' id='+e.id.substring(0,8)+'…'
+    ).join('\n');
+    // 同步更新 employeeNames
+    employeeNames = data.filter(e=>e.enabled).map(e=>e.name);
+  }catch(e){ el.textContent='❌ '+e.message; }
+}
+
+async function dbgLoadRecords(){
+  const el = document.getElementById('dbg-records');
+  if(!el) return;
+  try{
+    const {data,error}=await sbClient
+      .from('work_records')
+      .select('*, employees(name)')
+      .order('created_at',{ascending:false})
+      .limit(5);
+    if(error) throw error;
+    if(!data||data.length===0){ el.textContent='（无日报记录）'; return; }
+    el.textContent = data.map(r=>{
+      const fields = r.formatted_fields||{};
+      return '👤 '+(r.employees?.name||'?')+' | '+r.record_date+'\n'
+        +'   done: '+(fields.done||'—').substring(0,30)+'\n'
+        +'   problem: '+(fields.problem||'—').substring(0,30)+'\n'
+        +'   plan: '+(fields.plan||'—').substring(0,30);
+    }).join('\n─────\n');
+  }catch(e){ el.textContent='❌ '+e.message; }
+}
+
+async function dbgTestQuery(){
+  const input = document.getElementById('dbg-query-input').value.trim();
+  const el = document.getElementById('dbg-query-result');
+  if(!input||!el) return;
+  dbgLines=[];
+  el.textContent='查询中…';
+  const result = await lookupRAG(input);
+  const logs = dbgLines.slice().reverse().join('\n');
+  if(result){
+    el.textContent = '✅ 成功\n\n播报文本:\n'+result.text+'\n\n──调试日志──\n'+logs;
+  } else {
+    el.textContent = '❌ 未找到数据\n\n──调试日志──\n'+logs;
+  }
+}
+
+function dbgTestIntent(){
+  const input = document.getElementById('dbg-intent-input').value.trim();
+  const el = document.getElementById('dbg-intent-result');
+  if(!input||!el) return;
+  const q = matchQuery(input);
+  if(q){
+    el.textContent = '✅ 解析成功\n姓名: '+q.name+'\n日期: '+q.date+'\n\n员工列表('+employeeNames.length+'个): '+employeeNames.join(', ');
+  } else {
+    el.textContent = '❌ 解析失败\n当前员工列表('+employeeNames.length+'个): '+employeeNames.join(', ')+'\n\n可能原因:\n1. 文本中没有员工名（数据库里的名字是什么就要说什么）\n2. 没有时间词（今天/昨天/前天/上周X/X月X日）\n3. 员工列表还未加载（刷新页面再试）';
+  }
+}
+
+// 直接查 Supabase 原始数据（不经过任何解析逻辑）
+async function dbgRawSearch(){
+  const nameInput = document.getElementById('dbg-raw-name').value.trim();
+  const el = document.getElementById('dbg-raw-result');
+  if(!el) return;
+  if(!nameInput){ el.textContent='请输入姓名片段'; return; }
+  el.textContent='查询中…';
+  try{
+    // 先查 employees 表（模糊匹配）
+    const {data:emps, error:e1}=await sbClient
+      .from('employees')
+      .select('*')
+      .ilike('name','%'+nameInput+'%')
+      .limit(5);
+    if(e1){ el.textContent='❌ 查employees报错: '+e1.message; return; }
+
+    let out='=== employees (ilike "%'+nameInput+'%") ===\n';
+    if(!emps||emps.length===0){
+      out+='⚠️ 没找到员工！\n\n数据库里所有员工名：\n';
+      const {data:allEmps}=await sbClient.from('employees').select('id,name,enabled').order('created_at');
+      out+=(allEmps||[]).map(e=>'  '+(e.enabled?'🟢':'🔴')+' "'+e.name+'" id='+e.id).join('\n');
+    } else {
+      emps.forEach(emp=>{
+        out+='  name="'+emp.name+'" enabled='+emp.enabled+' id='+emp.id+'\n';
+        out+='  完整字段: '+JSON.stringify(emp,null,2)+'\n---\n';
+      });
+
+      // 查这个员工的 work_records
+      const empId=emps[0].id;
+      out+='\n=== work_records (employee_id='+empId.substring(0,8)+'…) ===\n';
+      const {data:recs, error:e2}=await sbClient
+        .from('work_records')
+        .select('*')
+        .eq('employee_id', empId)
+        .order('record_date',{ascending:false})
+        .limit(3);
+      if(e2){ out+='❌ 查work_records报错: '+e2.message; }
+      else if(!recs||recs.length===0){ out+='⚠️ 该员工没有任何日报记录'; }
+      else{
+        recs.forEach(r=>{
+          out+='  record_date: "'+r.record_date+'"\n';
+          out+='  formatted_fields字段名: '+JSON.stringify(Object.keys(r.formatted_fields||{}))+'\n';
+          out+='  formatted_fields值: '+JSON.stringify(r.formatted_fields,null,2)+'\n---\n';
+        });
+      }
+    }
+    el.textContent=out;
+  }catch(err){ el.textContent='❌ 异常: '+err.message; }
+}
+
+// 一键诊断
+async function dbgDiagnose(){
+  const el = document.getElementById('dbg-diagnose-result');
+  if(!el) return;
+  el.textContent='诊断中…';
+  let out='';
+  try{
+    // employees 表结构
+    const {data:emps, error:e1}=await sbClient.from('employees').select('*').limit(1);
+    out+='=== employees 表 ===\n';
+    if(e1){ out+='❌ 报错: '+e1.message+'\n'; }
+    else if(!emps||emps.length===0){ out+='⚠️ 表为空\n'; }
+    else{ out+='✅ 字段: '+JSON.stringify(Object.keys(emps[0]))+'\n  name示例: "'+emps[0].name+'" enabled='+emps[0].enabled+'\n'; }
+
+    // work_records 表结构
+    const {data:recs, error:e2}=await sbClient.from('work_records').select('*').limit(1);
+    out+='\n=== work_records 表 ===\n';
+    if(e2){ out+='❌ 报错: '+e2.message+'\n'; }
+    else if(!recs||recs.length===0){ out+='⚠️ 表为空，没有任何日报\n'; }
+    else{
+      const r=recs[0];
+      out+='✅ 表字段: '+JSON.stringify(Object.keys(r))+'\n';
+      out+='✅ record_date示例: "'+r.record_date+'"\n';
+      const ff=r.formatted_fields||{};
+      out+='✅ formatted_fields字段名: '+JSON.stringify(Object.keys(ff))+'\n';
+      out+='   代码期望字段名:          ["done","problem","plan"]\n';
+      const matched=Object.keys(ff).filter(k=>['done','problem','plan'].includes(k));
+      const missing=Object.keys(ff).filter(k=>!['done','problem','plan'].includes(k));
+      if(matched.length>0) out+='✅ 已匹配字段: '+JSON.stringify(matched)+'\n';
+      if(missing.length>0) out+='⚠️ 未匹配字段（数据库有但代码读不到）: '+JSON.stringify(missing)+'\n  → 需修改代码中 fields.done/fields.problem/fields.plan 为实际字段名\n';
+      if(matched.length===0&&Object.keys(ff).length>0) out+='❌ 字段名完全不匹配！这就是查不到的原因\n';
+    }
+
+    // 员工列表状态
+    out+='\n=== 内存员工列表 ===\n';
+    out+=(employeeNames.length===0
+      ?'⚠️ 列表为空（employees表没有enabled=true员工，或还在加载）'
+      :'✅ '+employeeNames.length+'个: '+employeeNames.join(', '))+'\n';
+
+    el.textContent=out;
+  }catch(err){ el.textContent='❌ 诊断异常: '+err.message; }
+}
+
+// ══ 初始化 ════════════════════════════════════════════════
+loadEmployeeNames(); // 启动时从数据库加载员工名单
 initWS();
 </script>
 </body>
