@@ -1030,7 +1030,8 @@ const playNext=()=>{
       const sinceLastChunk = Date.now() - _lastChunkTime;
       if(sinceLastChunk >= 2000){
         _pendingRefresh = false;
-        dbgLog('🏁 playNext: 队列播完且距最后入队'+sinceLastChunk+'ms≥2s，执行_refreshSession');
+        activeMode = 'idle'; // ★ 队列真正播完，回到idle（不在359里设，防止352提前被丢）
+        dbgLog('🏁 playNext: 队列播完且距最后入队'+sinceLastChunk+'ms≥2s，activeMode→idle，执行_refreshSession');
         _refreshSession();
       } else {
         // 还没超过2秒，等剩余时间后再检查
@@ -1493,9 +1494,8 @@ const onMsg=evt=>{
         // 否则队列短暂为空时误判播完，提前触发静默刷新截断音频
         setTimeout(()=>{
           _pendingRefresh = true;
-          activeMode = 'idle'; // ★ ptt路径TTS播完，回到idle，等静默刷新
-          dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，activeMode→idle，等队列播完再刷新');
-          // 如果此时队列已空且没在播，交给playNext的时间戳判断
+          dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，等队列真正播完再→idle');
+          // activeMode='idle' 移到 playNext 队列播完时设，防止359提前到导致352被丢
           if(!playing && !queue.length){ playNext(); }
         }, 500);
         setStatus('按住🎤说话…');
