@@ -1081,6 +1081,7 @@ let pendingRAGPromise = null; // ★ 修复竞态：lookupRAG的Promise，flushP
 // 任意时刻只有一条路径活跃，onMsg里所有判断统一看这个变量
 let activeMode = 'idle';
 let _pendingQueryText = null; // [ptt专属] 过渡话术播完后要播的查询结果
+let _pendingPTTFallback = false; // [ptt专属] 无结果时LLM说完等待语后触发500兜底
 let _chipTTSActive  = false; // [chip专属] chip查询500会话生命周期：完成后不刷新会话，保持上下文
 let _pendingChipTTSText = null; // [chip专属] 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
@@ -1297,14 +1298,18 @@ function flushPendingRAG(){
   const doFlush = (ragText) => {
     dbgLog('🔔 doFlush: ragText='+(ragText?'"'+String(ragText).substring(0,30)+'"':'null'));
     if(!ragText){
-      // 兜底：确保 activeMode='ptt'，让352音频帧放行
-      activeMode = 'ptt';
-      logEvt('→客户端',500,'(兜底) lookupRAG无结果');
-      sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
+      // ★ 无结果：不发515，让LLM用201临时提示词完整说完"稍等，正在为您查询"
+      // LLM说完自然触发359，359里再发500兜底
+      activeMode = 'ptt'; // 确保352音频帧放行
+      _pendingPTTFallback = true;
+      logEvt('→客户端',0,'(无结果) 不发515，等LLM说完→359→兜底');
       return;
     }
     pendingRAG = null;
-    // 515已在pttEnd松开时发过，不重复发
+    // ★ 有结果：现在才发515掐断LLM，接着发过渡话术
+    _last515Time = Date.now();
+    logEvt('→客户端',515,'ClientInterrupt (doFlush有结果，掐断LLM)');
+    ws.send(encode(515,JSON.stringify({}),sid));
     activeMode = 'ptt'; // ★ 确保ptt路径352放行
     _pendingQueryText = ragText;
     sendChatTTS('好的，稍等我查一下～','(过渡)');
@@ -1491,6 +1496,16 @@ const onMsg=evt=>{
       // ★ 如果有pendingRAGPromise说明RAG还在查，这个TTSEnded是LLM的，忽略
       if(pendingRAGPromise){
         logEvt('←忽略359',359,'RAG Promise还在，忽略LLM触发的TTSEnded');
+        return;
+      }
+      // ★ ptt无结果：LLM等待语说完 → 发515掐断 → 发500兜底
+      if(_pendingPTTFallback){
+        _pendingPTTFallback = false;
+        _last515Time = Date.now();
+        logEvt('→客户端',515,'ClientInterrupt (ptt无结果LLM说完，掐断)');
+        ws.send(encode(515,JSON.stringify({}),sid));
+        logEvt('←359→兜底',359,'LLM等待语播完，发500兜底');
+        sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(ptt无结果兜底)');
         return;
       }
       // 如果有待播的查询结果（过渡话术刚播完），立刻发出，不做会话刷新
@@ -1760,6 +1775,7 @@ function _doPttStart(){
   pendingRAG=null;
   pendingRAGPromise=null;
   _pendingQueryText=null;
+  _pendingPTTFallback=false; // ★ 重置无结果兜底标志
   _ragFlushed=false;
   // activeMode 已在 pttStart 里设为 'ptt'，这里无需重设
   waitingForFinalASR=false;
@@ -1793,10 +1809,8 @@ function pttEnd(){
   logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*1024/_sr*1000).toFixed(0)+'ms 采样率:'+_sr);
   setStatus('识别中…');
   if(ws&&ws.readyState===WebSocket.OPEN){
-    // ★ 松开立刻发515，掐掉服务端LLM流水线，不等RAG查询结果
+    // ★ 515不在这里发：有结果时doFlush发，无结果时不发（让LLM说完再兜底）
     _last515Time = Date.now(); // 同步节流时间
-    logEvt('→客户端',515,'ClientInterrupt (pttEnd，掐断LLM)');
-    ws.send(encode(515,JSON.stringify({}),sid));
 
     waitingForFinalASR=true;
     clearAsrTimeout();
