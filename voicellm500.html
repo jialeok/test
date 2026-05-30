@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260530-2 -->
+<!-- v=20260530-4 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -926,6 +926,7 @@ let _chipTTSTimer   = null;  // chip延迟发500定时器（当前为立即发�
 // ★ 字幕同步队列：发出TTS文本后按句拆分存入，每次350触发弹出一句显示
 let _captionQueue   = [];    // 待播字幕句子队列
 let _captionIsTTS   = false; // 当前字幕是否属于我们发出的500 TTS（过滤掉LLM等待语）
+let _pendingCaptionText = null; // ★ 方案1：发500时存完整文本，350到达时启动打字机
 
 function matchQuery(text){
   dbgLog('🧠 matchQuery 输入: '+text);
@@ -1179,20 +1180,15 @@ function sendChatTTS(ttsText, note=''){
   showRagCard('✅ TTS已发送(500)！切换「RAG详情」tab查看');
   setStatus('TTS已发送，等待播报…');
 
-  // ★ 字幕同步：把本次TTS文本拆成句子存入队列，由350事件逐句弹出显示
-  // 只有日报内容（非过渡话术）才推入字幕
+  // ★ 方案1：只有日报内容才存字幕文本，过渡话术不显示
   const isContent = !note.includes('过渡') && !note.includes('chip过渡') && !note.includes('等待');
   _captionIsTTS = isContent;
+  _captionQueue = [];
   if(isContent){
-    // 按句号/逗号/分号分句，每小句单独一行
-    const sentences = ttsText
-      .split(/[。，；,;！!？?\n]/)
-      .map(s=>s.trim())
-      .filter(s=>s.length>1);
-    _captionQueue = sentences;
-    dbgLog('📋 字幕队列: '+sentences.length+'句: '+sentences.slice(0,3).join(' | '));
+    _pendingCaptionText = ttsText; // ★ 存完整文本，等350信号再启动打字机
+    dbgLog('📋 方案1: 存字幕文本 '+ttsText.length+'字，等350触发');
   } else {
-    _captionQueue = [];
+    _pendingCaptionText = null;
   }
 }
 
@@ -1294,18 +1290,23 @@ const onMsg=evt=>{
         // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
         _our500Sent    = false;
         _blockLLMAudio = false;
-        logEvt('←350',350,'我们的TTS触发 text="'+t.substring(0,20)+'" viewShow='+_dbgViewShow);
-        dbgLog('🔊 350(我们的TTS): text="'+t.substring(0,30)+'"');
+        logEvt('←350',350,'我们的TTS触发 viewShow='+_dbgViewShow);
+        dbgLog('🔊 350(我们的TTS) 启动字幕打字机');
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
-        // ★ 方案2：直接用350的j.text显示字幕
-        if(t){ setSub(t, true); dbgLog('📺 字幕写入(首句): "'+t.substring(0,30)+'"'); }
-        else { dbgLog('⚠️ 350首句 j.text为空，豆包未返回文本！raw='+JSON.stringify(j).substring(0,80)); }
+        // ★ 方案1：350是开始信号，用_pendingCaptionText启动打字机
+        if(_pendingCaptionText){
+          const _txt = _pendingCaptionText;
+          _pendingCaptionText = null;
+          _startCaptionTypewriter(_txt);
+          dbgLog('📺 打字机启动: '+_txt.length+'字');
+        } else {
+          dbgLog('⚠️ 350到了但_pendingCaptionText为空');
+        }
       } else if(_captionIsTTS){
-        // ★ 方案2：我们发出的500的后续350，直接用j.text
-        logEvt('←350续',350,'text="'+t.substring(0,20)+'" viewShow='+_dbgViewShow);
-        if(t){ setSub(t, true); dbgLog('📺 字幕写入(续句): "'+t.substring(0,30)+'"'); }
-        else { dbgLog('⚠️ 350续句 j.text为空'); }
+        // 后续350：打字机已在跑，不重复启动
+        logEvt('←350续',350,'打字机运行中，跳过');
+        dbgLog('📺 350续句(打字机已运行)');
         state='speaking';setWave(true,false);
       } else {
         // ★ 方案B：LLM触发的350
@@ -1550,6 +1551,7 @@ function pttStart(){
   stopAudio();                    // 本地音频立刻静音
   _isGreeting = false;
   _pendingQueryText = null;
+  _pendingCaptionText = null;    // ★ 清空待显示字幕
   _chipTTSActive  = false;       // ★ 用户手动打断，重置chip上下文标记
   _last515Time = Date.now(); // 同步节流时间
   logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
@@ -1815,6 +1817,36 @@ function captionReset(msg){
   scroll.innerHTML = '<div class="caption-idle" id="captionIdle"><div class="caption-idle-icon">🔊</div><div>'+tip+'</div></div>';
 }
 
+// ★ 方案1：把完整TTS文本按句拆分，逐句用打字机效果推入字幕区
+// 普通话约4字/秒，每句打完后停顿200ms再开始下一句
+function _startCaptionTypewriter(fullText){
+  // 先重置，清掉idle占位
+  const scroll = $('captionScroll');
+  if(!scroll) return;
+  const idle = $('captionIdle');
+  if(idle) idle.remove();
+
+  // 按句号分句（不按逗号，避免太碎）
+  const sentences = fullText
+    .split(/[。！!？?\n]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  dbgLog('📺 打字机分句: '+sentences.length+'句');
+
+  let sentIdx = 0;
+  function nextSentence(){
+    if(sentIdx >= sentences.length) return;
+    const s = sentences[sentIdx++];
+    captionAppendLine(s, 'text', 0);
+    // 估算这句话的语音时长：约4字/秒，最少800ms，多留20%余量
+    const msPerChar = 260; // ~3.8字/秒，略慢于语音，避免超前
+    const delay = Math.max(800, s.length * msPerChar);
+    setTimeout(nextSentence, delay);
+  }
+  nextSentence();
+}
+
 // 无数据时显示提示；有数据时什么都不做，等 350 事件驱动字幕
 function renderCaptionFromResult(name, dateStr, dayLabel, result){
   if(!result){
@@ -1865,7 +1897,7 @@ function renderDetailBoard(name, dateStr, dayLabel, result){
 
 function closeDetailBoard(){
   if(_typewriterTimer){ clearTimeout(_typewriterTimer); _typewriterTimer=null; }
-  _captionQueue = []; _captionIsTTS = false;
+  _captionQueue = []; _captionIsTTS = false; _pendingCaptionText = null;
   const container = $('chipContainer');
   const view = $('captionView');
   if(view) view.classList.remove('show');
