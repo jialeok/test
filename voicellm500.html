@@ -873,6 +873,8 @@ let ws, sid, globalSeq=0, state='idle'; // globalSeq: 与服务端autoAssignedSe
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false, _currentAudio=null; // ★ 记住当前播放的Audio对象
 let _lastChunkTime = 0; // ★ 最后一帧352入队的时间戳，用于判断音频是否真正播完
+let _lastSend500Time = 0; // ★ 最后一次发出500的时间戳，防止playNext定时器在新一轮兜底期间误设idle
+let _tts352WatchdogTimer = null; // ★ 350放行后等待首帧352的看门狗，超时则重置状态防卡死
 let _greetingDone = false; // 防止静默刷新后重复播开场白
 let _isGreeting   = false; // 开场白播出中，TTSEnded时跳过刷新，断循环
 
@@ -1028,6 +1030,13 @@ const playNext=()=>{
     // ★ 队列空且不在播：检查距最后一帧入队是否超过2秒，防止段落间空隙误判为播完
     if(!playing && !queue.length && _pendingRefresh){
       const sinceLastChunk = Date.now() - _lastChunkTime;
+      const sinceLast500 = Date.now() - _lastSend500Time;
+      // ★ 如果500发出后不足3秒，说明新一轮TTS正在飞，不能设idle，等352自然入队后再推进
+      if(sinceLast500 < 3000){
+        dbgLog('⏸ playNext: 距上次500仅'+sinceLast500+'ms<3s，跳过idle设置，等待新一轮352入队');
+        setTimeout(()=>playNext(), 3000 - sinceLast500 + 50);
+        return;
+      }
       if(sinceLastChunk >= 2000){
         _pendingRefresh = false;
         activeMode = 'idle'; // ★ 队列真正播完，回到idle（不在359里设，防止352提前被丢）
@@ -1050,6 +1059,7 @@ const playNext=()=>{
 const stopAudio=()=>{
   if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
   if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
+  if(_tts352WatchdogTimer){ clearTimeout(_tts352WatchdogTimer); _tts352WatchdogTimer = null; } // ★ 打断时清除352看门狗
   _pendingRefresh = false; // ★ 被打断时取消待刷新
   dbgLog('⏹ stopAudio: 清空 chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
   if(_currentAudio){
@@ -1323,6 +1333,7 @@ function send515Throttled(note=''){
 // 用 ChatTTSText(500) 流式发送文本
 function sendChatTTS(ttsText, note=''){
   // activeMode 决定350来源，chip/ptt各自路径的352均已放行
+  _lastSend500Time = Date.now(); // ★ 记录500发出时间，防止playNext定时器误设idle
   logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+ttsText.substring(0,30)+'…');
   ws.send(encode(500,JSON.stringify({start:true,content:ttsText,end:false}),sid));
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
@@ -1437,6 +1448,17 @@ const onMsg=evt=>{
         setWave(true,false);litFlow(4);
         // ★ 直接触发字幕打字机
         if(typeof _capText !== 'undefined' && _capText){ const _ct=_capText; _capText=null; _capStart(_ct); }
+        // ★ 启动352看门狗：若4秒内没收到首帧352则强制重置，防卡死在"助理正在说话"
+        if(_tts352WatchdogTimer) clearTimeout(_tts352WatchdogTimer);
+        _tts352WatchdogTimer = setTimeout(()=>{
+          _tts352WatchdogTimer = null;
+          if(state==='speaking' && queue.length===0 && !playing){
+            dbgLog('⚠️ 352看门狗触发(ptt)：350放行后4秒无352帧，强制重置 activeMode='+activeMode+'→idle');
+            logEvt('⚠️看门狗',0,'ptt: 350后4s无352帧，强制回idle');
+            state='idle'; activeMode='idle';
+            setStatus('等待中…'); setWave(false,false);
+          }
+        }, 4000);
       } else {
         // idle：LLM触发的350，压制
         logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
@@ -1593,6 +1615,8 @@ const onMsg=evt=>{
       // chip或ptt模式：放行我们自己路径的音频
       chunks.push(payload);
       _lastChunkTime = Date.now(); // ★ 记录最后一帧入队时间
+      // ★ 首帧352到达，清除看门狗（服务端已正常吐流，不会卡死）
+      if(_tts352WatchdogTimer){ clearTimeout(_tts352WatchdogTimer); _tts352WatchdogTimer = null; }
       const wasTimer = !!_flushTimer;
       if(_flushTimer) clearTimeout(_flushTimer);
       _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
