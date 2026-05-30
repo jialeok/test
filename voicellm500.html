@@ -1476,9 +1476,14 @@ const onMsg=evt=>{
         dbgLog('🏁 359 TTSEnded (chip流程结束)，跳过会话刷新，保持上下文');
         setStatus('按住🎤说话…');
       } else {
-        // ★ 不立刻刷新，等本地音频队列播完再刷新，防止播到一半会话被结束
-        _pendingRefresh = true;
-        dbgLog('🏁 359 TTSEnded → 设_pendingRefresh，等队列播完再刷新会话');
+        // ★ 延迟500ms再设_pendingRefresh，确保359之后迟到的352帧都已入队
+        // 否则队列短暂为空时误判播完，提前触发静默刷新截断音频
+        setTimeout(()=>{
+          _pendingRefresh = true;
+          dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，等队列播完再刷新');
+          // 如果此时队列已空且没在播，立刻触发
+          if(!playing && !queue.length){ _pendingRefresh=false; _refreshSession(); }
+        }, 500);
         setStatus('按住🎤说话…');
       }
     } else if(eid===450){stopAudio();setSub('',false);
