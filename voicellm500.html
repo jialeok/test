@@ -1021,8 +1021,18 @@ const flushAudio=()=>{
   queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));
   playNext();
 };
+let _pendingRefresh = false; // ★ 收到359时先存起来，等本地队列真正播完再刷新会话
 const playNext=()=>{
-  if(playing||!queue.length)return;playing=true;
+  if(playing||!queue.length){
+    // ★ 队列空了且不在播放：检查有没有待执行的会话刷新
+    if(!playing && !queue.length && _pendingRefresh){
+      _pendingRefresh = false;
+      dbgLog('🏁 playNext: 队列播完，执行待延迟的_refreshSession');
+      _refreshSession();
+    }
+    return;
+  }
+  playing=true;
   const url=queue.shift(),a=new Audio(url);
   _currentAudio=a;
   dbgLog('playNext: 开始播放 queue剩余='+queue.length);
@@ -1032,6 +1042,7 @@ const playNext=()=>{
 const stopAudio=()=>{
   if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
   if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
+  _pendingRefresh = false; // ★ 被打断时取消待刷新
   dbgLog('⏹ stopAudio: 清空 chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
   if(_currentAudio){
     try{_currentAudio.pause();_currentAudio.src='';}catch(_){}
@@ -1465,7 +1476,9 @@ const onMsg=evt=>{
         dbgLog('🏁 359 TTSEnded (chip流程结束)，跳过会话刷新，保持上下文');
         setStatus('按住🎤说话…');
       } else {
-        _refreshSession();
+        // ★ 不立刻刷新，等本地音频队列播完再刷新，防止播到一半会话被结束
+        _pendingRefresh = true;
+        dbgLog('🏁 359 TTSEnded → 设_pendingRefresh，等队列播完再刷新会话');
         setStatus('按住🎤说话…');
       }
     } else if(eid===450){stopAudio();setSub('',false);
