@@ -1063,11 +1063,13 @@ const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g
 
 let pendingRAG = null; // 语音路径：等 459 再发
 let pendingRAGPromise = null; // ★ 修复竞态：lookupRAG的Promise，flushPendingRAG等它完成
-let _blockLLMAudio = false;  // ★ 方案B：屏蔽LLM音频帧（352），防止残音入队
-let _our500Sent    = false;  // ★ 方案B：我们是否已发过500 TTS，用于区分350来源
-let _pendingQueryText = null; // 过渡话术播完后要播的查询结果
-let _chipTTSActive  = false; // ★ chip查询500会话生命周期：完成后不刷新会话，保持上下文
-let _pendingChipTTSText = null; // 收到553后立刻发送的TTS文本
+// ══ activeMode：两条路径完全隔离的核心变量 ════════════════
+// 'idle' | 'chip' | 'ptt'
+// 任意时刻只有一条路径活跃，onMsg里所有判断统一看这个变量
+let activeMode = 'idle';
+let _pendingQueryText = null; // [ptt专属] 过渡话术播完后要播的查询结果
+let _chipTTSActive  = false; // [chip专属] chip查询500会话生命周期：完成后不刷新会话，保持上下文
+let _pendingChipTTSText = null; // [chip专属] 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
 let _flushTimer     = null;  // ★ 自驱动flush：不依赖351/359，定时刷音频
 let _chipTTSTimer   = null;  // chip延迟发500定时器（当前为立即发送，定时器仅作清理保留）
@@ -1280,9 +1282,7 @@ function flushPendingRAG(){
   // 等待 lookupRAG 的 Promise（如果还在查就等，已完成则立即拿到结果）
   const doFlush = (ragText) => {
     if(!ragText){
-      // ★ 兜底前先解除音频屏蔽，否则兜底TTS的352帧也会被丢弃播不出来
-      _blockLLMAudio = false;
-      _our500Sent    = false;
+      // 兜底：activeMode='ptt' 已放行352，直接发兜底TTS
       logEvt('→客户端',500,'(兜底) lookupRAG无结果');
       sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
       return;
@@ -1317,7 +1317,7 @@ function send515Throttled(note=''){
 
 // 用 ChatTTSText(500) 流式发送文本
 function sendChatTTS(ttsText, note=''){
-  _our500Sent = true;   // ★ 方案B：标记我们发过500，下一个350是我们的
+  // activeMode 决定350来源，chip/ptt各自路径的352均已放行
   logEvt('→客户端',500,'ChatTTSText '+note+' 开始: '+ttsText.substring(0,30)+'…');
   ws.send(encode(500,JSON.stringify({start:true,content:ttsText,end:false}),sid));
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
@@ -1416,26 +1416,23 @@ const onMsg=evt=>{
       }
     } else if(eid===350){
       const t=j.text||'';if(t)setSub(t,true);
-      if(_our500Sent){
-        // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
-        _our500Sent    = false;
-        _blockLLMAudio = false;
-        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽 chipTTSActive='+_chipTTSActive);
-        dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
+      if(activeMode === 'chip'){
+        // chip路径：我们发过500，这个350是我们自己TTS触发的，直接放行
+        logEvt('←350',350,'chip模式：我们的TTS触发 chipTTSActive='+_chipTTSActive);
+        dbgLog('🔊 350 TTSSentenceStart (chip-我们的TTS): '+t.substring(0,30));
+        state='speaking';setStatus('助理正在说话…');
+        setWave(true,false);litFlow(4);
+      } else if(activeMode === 'ptt'){
+        // ptt路径：我们发过500，这个350是我们自己TTS触发的，直接放行
+        logEvt('←350',350,'ptt模式：我们的TTS触发');
+        dbgLog('🔊 350 TTSSentenceStart (ptt-我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
       } else {
-        // ★ 方案B：我们没发过500，这是LLM触发的350
-        if(_chipTTSActive){
-          // ★ chip TTS进行中：不额外封音频（_blockLLMAudio已由553保持true，我们350后解封）
-          logEvt('←350',350,'LLM触发(chip中，不额外操作)');
-          dbgLog('🔊 350 (LLM) chip中: '+t.substring(0,30));
-        } else {
-          _blockLLMAudio = true;
-          logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
-          dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
-          send515Throttled('(压制LLM TTS)');
-        }
+        // idle：LLM触发的350，压制
+        logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
+        dbgLog('🔇 忽略350 (LLM TTS，idle模式): '+t.substring(0,30));
+        send515Throttled('(压制LLM TTS)');
       }
     } else if(eid===351){dbgLog('📌 351 TTSSentenceEnd (服务端flush)');flushAudio();
     } else if(eid===359){
@@ -1480,14 +1477,16 @@ const onMsg=evt=>{
         setStatus('按住🎤说话…');
       } else if(_chipTTSActive){
         _chipTTSActive = false;
-        dbgLog('🏁 359 TTSEnded (chip流程结束)，跳过会话刷新，保持上下文');
+        activeMode = 'idle'; // ★ chip流程结束，回到idle
+        dbgLog('🏁 359 TTSEnded (chip流程结束)，activeMode→idle，跳过会话刷新，保持上下文');
         setStatus('按住🎤说话…');
       } else {
         // ★ 延迟500ms再设_pendingRefresh，确保359之后迟到的352帧都已入队
         // 否则队列短暂为空时误判播完，提前触发静默刷新截断音频
         setTimeout(()=>{
           _pendingRefresh = true;
-          dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，等队列播完再刷新');
+          activeMode = 'idle'; // ★ ptt路径TTS播完，回到idle，等静默刷新
+          dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，activeMode→idle，等队列播完再刷新');
           // 如果此时队列已空且没在播，交给playNext的时间戳判断
           if(!playing && !queue.length){ playNext(); }
         }, 500);
@@ -1532,11 +1531,11 @@ const onMsg=evt=>{
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
-      // ChatTextQueryConfirmed：chip的501已确认 → 解封LLM，等359(LLM等待语播完)再发500
+      // ChatTextQueryConfirmed：chip的501已确认 → 等359(LLM等待语播完)再发500
+      // activeMode='chip' 时352帧已放行，350到达时走chip分支
       if(_pendingChipTTSText){
-        _blockLLMAudio = false; // 放行LLM TTS，让"正在为您查询请稍等"播完整
         setStatus('助理正在整理…');
-        dbgLog('📥 553 → 解封LLM音频 + 2s兜底定时器');
+        dbgLog('📥 553 → chip模式352已放行 + 2s兜底定时器 activeMode='+activeMode);
         const tokenAt553 = _chipToken; // ★ 记住553触发时的令牌
         _chipTTSTimer = setTimeout(()=>{
           _chipTTSTimer = null;
@@ -1571,16 +1570,18 @@ const onMsg=evt=>{
   }
   if(msgType===11&&payload){
     const size = payload.byteLength;
-    if(_blockLLMAudio){
-      logEvt('←丢弃352',352,'_blockLLMAudio=true，丢弃LLM音频帧');
-      dbgLog('🔇 丢弃352: '+size+'B blockLLMAudio='+_blockLLMAudio+' chip='+_chipTTSActive);
+    if(activeMode === 'idle'){
+      // idle模式：没有活跃路径，丢弃所有LLM音频
+      logEvt('←丢弃352',352,'activeMode=idle，丢弃LLM音频帧');
+      dbgLog('🔇 丢弃352: '+size+'B activeMode=idle chip='+_chipTTSActive);
     } else {
+      // chip或ptt模式：放行我们自己路径的音频
       chunks.push(payload);
       _lastChunkTime = Date.now(); // ★ 记录最后一帧入队时间
       const wasTimer = !!_flushTimer;
       if(_flushTimer) clearTimeout(_flushTimer);
       _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
-      dbgLog('📥 352入队: '+size+'B chunks='+chunks.length+' 定时器='+(wasTimer?'重置':'新设'));
+      dbgLog('📥 352入队: '+size+'B chunks='+chunks.length+' 定时器='+(wasTimer?'重置':'新设')+' mode='+activeMode);
     }
   }
 };
@@ -1677,15 +1678,14 @@ function pttStart(){
   stopAudio();                    // 本地音频立刻静音
   _isGreeting = false;
   _pendingQueryText = null;
-  // ★ 清除 chip 残留状态，防止点击标签后 PTT 被污染
+  // ★ 切换到PTT路径：清零所有chip专属状态，两条路径完全隔离
+  activeMode          = 'ptt';   // ★ 设置活跃路径为PTT
   _chipTTSActive      = false;
   _pendingChipTTSText = null;
-  _blockLLMAudio      = false;
-  _our500Sent         = false;
   _chipQueryInFlight  = false;
   _chipToken++;                  // ★ 令牌递增，使任何还在飞的 chip 异步回调自动失效
   _last515Time = Date.now(); // 同步节流时间
-  logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
+  logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断) activeMode→ptt');
   ws.send(encode(515,JSON.stringify({}),sid));
   state='listening';
   pendingPTT=false;
@@ -1700,8 +1700,7 @@ function _doPttStart(){
   pendingRAGPromise=null;
   _pendingQueryText=null;
   _ragFlushed=false;
-  _blockLLMAudio=false;  // ★ 方案B：新一轮，解除屏蔽
-  _our500Sent=false;     // ★ 方案B：新一轮，重置标记
+  // activeMode 已在 pttStart 里设为 'ptt'，这里无需重设
   waitingForFinalASR=false;
   pttFrameCount=0;
   audioBytesSent=0;audioFramesSent=0; // 每次按下重置统计
@@ -1785,7 +1784,7 @@ let _chipQueryInFlight = false; // 防止用户快速重复点击chip
 let _chipToken = 0; // ★ 隔离令牌：每次chip查询递增，PTT按下时也递增，使旧chip回调自动失效
 
 // ★ 标签点击：用精确的员工名+日期查RAG，走501→553→500完成TTS播报
-// ★ 501建立上下文（必须），_blockLLMAudio封死LLM→553→500→我们的350解封
+// ★ 501建立上下文（必须），activeMode='chip'放行352，553后发500，359后回idle
 async function chipQuery(name, dateStr, dayLabel){
   if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
@@ -1793,11 +1792,11 @@ async function chipQuery(name, dateStr, dayLabel){
   const myToken = ++_chipToken; // ★ 拿到本次令牌
   try{
   stopAudio();
-  _blockLLMAudio = false;
-  _our500Sent    = false;
-  _ragFlushed    = false;
-  _pendingQueryText = null;
-  pendingRAG     = null;
+  // ★ 切换到chip路径：清零所有PTT专属状态，两条路径完全隔离
+  activeMode        = 'chip'; // ★ 设置活跃路径为chip（先设idle等150ms后再设chip，见下）
+  _ragFlushed       = false;
+  _pendingQueryText = null;   // 清零PTT的过渡话术结果
+  pendingRAG        = null;
   pendingRAGPromise = null;
 
   setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
@@ -1821,7 +1820,8 @@ async function chipQuery(name, dateStr, dayLabel){
     return;
   }
 
-  _blockLLMAudio = false;
+  // 令牌有效，确认chip路径仍然活跃（150ms等待期间activeMode可能被PTT改掉，由token保证）
+  activeMode = 'chip'; // ★ 重申：现在真正进入chip活跃阶段
 
   let ttsText;
   if(!dateStr){
@@ -1848,13 +1848,10 @@ async function chipQuery(name, dateStr, dayLabel){
   }
 
   // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
-  // ★ 关键：501之前_blockLLMAudio=true，所有LLM音频全部封死
-  // ★ 只在我们的350到达时解封
-  _blockLLMAudio = true;
-  _our500Sent    = false;
+  // ★ activeMode='chip'：352音频帧已放行，350判断走chip分支，359后activeMode→idle
   _chipTTSActive = true;
   _pendingChipTTSText = ttsText;
-  dbgLog('� chipQuery发501前: blockLLMAudio='+_blockLLMAudio+' our500Sent='+_our500Sent+' chipTTSActive='+_chipTTSActive);
+  dbgLog('📤 chipQuery发501前: activeMode='+activeMode+' chipTTSActive='+_chipTTSActive);
   dbgLog('📤 sendChatTextQuery(501): 查' + name + '的日报');
   logEvt('→客户端',501,'ChatTextQuery');
   ws.send(encode(501, JSON.stringify({ content: '查' + name + '的日报' }), sid));
@@ -2048,8 +2045,7 @@ function fillAndSend(t){
         _ragFlushed=false;
         sendChatTTS('好的，稍等我查一下～','(chip过渡)');
       } else {
-        _blockLLMAudio = false;
-        _our500Sent    = false;
+        // 兜底：activeMode='ptt'已放行352，直接发兜底TTS
         sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(chip兜底)');
         setStatus('未找到相关内容');
       }
@@ -2078,8 +2074,7 @@ async function sendText(){
     sendChatTTS('好的，稍等我查一下～','(过渡-等TTSEnded再发结果)');
     setStatus('过渡话术已发，等待服务端TTSEnded后播报结果…');
   } else {
-    _blockLLMAudio = false;
-    _our500Sent    = false;
+    // 兜底：activeMode='ptt'已放行352，直接发兜底TTS
     logEvt('→客户端',500,'(兜底) 未匹配到RAG内容');
     sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
     setStatus('未找到相关内容');
@@ -2510,17 +2505,17 @@ function _capStart(fullText){
   };
 })();
 
-// ── 检测 _our500Sent true→false：350到达时启动打字机 ──
+// ── 检测 state 进入 'speaking'（350到达时）：启动打字机 ──
 (function(){
-  let _prev = false;
+  let _prevState = '';
   setInterval(()=>{
-    if(typeof _our500Sent === 'undefined') return;
-    if(_prev === true && _our500Sent === false && _capText){
+    // 检测 state 进入 'speaking'（350到达后设置），触发打字机
+    if(_prevState !== 'speaking' && state === 'speaking' && _capText){
       const txt = _capText;
       _capText = null;
       _capStart(txt);
     }
-    _prev = _our500Sent;
+    _prevState = state;
   }, 30);
 })();
 
