@@ -810,17 +810,28 @@ async function loadEmployeeNames(){
   try{
     const {data,error}=await sbClient
       .from('employees')
-      .select('name')
+      .select('name,nickname')
       .eq('enabled',true)
       .order('created_at',{ascending:true});
     if(error) throw error;
     employeeNames=(data||[]).map(e=>e.name);
+    // 存储昵称映射：name -> nickname (fallback to last char of name)
+    window._empNicknames = {};
+    (data||[]).forEach(e=>{
+      window._empNicknames[e.name] = (e.nickname && e.nickname.trim()) ? e.nickname.trim() : e.name.slice(-1);
+    });
     dbgLog('✅ 员工列表: '+employeeNames.join(', '));
     renderChips(); // ★ 员工加载完成后渲染快捷标签（renderChips已是async）
   }catch(e){
     dbgLog('⚠️ 员工加载失败: '+e.message);
     renderChips(); // 失败也渲染（显示空提示）
   }
+}
+
+// 获取员工昵称（显示在圆圈中）
+function _getEmpNick(name){
+  if(window._empNicknames && window._empNicknames[name]) return window._empNicknames[name];
+  return name ? name.slice(-1) : name.charAt(0);
 }
 
 // ★ 动态渲染员工快捷标签：查每位员工最近有日报的实际日期，每人一行一个chip
@@ -872,18 +883,19 @@ async function renderChips(){
   // 默认卡片列表：清理 planet-mode 和 RAF
   if(_planetRAF){ cancelAnimationFrame(_planetRAF); _planetRAF = null; }
   container.classList.remove('planet-mode');
+  const showDateBadge = window._uiDateBadgeEnabled !== false; // default true
   let html = '';
   for(const c of chips){
-    const initial = c.name.charAt(0);
+    const nick = _getEmpNick(c.name);
     const dateLabel = c.hasRecord ? c.dateLabel : '暂无记录';
     const noRecClass = c.hasRecord ? '' : ' no-record';
     const dateStr = c.dateStr || '';
     html += `<div class="emp-chip${noRecClass}" onclick="openDetailBoard('${c.name}','${dateStr}','${dateLabel}')">
-      <div class="emp-avatar">${initial}</div>
+      <div class="emp-avatar">${nick}</div>
       <div class="emp-info">
         <div class="emp-name-row">查 ${c.name} 的工作日报</div>
         <div class="emp-meta-row">
-          <span class="emp-date-badge">${dateLabel}</span>
+          ${showDateBadge ? `<span class="emp-date-badge">${dateLabel}</span>` : ''}
           <span>${c.hasRecord ? '最近有记录' : '暂无日报'}</span>
         </div>
       </div>
@@ -974,12 +986,14 @@ function _renderPlanet(container, chips){
       el.className = 'planet-node';
       el.style.cssText = `left:${cx - r}px;top:${cy - r}px`;
       el.onclick = ()=> openDetailBoard(c.name, dateStr, dateLabel);
+      const nick = _getEmpNick(c.name);
+      const showDate = window._uiDateBadgeEnabled !== false;
       el.innerHTML = `
         <div class="planet-bubble" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.32)}px;background:linear-gradient(135deg,${c1},${c2})">
-          ${c.name.charAt(0)}
+          ${nick}
         </div>
         <div class="planet-label">${c.name}</div>
-        <div class="planet-date">${dateLabel}</div>
+        ${showDate ? `<div class="planet-date">${dateLabel}</div>` : ''}
       `;
       canvas.appendChild(el);
       nodes.push({ el, baseY: cy - r, floatAmp, floatSpeed, floatPhase });
@@ -2570,7 +2584,7 @@ initWS();
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge').limit(1).single();
     if(error||!data) return;
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -2608,6 +2622,10 @@ async function applyUiConfig(){
 
     // 星球浮动模板：存全局变量，renderChips 会读取
     window._uiLayoutPlanet = !!data.ui_layout_planet;
+
+    // 日期标签：默认显示（true），开关关闭时隐藏
+    window._uiDateBadgeEnabled = data.ui_date_badge !== undefined ? !!data.ui_date_badge : true;
+
     // 如果员工已加载完毕，立刻重新渲染（切换模板）
     if(employeeNames.length) renderChips();
 
