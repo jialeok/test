@@ -7,8 +7,9 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260530-4 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- v=20260530-7 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
   :root {
@@ -92,7 +93,7 @@
   .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
   /* ── 内容区 ── */
-  .tab-content{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0}
+  .tab-content{display:none;flex:1;overflow-y:auto;flex-direction:column;min-height:0;position:relative}
   .tab-content.active{display:flex}
 
   /* ── Tab0: 语音对话 ── */
@@ -180,162 +181,81 @@
   .emp-chip.no-record .emp-avatar{opacity:.4}
   .emp-chip.no-record .emp-name-row{color:var(--muted)}
 
-  /* ── 字幕影院视图（替代看板） ── */
-  .caption-view{
+  /* ── 查询看板（覆盖列表） ── */
+  .detail-board{
     display:none;flex-direction:column;flex:1;
-    background:linear-gradient(180deg,#0a0f1a 0%,#0d1526 60%,#0a1020 100%);
-    position:relative;overflow:hidden;
+    padding:14px;gap:0;
   }
-  .caption-view.show{display:flex}
+  .detail-board.show{display:flex}
 
-  /* 顶部扫描线装饰 */
-  .caption-view::before{
-    content:'';position:absolute;top:0;left:0;right:0;height:1px;
-    background:linear-gradient(90deg,transparent,rgba(14,168,122,.6),rgba(46,140,224,.6),transparent);
-    animation:scan-line 3s ease-in-out infinite;
-    z-index:2;pointer-events:none;
+  .board-header{
+    display:flex;align-items:center;gap:12px;
+    padding:16px 18px;border-radius:14px 14px 0 0;
+    background:linear-gradient(135deg,rgba(14,168,122,.08),rgba(46,140,224,.05));
+    border:1px solid var(--border);border-bottom:none;
+    flex-shrink:0;
   }
-  @keyframes scan-line{
-    0%,100%{opacity:.3;transform:scaleX(.4)}
-    50%{opacity:1;transform:scaleX(1)}
-  }
-
-  /* 背景网格科技感 */
-  .caption-view::after{
-    content:'';position:absolute;inset:0;
-    background-image:
-      linear-gradient(rgba(14,168,122,.04) 1px,transparent 1px),
-      linear-gradient(90deg,rgba(14,168,122,.04) 1px,transparent 1px);
-    background-size:40px 40px;
-    pointer-events:none;z-index:0;
-  }
-
-  /* 查询人名标题栏 */
-  .caption-header{
-    padding:14px 20px 10px;flex-shrink:0;z-index:3;
-    display:flex;align-items:center;gap:10px;
-    border-bottom:1px solid rgba(14,168,122,.15);
-    background:rgba(10,15,26,.7);
-    backdrop-filter:blur(8px);
-  }
-  .caption-header-avatar{
-    width:34px;height:34px;border-radius:50%;flex-shrink:0;
-    background:linear-gradient(135deg,rgba(14,168,122,.3),rgba(46,140,224,.3));
-    border:1.5px solid rgba(14,168,122,.5);
+  .board-avatar{
+    width:48px;height:48px;border-radius:50%;
+    background:linear-gradient(135deg,rgba(14,168,122,.2),rgba(46,140,224,.2));
+    border:2px solid rgba(14,168,122,.3);
     display:flex;align-items:center;justify-content:center;
-    font-size:14px;font-weight:700;color:#5de8b8;
-    box-shadow:0 0 10px rgba(14,168,122,.3);
+    font-size:20px;font-weight:800;color:var(--accent);flex-shrink:0;
   }
-  .caption-header-info{flex:1;min-width:0}
-  .caption-header-name{
-    font-size:13px;font-weight:700;
-    background:linear-gradient(90deg,#5de8b8,#60b4f0);
-    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-    letter-spacing:.04em;font-family:var(--mono);
+  .board-title{flex:1;min-width:0}
+  .board-name{font-size:18px;font-weight:700;color:var(--text)}
+  .board-date{font-size:11px;color:var(--accent2);margin-top:2px;letter-spacing:.04em}
+  .board-status-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 6px rgba(14,168,122,.5);animation:pulse-dot 2s ease-in-out infinite;flex-shrink:0;
   }
-  .caption-header-date{
-    font-size:10px;color:rgba(93,232,184,.55);letter-spacing:.1em;
-    font-family:var(--mono);margin-top:1px;
-  }
-  .caption-live-dot{
-    width:7px;height:7px;border-radius:50%;background:#5de8b8;
-    box-shadow:0 0 8px rgba(93,232,184,.8);flex-shrink:0;
-    animation:live-pulse 1.5s ease-in-out infinite;
-  }
-  @keyframes live-pulse{0%,100%{opacity:.5;box-shadow:0 0 4px rgba(93,232,184,.4)}50%{opacity:1;box-shadow:0 0 12px rgba(93,232,184,.9)}}
+  @keyframes pulse-dot{0%,100%{box-shadow:0 0 4px rgba(14,168,122,.4)}50%{box-shadow:0 0 12px rgba(14,168,122,.7)}}
 
-  /* 字幕滚动区 */
-  .caption-scroll{
+  .board-body{
+    background:#fafbfc;
+    border:1px solid var(--border);border-top:none;border-bottom:none;
+    padding:14px;display:flex;flex-direction:column;gap:10px;
     flex:1;overflow-y:auto;
-    padding:20px 24px 16px;
-    display:flex;flex-direction:column;gap:0;
-    z-index:3;position:relative;
-    scroll-behavior:smooth;
   }
-  .caption-scroll::-webkit-scrollbar{width:2px}
-  .caption-scroll::-webkit-scrollbar-thumb{background:rgba(93,232,184,.2);border-radius:2px}
+  .board-field{border-radius:10px;background:#fff;border:1px solid var(--border);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .board-field-label{
+    padding:8px 14px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    background:#f8fafc;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:7px;
+  }
+  .board-field-label .fl-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+  .board-field-content{padding:12px 14px;font-size:14px;line-height:1.7;color:var(--text)}
+  .board-field-empty{padding:12px 14px;font-size:12px;color:var(--muted);font-style:italic}
 
-  /* 单条字幕行 */
-  .caption-line{
-    font-size:15px;line-height:1.85;
-    text-align:center;
-    font-family:var(--mono);
-    letter-spacing:.03em;
-    opacity:0;
-    animation:caption-appear .3s ease forwards;
-    padding:1px 0;
-  }
-  @keyframes caption-appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  /* 做了什么: green, 问题: warn, 计划: blue */
+  .fl-done .board-field-label{color:var(--accent)}.fl-done .fl-dot{background:var(--accent)}
+  .fl-problem .board-field-label{color:var(--warn)}.fl-problem .fl-dot{background:var(--warn)}
+  .fl-plan .board-field-label{color:var(--accent2)}.fl-plan .fl-dot{background:var(--accent2)}
+  .fl-other .board-field-label{color:var(--accent3)}.fl-other .fl-dot{background:var(--accent3)}
 
-  /* 历史行（已播完）渐淡 */
-  .caption-line.past{
-    color:rgba(150,180,160,.45);
+  /* loading shimmer inside board */
+  .board-loading{
+    display:flex;flex-direction:column;gap:10px;padding:4px 0;
   }
-  /* 当前播出行（高亮） */
-  .caption-line.current{
-    color:#e8fff8;
-    text-shadow:0 0 12px rgba(93,232,184,.4);
-  }
-  /* 段落标签 */
-  .caption-line.tag{
-    font-size:10px;letter-spacing:.15em;text-transform:uppercase;
-    color:rgba(93,232,184,.5);margin-top:14px;margin-bottom:2px;
-    display:flex;align-items:center;justify-content:center;gap:8px;
-  }
-  .caption-line.tag::before,.caption-line.tag::after{
-    content:'';display:inline-block;width:24px;height:1px;
-    background:linear-gradient(90deg,transparent,rgba(93,232,184,.4));
-  }
-  .caption-line.tag::after{
-    background:linear-gradient(90deg,rgba(93,232,184,.4),transparent);
-  }
-
-  /* 光标闪烁 */
-  .caption-cursor{
-    display:inline-block;width:2px;height:1em;
-    background:#5de8b8;margin-left:2px;vertical-align:middle;
-    animation:blink-cursor .7s step-end infinite;
-    box-shadow:0 0 6px rgba(93,232,184,.7);
-  }
-  @keyframes blink-cursor{0%,100%{opacity:1}50%{opacity:0}}
-
-  /* 等待占位 */
-  .caption-idle{
-    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:14px;padding:40px 20px;
-    color:rgba(93,232,184,.35);font-family:var(--mono);font-size:12px;
-    letter-spacing:.08em;text-align:center;z-index:3;
-  }
-  .caption-idle-icon{font-size:32px;opacity:.4;animation:float-icon 3s ease-in-out infinite}
-  @keyframes float-icon{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-
-  /* 底部返回栏 */
-  .caption-footer{
-    padding:12px 16px;flex-shrink:0;z-index:3;
-    background:rgba(10,15,26,.85);
-    border-top:1px solid rgba(14,168,122,.12);
-    backdrop-filter:blur(8px);
-  }
-  .back-btn{
-    width:100%;height:42px;border-radius:21px;
-    border:1px solid rgba(14,168,122,.3);
-    background:rgba(14,168,122,.08);
-    color:rgba(93,232,184,.8);
-    font-size:13px;font-family:var(--mono);font-weight:600;
-    letter-spacing:.06em;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:8px;
-    transition:all .18s;
-  }
-  .back-btn:active{
-    background:rgba(14,168,122,.2);
-    border-color:rgba(14,168,122,.6);
-    color:#5de8b8;
-    box-shadow:0 0 12px rgba(14,168,122,.2);
-  }
-
-  /* shimmer 保留（其他地方可能用到） */
   .shimmer{height:72px;border-radius:10px;background:linear-gradient(90deg,#f0f4f8 25%,#e8edf5 50%,#f0f4f8 75%);background-size:200%;animation:shimmer 1.4s infinite}
   @keyframes shimmer{0%{background-position:200%}100%{background-position:-200%}}
+
+  /* 返回按钮 */
+  .board-footer{
+    padding:12px;border-radius:0 0 14px 14px;
+    background:#f8fafc;
+    border:1px solid var(--border);border-top:1px solid var(--border);
+    flex-shrink:0;
+  }
+  .back-btn{
+    width:100%;height:44px;border-radius:22px;border:1.5px solid var(--border);
+    background:#fff;color:var(--text);
+    font-size:14px;font-family:var(--sans);font-weight:600;
+    letter-spacing:.02em;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:all .18s;box-shadow:0 1px 3px rgba(0,0,0,.06);
+  }
+  .back-btn:active{background:#f0f4f8;border-color:rgba(14,168,122,.4);color:var(--accent)}
 
   /* ── 底部按住说话 ── */
   .bottom-bar{margin-top:auto;flex-shrink:0;background:#fff;border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));}
@@ -385,6 +305,179 @@
   /* ── 隐藏Tab后布局优化 ── */
   .tabs .tab{min-width:0}
   .no-flow .subtitle-box{margin-top:20px}
+
+  /* ── 字幕大屏覆盖层（从tab栏底部到屏幕底部，替换tab0内容区） ── */
+  .caption-overlay{
+    position:absolute;
+    top:0; left:0; right:0; bottom:0;
+    z-index:100;
+    display:none;
+    flex-direction:column;
+    background:#050c14;
+    background-image:
+      linear-gradient(rgba(14,168,122,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(14,168,122,.04) 1px, transparent 1px);
+    background-size:32px 32px;
+  }
+  .caption-overlay.show{display:flex}
+
+  /* 顶部标题栏 */
+  .cap-ov-header{
+    flex-shrink:0;
+    padding:0 20px;
+    height:58px;
+    display:flex;align-items:center;gap:12px;
+    border-bottom:1px solid rgba(14,168,122,.15);
+    background:rgba(5,12,20,.85);
+    backdrop-filter:blur(8px);
+    position:relative;
+  }
+  .cap-ov-header::after{
+    content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(93,232,184,.4),transparent);
+  }
+  .cap-ov-person{
+    display:flex;align-items:center;gap:10px;flex:1;min-width:0;
+  }
+  .cap-ov-avatar{
+    width:34px;height:34px;border-radius:50%;flex-shrink:0;
+    background:linear-gradient(135deg,rgba(14,168,122,.25),rgba(46,140,224,.25));
+    border:1.5px solid rgba(14,168,122,.4);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:800;color:#5de8b8;
+    font-family:var(--sans);
+  }
+  .cap-ov-name{
+    font-size:15px;font-weight:700;color:#e8fff8;
+    font-family:var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .cap-ov-date{
+    font-size:10px;color:rgba(93,232,184,.55);
+    font-family:var(--mono);letter-spacing:.06em;white-space:nowrap;
+  }
+  /* 播报状态指示 */
+  .cap-ov-status{
+    display:flex;align-items:center;gap:6px;flex-shrink:0;
+  }
+  .cap-ov-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:#5de8b8;
+    box-shadow:0 0 8px rgba(93,232,184,.8);
+    animation:cap-pulse 1.6s ease-in-out infinite;
+  }
+  .cap-ov-dot.idle{background:#3a4a5a;box-shadow:none;animation:none}
+  @keyframes cap-pulse{0%,100%{opacity:.5;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+  .cap-ov-label-text{
+    font-size:10px;color:rgba(93,232,184,.55);
+    font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  }
+
+  /* 字幕主体区域 */
+  .cap-ov-body{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;
+    justify-content:flex-start;
+    padding:20px 24px 16px;
+    overflow:hidden;
+    position:relative;
+  }
+  /* 底部渐变遮罩（新字幕在底部出现时有淡入感） */
+  .cap-ov-body::after{
+    content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
+    background:linear-gradient(0deg,#050c14 0%,transparent 100%);
+    pointer-events:none;z-index:3;
+  }
+
+  #captionLines{
+    display:flex;flex-direction:column;gap:12px;
+    overflow-y:auto;flex:1;
+    position:relative;z-index:2;
+    scrollbar-width:none;
+    padding-bottom:60px; /* 防止被底部遮罩盖住最新行 */
+  }
+  #captionLines::-webkit-scrollbar{display:none}
+
+  .caption-line-item{
+    font-size:18px;line-height:1.75;
+    font-family:'PingFang SC','Noto Sans SC',var(--sans);
+    letter-spacing:.04em;
+    color:rgba(93,232,184,.22);
+    transition:color .4s,text-shadow .4s;
+    word-break:break-all;
+  }
+  .caption-line-item.current{
+    color:#e8fff8;
+    text-shadow:0 0 18px rgba(93,232,184,.3), 0 0 40px rgba(93,232,184,.12);
+    font-size:20px;
+  }
+  .caption-cursor{
+    display:inline-block;width:2px;height:1.1em;
+    background:#5de8b8;margin-left:3px;vertical-align:middle;
+    border-radius:1px;
+    box-shadow:0 0 6px rgba(93,232,184,.8);
+    animation:cap-blink .65s step-end infinite;
+  }
+  @keyframes cap-blink{0%,100%{opacity:1}50%{opacity:0}}
+  .caption-idle-tip{
+    font-size:14px;color:rgba(93,232,184,.22);
+    font-family:var(--mono);text-align:center;
+    padding:20px 0;letter-spacing:.08em;
+  }
+  /* 扫描线装饰 */
+  .cap-ov-scanline{
+    position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden;
+  }
+  .cap-ov-scanline::after{
+    content:'';position:absolute;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,rgba(93,232,184,.06),transparent);
+    animation:scan-move 4s linear infinite;
+  }
+  @keyframes scan-move{0%{top:-2px}100%{top:100%}}
+
+  /* 底部返回栏 */
+  .cap-ov-footer{
+    flex-shrink:0;
+    padding:12px 20px;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom));
+    background:rgba(5,12,20,.9);
+    border-top:1px solid rgba(14,168,122,.15);
+    backdrop-filter:blur(8px);
+  }
+  .cap-back-btn{
+    width:100%;height:48px;border-radius:24px;
+    border:1.5px solid rgba(14,168,122,.35);
+    background:linear-gradient(135deg,rgba(14,168,122,.08),rgba(46,140,224,.05));
+    color:#5de8b8;
+    font-size:14px;font-family:var(--sans);font-weight:700;
+    letter-spacing:.06em;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:all .18s;
+    box-shadow:0 0 16px rgba(14,168,122,.08),inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .cap-back-btn:active{
+    background:linear-gradient(135deg,rgba(14,168,122,.18),rgba(46,140,224,.12));
+    border-color:rgba(14,168,122,.7);
+    box-shadow:0 0 24px rgba(14,168,122,.2);
+    transform:scale(.98);
+  }
+  /* 底部波形装饰 */
+  .cap-ov-wave{
+    display:flex;align-items:center;justify-content:center;gap:3px;
+    height:24px;margin-bottom:8px;
+  }
+  .cap-wv-bar{
+    width:3px;border-radius:2px;
+    background:linear-gradient(to top,rgba(14,168,122,.4),rgba(93,232,184,.6));
+    transform-origin:bottom;transform:scaleY(.2);opacity:.3;
+  }
+  .cap-wv-bar.playing{animation:cap-wave 1.1s ease-in-out infinite}
+  .cap-wv-bar:nth-child(1){height:12px;animation-delay:0s}
+  .cap-wv-bar:nth-child(2){height:18px;animation-delay:.12s}
+  .cap-wv-bar:nth-child(3){height:22px;animation-delay:.24s}
+  .cap-wv-bar:nth-child(4){height:18px;animation-delay:.36s}
+  .cap-wv-bar:nth-child(5){height:12px;animation-delay:.48s}
+  @keyframes cap-wave{0%,100%{transform:scaleY(.2);opacity:.3}50%{transform:scaleY(1);opacity:.85}}
+
 </style>
 </head>
 <body>
@@ -410,7 +503,7 @@
 </div>
 
 <!-- Tab0: 语音对话 -->
-<div class="tab-content active" id="tab0">
+<div class="tab-content active" id="tab0" style="overflow:hidden">
   <!-- 流程条 -->
   <div class="flow-strip" id="flowStrip">
     <div class="flow-node" id="fn-user">语音</div>
@@ -443,24 +536,71 @@
     <span style="font-size:11px;color:var(--muted);align-self:center;padding:20px 0">加载中…</span>
   </div>
 
-  <!-- 字幕影院视图（替代看板） -->
-  <div class="caption-view" id="captionView">
-    <div class="caption-header" id="captionHeader">
-      <div class="caption-header-avatar" id="captionAvatar">?</div>
-      <div class="caption-header-info">
-        <div class="caption-header-name" id="captionName">—</div>
-        <div class="caption-header-date" id="captionDate">—</div>
+  <!-- 查询看板（点击员工后显示，覆盖列表） -->
+  <div class="detail-board" id="detailBoard">
+    <div class="board-header" id="boardHeader">
+      <div class="board-avatar" id="boardAvatar">?</div>
+      <div class="board-title">
+        <div class="board-name" id="boardName">—</div>
+        <div class="board-date" id="boardDate">—</div>
       </div>
-      <div class="caption-live-dot" id="captionDot" style="display:none"></div>
+      <div class="board-status-dot" id="boardDot" style="display:none"></div>
     </div>
-    <div class="caption-scroll" id="captionScroll">
-      <div class="caption-idle" id="captionIdle">
-        <div class="caption-idle-icon">🎙️</div>
-        <div>正在获取数据…</div>
+    <!-- 字幕状态指示条（仅展示，不可点击；openDetailBoard时自动展示字幕层） -->
+    <div id="captionEntryBtn" style="
+      margin:10px 0 0;padding:10px 16px;border-radius:10px;
+      background:linear-gradient(135deg,rgba(5,12,20,.95),rgba(8,18,34,.95));
+      border:1px solid rgba(14,168,122,.2);
+      display:flex;align-items:center;gap:10px;
+      flex-shrink:0;
+    ">
+      <div style="display:flex;gap:3px;align-items:center">
+        <div class="cap-wv-bar" id="entryBar1" style="height:10px"></div>
+        <div class="cap-wv-bar" id="entryBar2" style="height:16px"></div>
+        <div class="cap-wv-bar" id="entryBar3" style="height:20px"></div>
+        <div class="cap-wv-bar" id="entryBar4" style="height:16px"></div>
+        <div class="cap-wv-bar" id="entryBar5" style="height:10px"></div>
+      </div>
+      <span style="font-size:12px;color:rgba(93,232,184,.6);font-family:var(--mono);letter-spacing:.06em">实时字幕播报</span>
+    </div>
+    <div class="board-body" id="boardBody">
+      <div class="board-loading">
+        <div class="shimmer"></div><div class="shimmer"></div><div class="shimmer"></div>
       </div>
     </div>
-    <div class="caption-footer">
+    <div class="board-footer">
       <button class="back-btn" onclick="closeDetailBoard()">← 返回列表</button>
+    </div>
+  </div>
+
+  <!-- 全屏字幕覆盖层（覆盖tab0全部内容区，包括底部按住说话） -->
+  <div class="caption-overlay" id="captionOverlay">
+    <div class="cap-ov-header">
+      <div class="cap-ov-person">
+        <div class="cap-ov-avatar" id="capOvAvatar">?</div>
+        <div>
+          <div class="cap-ov-name" id="capOvName">—</div>
+          <div class="cap-ov-date" id="capOvDate">—</div>
+        </div>
+      </div>
+      <div class="cap-ov-status">
+        <div class="cap-ov-dot idle" id="capOvDot"></div>
+        <span class="cap-ov-label-text" id="capOvStatusText">等待播报</span>
+      </div>
+    </div>
+    <div class="cap-ov-body">
+      <div class="cap-ov-scanline"></div>
+      <div id="captionLines"><div class="caption-idle-tip">等待声音播报…</div></div>
+    </div>
+    <div class="cap-ov-footer">
+      <div class="cap-ov-wave" id="capOvWave">
+        <div class="cap-wv-bar" style="height:10px"></div>
+        <div class="cap-wv-bar" style="height:16px"></div>
+        <div class="cap-wv-bar" style="height:20px"></div>
+        <div class="cap-wv-bar" style="height:16px"></div>
+        <div class="cap-wv-bar" style="height:10px"></div>
+      </div>
+      <button class="cap-back-btn" onclick="hideCaptionOverlay(); closeDetailBoard()">← 返回列表</button>
     </div>
   </div>
 
@@ -761,18 +901,9 @@ function setPttLabel(pressing){
 }
 function setConnStatus(on,t){ $('connDot').classList.toggle('on',on); $('connStatus').textContent=t; }
 function setSub(t,active){
-  const el=$("subtitle");
-  el.textContent=t||"等待对话开始…";
-  el.classList.toggle("active",!!t&&active!==false);
-  const view = $("captionView");
-  const _vs = view&&view.classList.contains("show");
-  if(_vs && t && active!==false && _captionIsTTS){
-    const idle = $("captionIdle");
-    if(idle) idle.remove();
-    captionAppendLine(t, "current", 0);
-  } else if(t && active!==false){
-    dbgLog("⚠️ setSub跳过字幕: viewShow="+_vs+" isTTS="+_captionIsTTS+" text=\""+t.substring(0,20)+"\"");
-  }
+  const el=$('subtitle');
+  el.textContent=t||'等待对话开始…';
+  el.classList.toggle('active',!!t&&active!==false);
 }
 function setWave(on,green){
   document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); });
@@ -922,11 +1053,6 @@ let _pendingChipTTSText = null; // 收到553后立刻发送的TTS文本
 let _last515Time    = 0;     // ★ 515发送节流：上次发送515的时间戳，防止风暴
 let _flushTimer     = null;  // ★ 自驱动flush：不依赖351/359，定时刷音频
 let _chipTTSTimer   = null;  // chip延迟发500定时器（当前为立即发送，定时器仅作清理保留）
-
-// ★ 字幕同步队列：发出TTS文本后按句拆分存入，每次350触发弹出一句显示
-let _captionQueue   = [];    // 待播字幕句子队列
-let _captionIsTTS   = false; // 当前字幕是否属于我们发出的500 TTS（过滤掉LLM等待语）
-let _pendingCaptionText = null; // ★ 方案1：发500时存完整文本，350到达时启动打字机
 
 function matchQuery(text){
   dbgLog('🧠 matchQuery 输入: '+text);
@@ -1179,17 +1305,6 @@ function sendChatTTS(ttsText, note=''){
   ws.send(encode(500,JSON.stringify({start:false,content:'',end:true}),sid));
   showRagCard('✅ TTS已发送(500)！切换「RAG详情」tab查看');
   setStatus('TTS已发送，等待播报…');
-
-  // ★ 方案1：只有日报内容才存字幕文本，过渡话术不显示
-  const isContent = !note.includes('过渡') && !note.includes('chip过渡') && !note.includes('等待');
-  _captionIsTTS = isContent;
-  _captionQueue = [];
-  if(isContent){
-    _pendingCaptionText = ttsText; // ★ 存完整文本，等350信号再启动打字机
-    dbgLog('📋 方案1: 存字幕文本 '+ttsText.length+'字，等350触发');
-  } else {
-    _pendingCaptionText = null;
-  }
 }
 
 // ══ 复制日志 ═════════════════════════════════════════════
@@ -1282,42 +1397,25 @@ const onMsg=evt=>{
         },500);
       }
     } else if(eid===350){
-      const t=j.text||'';
-      const _dbgView=$('captionView');
-      const _dbgViewShow=!!(_dbgView&&_dbgView.classList.contains('show'));
-      dbgLog('📡 [350] text="'+t.substring(0,25)+'" our500='+_our500Sent+' isTTS='+_captionIsTTS+' viewShow='+_dbgViewShow+' chip='+_chipTTSActive+' block='+_blockLLMAudio);
+      const t=j.text||'';if(t)setSub(t,true);
       if(_our500Sent){
         // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
         _our500Sent    = false;
         _blockLLMAudio = false;
-        logEvt('←350',350,'我们的TTS触发 viewShow='+_dbgViewShow);
-        dbgLog('🔊 350(我们的TTS) 启动字幕打字机');
+        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽 chipTTSActive='+_chipTTSActive);
+        dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
-        // ★ 方案1：350是开始信号，用_pendingCaptionText启动打字机
-        if(_pendingCaptionText){
-          const _txt = _pendingCaptionText;
-          _pendingCaptionText = null;
-          _startCaptionTypewriter(_txt);
-          dbgLog('📺 打字机启动: '+_txt.length+'字');
-        } else {
-          dbgLog('⚠️ 350到了但_pendingCaptionText为空');
-        }
-      } else if(_captionIsTTS){
-        // 后续350：打字机已在跑，不重复启动
-        logEvt('←350续',350,'打字机运行中，跳过');
-        dbgLog('📺 350续句(打字机已运行)');
-        state='speaking';setWave(true,false);
       } else {
-        // ★ 方案B：LLM触发的350
+        // ★ 方案B：我们没发过500，这是LLM触发的350
         if(_chipTTSActive){
-          logEvt('←350',350,'LLM触发(chip中) text="'+t.substring(0,15)+'"');
-          dbgLog('🔊 350(LLM/chip): "'+t.substring(0,30)+'"');
-          if(t) setSub(t, true);
+          // ★ chip TTS进行中：不额外封音频（_blockLLMAudio已由553保持true，我们350后解封）
+          logEvt('←350',350,'LLM触发(chip中，不额外操作)');
+          dbgLog('🔊 350 (LLM) chip中: '+t.substring(0,30));
         } else {
           _blockLLMAudio = true;
-          logEvt('←忽略350',350,'LLM触发，屏蔽音频+515');
-          dbgLog('🔇 350忽略(LLM): "'+t.substring(0,30)+'"');
+          logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
+          dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
           send515Throttled('(压制LLM TTS)');
         }
       }
@@ -1551,7 +1649,6 @@ function pttStart(){
   stopAudio();                    // 本地音频立刻静音
   _isGreeting = false;
   _pendingQueryText = null;
-  _pendingCaptionText = null;    // ★ 清空待显示字幕
   _chipTTSActive  = false;       // ★ 用户手动打断，重置chip上下文标记
   _last515Time = Date.now(); // 同步节流时间
   logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
@@ -1667,9 +1764,7 @@ async function chipQuery(name, dateStr, dayLabel){
   pendingRAG     = null;
   pendingRAGPromise = null;
 
-  // 只更新顶部字幕条，不触发字幕影院（字幕影院等350事件驱动）
-  const _subEl=$('subtitle');
-  if(_subEl){ _subEl.textContent='查 '+name+' '+dayLabel+' 的日报'; _subEl.classList.add('active'); }
+  setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
   setStatus('查询 ' + name + ' ' + dayLabel + '…');
   resetFlow(); litFlow(0); litFlow(1); litFlow(2);
 
@@ -1724,183 +1819,107 @@ async function chipQuery(name, dateStr, dayLabel){
   } finally { _chipQueryInFlight = false; }
 }
 
-// ══ 字幕影院：打字机逐字输出 ═════════════════════════════
-let _typewriterTimer = null;
-let _typewriterLine = null;   // 当前正在打字的行元素
-let _typewriterFull = '';     // 该行完整文本（新行来时可瞬间补全）
-let _typewriterIdx  = 0;      // 已打出的字符数
-
-// 立刻把当前正在打字的行补全（新句子来之前调用）
-function _finishCurrentLine(){
-  if(_typewriterTimer){ clearTimeout(_typewriterTimer); _typewriterTimer=null; }
-  if(_typewriterLine && _typewriterIdx < _typewriterFull.length){
-    // 补全剩余文字
-    const remaining = _typewriterFull.slice(_typewriterIdx);
-    const cursor = _typewriterLine.querySelector('.caption-cursor');
-    if(cursor){
-      _typewriterLine.insertBefore(document.createTextNode(remaining), cursor);
-    } else {
-      _typewriterLine.textContent += remaining;
-    }
-    _typewriterIdx = _typewriterFull.length;
-  }
-  // 降级为 past，移除光标
-  if(_typewriterLine){
-    _typewriterLine.classList.remove('current');
-    _typewriterLine.classList.add('past');
-    const cur = _typewriterLine.querySelector('.caption-cursor');
-    if(cur) cur.remove();
-    _typewriterLine = null;
-  }
-}
-
-// 向字幕区追加一行（带打字机效果）
-// 如果上一行还在打字，先瞬间补全它，再开始新行
-function captionAppendLine(text, type='text', delay=0){
-  // 先把上一行补全
-  _finishCurrentLine();
-
-  // 同时把所有残留 current 降级（防止多行同时 current）
-  const scroll = $('captionScroll');
-  if(!scroll) return;
-  // 首句到来时，清掉"等待播报"的idle占位
-  const idle = $('captionIdle');
-  if(idle) idle.remove();
-  scroll.querySelectorAll('.caption-line.current').forEach(el=>{
-    el.classList.remove('current'); el.classList.add('past');
-    const cur = el.querySelector('.caption-cursor'); if(cur) cur.remove();
-  });
-
-  const line = document.createElement('div');
-  line.className = 'caption-line ' + (type==='tag' ? 'tag' : 'current');
-  scroll.appendChild(line);
-  scroll.scrollTop = scroll.scrollHeight;
-
-  if(type==='tag'){
-    line.textContent = text;
-    return;
-  }
-
-  // 打字机效果
-  const cursor = document.createElement('span');
-  cursor.className = 'caption-cursor';
-  line.appendChild(cursor);
-
-  _typewriterLine = line;
-  _typewriterFull = text;
-  _typewriterIdx  = 0;
-
-  function typeNext(){
-    if(_typewriterIdx < _typewriterFull.length){
-      // 每次最多打2个字，使打字速度与语音基本匹配
-      const ch = _typewriterFull[_typewriterIdx];
-      _typewriterLine.insertBefore(document.createTextNode(ch), cursor);
-      _typewriterIdx++;
-      scroll.scrollTop = scroll.scrollHeight;
-      _typewriterTimer = setTimeout(typeNext, 60);
-    } else {
-      // 这行打完，不降级——等下一个 350 或 captionReset 来降级
-      _typewriterTimer = null;
-    }
-  }
-  typeNext();
-}
-
-// 清空字幕区，显示等待提示
-function captionReset(msg){
-  // 先把打字机彻底停掉
-  if(_typewriterTimer){ clearTimeout(_typewriterTimer); _typewriterTimer=null; }
-  _typewriterLine = null; _typewriterFull = ''; _typewriterIdx = 0;
-  const scroll = $('captionScroll');
-  if(!scroll) return;
-  const tip = msg || '等待声音播报…';
-  scroll.innerHTML = '<div class="caption-idle" id="captionIdle"><div class="caption-idle-icon">🔊</div><div>'+tip+'</div></div>';
-}
-
-// ★ 方案1：把完整TTS文本按句拆分，逐句用打字机效果推入字幕区
-// 普通话约4字/秒，每句打完后停顿200ms再开始下一句
-function _startCaptionTypewriter(fullText){
-  // 先重置，清掉idle占位
-  const scroll = $('captionScroll');
-  if(!scroll) return;
-  const idle = $('captionIdle');
-  if(idle) idle.remove();
-
-  // 按句号分句（不按逗号，避免太碎）
-  const sentences = fullText
-    .split(/[。！!？?\n]/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-
-  dbgLog('📺 打字机分句: '+sentences.length+'句');
-
-  let sentIdx = 0;
-  function nextSentence(){
-    if(sentIdx >= sentences.length) return;
-    const s = sentences[sentIdx++];
-    captionAppendLine(s, 'text', 0);
-    // 估算这句话的语音时长：约4字/秒，最少800ms，多留20%余量
-    const msPerChar = 260; // ~3.8字/秒，略慢于语音，避免超前
-    const delay = Math.max(800, s.length * msPerChar);
-    setTimeout(nextSentence, delay);
-  }
-  nextSentence();
-}
-
-// 无数据时显示提示；有数据时什么都不做，等 350 事件驱动字幕
-function renderCaptionFromResult(name, dateStr, dayLabel, result){
-  if(!result){
-    const scroll = $('captionScroll');
-    if(!scroll) return;
-    scroll.innerHTML = '';
-    const line = document.createElement('div');
-    line.className = 'caption-line current';
-    line.style.opacity = '1';
-    line.textContent = '📭 ' + dayLabel + ' 暂无日报记录';
-    scroll.appendChild(line);
-  }
-  // 有数据：字幕等 350 TTS 事件逐句推入，不在这里输出
-}
-
-// ══ 字幕影院视图：打开 / 关闭 ════════════════════════════
+// ══ 看板：打开 / 关闭 ════════════════════════════════════
 function openDetailBoard(name, dateStr, dayLabel, voiceMode=false){
+  // 隐藏列表，显示看板
   const container = $('chipContainer');
-  const view = $('captionView');
+  const board = $('detailBoard');
   if(container) container.style.display = 'none';
-  if(view) view.classList.add('show');
+  if(board){ board.classList.add('show'); }
 
+  // 填写 header
   const initial = name.charAt(0);
-  $('captionAvatar').textContent = initial;
-  $('captionName').textContent = name;
-  $('captionDate').textContent = dateStr ? dayLabel + ' · ' + dateStr : dayLabel;
-  $('captionDot').style.display = dateStr ? 'block' : 'none';
+  const el = id => document.getElementById(id);
+  el('boardAvatar').textContent = initial;
+  el('boardName').textContent = name;
+  el('boardDate').textContent = dateStr ? dayLabel + ' · ' + dateStr : dayLabel;
+  el('boardDot').style.display = dateStr ? 'block' : 'none';
 
-  // 打开时显示"等待播报"，字幕将由 350 事件逐句推入
-  captionReset('等待声音播报…');
+  // Loading shimmer
+  el('boardBody').innerHTML = '<div class="board-loading"><div class="shimmer"></div><div class="shimmer"></div><div class="shimmer"></div></div>';
 
+  // 语音模式：KB_GROUPS 已有数据，直接渲染，无需重复 chipQuery
   if(voiceMode){
-    // 语音路径：chipQuery 已在跑，等 350 来
+    const groups = KB_GROUPS.find(g => g.name === name);
+    if(groups){
+      // 构造 result 对象供 renderDetailBoard 使用
+      const fakeResult = { rec:{name, date:dateStr}, text:'', query:{name,date:dateStr} };
+      renderDetailBoard(name, dateStr, dayLabel, fakeResult);
+    } else {
+      // KB_GROUPS 还没到，稍等后直接查
+      lookupRAGDirect({name, date: dateStr}).then(result=>{
+        renderDetailBoard(name, dateStr, dayLabel, result);
+      }).catch(()=>{ renderDetailBoard(name, dateStr, dayLabel, null); });
+    }
     return;
   }
 
-  // 标签点击路径：发起语音播报，等 350 来驱动字幕
+  // 同时发起语音播报（不影响看板显示）
   if(dateStr){
     chipQuery(name, dateStr, dayLabel);
+  }
+
+  // 直接查数据库填充看板
+  if(dateStr){
+    lookupRAGDirect({name, date: dateStr}).then(result=>{
+      renderDetailBoard(name, dateStr, dayLabel, result);
+    }).catch(()=>{
+      renderDetailBoard(name, dateStr, dayLabel, null);
+    });
   } else {
-    renderCaptionFromResult(name, dateStr, dayLabel, null);
+    renderDetailBoard(name, dateStr, dayLabel, null);
   }
 }
 
 function renderDetailBoard(name, dateStr, dayLabel, result){
-  renderCaptionFromResult(name, dateStr, dayLabel, result);
+  const body = $('boardBody');
+  if(!body) return;
+
+  if(!result){
+    body.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px 20px;color:var(--muted);text-align:center">
+        <div style="font-size:36px;opacity:.5">📭</div>
+        <div style="font-size:14px;font-weight:600;color:var(--muted)">${dayLabel}暂无日报记录</div>
+        <div style="font-size:12px;opacity:.7">请确认员工是否已提交</div>
+      </div>`;
+    return;
+  }
+
+  // Build fields from KB_GROUPS or result
+  const rec = result.rec || {};
+  const groups = KB_GROUPS.find(g => g.name === name);
+  const items = groups ? groups.items : [];
+
+  let html = '';
+  if(items.length > 0){
+    const classMap = { '做了什么':'fl-done', '遇到的问题':'fl-problem', '明日计划':'fl-plan' };
+    items.forEach(it=>{
+      if(!it.content) return;
+      const cls = classMap[it.section] || 'fl-other';
+      html += `<div class="board-field ${cls}">
+        <div class="board-field-label"><span class="fl-dot"></span>${it.section}</div>
+        <div class="board-field-content">${it.content}</div>
+      </div>`;
+    });
+  } else if(result.text){
+    // Fallback: show TTS text as single block
+    html = `<div class="board-field fl-done">
+      <div class="board-field-label"><span class="fl-dot"></span>日报内容</div>
+      <div class="board-field-content">${result.text}</div>
+    </div>`;
+  }
+
+  if(!html){
+    html = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">内容为空</div>`;
+  }
+
+  body.innerHTML = html;
 }
 
 function closeDetailBoard(){
-  if(_typewriterTimer){ clearTimeout(_typewriterTimer); _typewriterTimer=null; }
-  _captionQueue = []; _captionIsTTS = false; _pendingCaptionText = null;
   const container = $('chipContainer');
-  const view = $('captionView');
-  if(view) view.classList.remove('show');
+  const board = $('detailBoard');
+  if(board) board.classList.remove('show');
   if(container) container.style.display = '';
 }
 
@@ -2325,6 +2344,175 @@ function redistributeTabs(){
   // 两个固定 Tab 始终可见（语音对话 + 知识库），额外的按需显示
   // tabs 容器已 display:flex，无需额外操作
 }
+
+// ══ 字幕功能 ══════════════════════════════════════════
+// ══ 字幕功能（纯新增，不修改任何已有函数）══════════════
+let _capText = null;      // 待显示的完整TTS文本
+let _capTimers = [];      // 字幕定时器列表，关闭时清除
+let _capOverlayOpen = false;
+
+// 先定义所有函数，最后再做 wrap
+
+// 展示字幕覆盖层
+function showCaptionOverlay(){
+  const ov = document.getElementById('captionOverlay');
+  if(ov){ ov.classList.add('show'); _capOverlayOpen = true; }
+}
+
+// 隐藏字幕覆盖层（不关看板）
+function hideCaptionOverlay(){
+  const ov = document.getElementById('captionOverlay');
+  if(ov){ ov.classList.remove('show'); _capOverlayOpen = false; }
+}
+
+// 清空字幕区，回到等待状态
+function _capReset(){
+  _capTimers.forEach(t=>clearTimeout(t)); _capTimers=[];
+  const el=document.getElementById('captionLines');
+  if(el) el.innerHTML='<div class="caption-idle-tip">等待声音播报…</div>';
+  const dot=document.getElementById('capOvDot');
+  const stTxt=document.getElementById('capOvStatusText');
+  if(dot) dot.classList.add('idle');
+  if(stTxt) stTxt.textContent='等待播报';
+  _setEntryWave(false);
+  _setOverlayWave(false);
+}
+
+function _setEntryWave(playing){
+  for(let i=1;i<=5;i++){
+    const b=document.getElementById('entryBar'+i);
+    if(b){ playing ? b.classList.add('playing') : b.classList.remove('playing'); }
+  }
+}
+function _setOverlayWave(playing){
+  const bars=document.querySelectorAll('#capOvWave .cap-wv-bar');
+  bars.forEach(b=>{ playing ? b.classList.add('playing') : b.classList.remove('playing'); });
+}
+
+// 同步看板 header → 字幕层 header
+function _syncCapOvHeader(){
+  const get = id => { const e=document.getElementById(id); return e?e.textContent:''; };
+  const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('capOvName',   get('boardName'));
+  set('capOvDate',   get('boardDate'));
+  set('capOvAvatar', get('boardAvatar'));
+}
+
+// 打字机：新句追加到顶部，旧句变暗，不消失
+function _capStart(fullText){
+  _capTimers.forEach(t=>clearTimeout(t)); _capTimers=[];
+  const el=document.getElementById('captionLines');
+  if(!el) return;
+  el.innerHTML=''; // 清空旧内容，开始新一轮
+
+  const dot=document.getElementById('capOvDot');
+  const stTxt=document.getElementById('capOvStatusText');
+  if(dot) dot.classList.remove('idle');
+  if(stTxt) stTxt.textContent='正在播报';
+  _setEntryWave(true);
+  _setOverlayWave(true);
+
+  const sentences = fullText.split(/[。！!？?\n]/).map(s=>s.trim()).filter(s=>s.length>0);
+  if(!sentences.length) return;
+
+  let offset = 0;
+  sentences.forEach((s)=>{
+    const t1 = setTimeout(()=>{
+      // 上一行变暗
+      el.querySelectorAll('.caption-line-item.current').forEach(e2=>{
+        e2.classList.remove('current');
+      });
+      // 新行追加到底部
+      const line = document.createElement('div');
+      line.className = 'caption-line-item current';
+      el.appendChild(line);
+      // 打字机效果
+      const cursor = document.createElement('span');
+      cursor.className = 'caption-cursor';
+      line.appendChild(cursor);
+      let idx = 0;
+      function typeNext(){
+        if(idx < s.length){
+          line.insertBefore(document.createTextNode(s[idx++]), cursor);
+          _capTimers.push(setTimeout(typeNext, 55));
+        } else {
+          cursor.remove();
+        }
+      }
+      typeNext();
+      // 滚到底部，始终看到最新行
+      el.scrollTop = el.scrollHeight;
+    }, offset);
+    _capTimers.push(t1);
+    offset += Math.max(900, s.length * 260);
+  });
+
+  // 播完后重置状态指示
+  _capTimers.push(setTimeout(()=>{
+    if(dot) dot.classList.add('idle');
+    if(stTxt) stTxt.textContent='播报完毕';
+    _setEntryWave(false);
+    _setOverlayWave(false);
+  }, offset + 500));
+}
+
+// ── wrap sendChatTTS：存文本，不改语音逻辑 ──
+(function(){
+  const _orig = sendChatTTS;
+  sendChatTTS = function(ttsText, note){
+    note = note || '';
+    _orig(ttsText, note);  // ★ 语音逻辑原样执行
+    // 过渡语/等待/兜底不显示字幕
+    const skip = note.includes('过渡') || note.includes('等待') || note.includes('兜底');
+    if(!skip) _capText = ttsText;
+  };
+})();
+
+// ── 检测 _our500Sent true→false：350到达时启动打字机 ──
+(function(){
+  let _prev = false;
+  setInterval(()=>{
+    if(typeof _our500Sent === 'undefined') return;
+    if(_prev === true && _our500Sent === false && _capText){
+      const txt = _capText;
+      _capText = null;
+      _capStart(txt);
+    }
+    _prev = _our500Sent;
+  }, 30);
+})();
+
+// ── wrap openDetailBoard：打开看板时同步并直接显示字幕层 ──
+(function(){
+  const _origOpen = openDetailBoard;
+  openDetailBoard = function(name, dateStr, dayLabel, voiceMode){
+    _origOpen(name, dateStr, dayLabel, voiceMode);  // ★ 原逻辑完整执行
+    // 打开后同步header并显示字幕层
+    // 用 setTimeout(0) 等原函数写入 boardName/boardDate/boardAvatar 完毕
+    setTimeout(()=>{
+      _syncCapOvHeader();
+      _capReset();
+      showCaptionOverlay();
+    }, 0);
+  };
+})();
+
+// ── wrap closeDetailBoard：关看板时同步关字幕层 ──
+(function(){
+  const _origClose = closeDetailBoard;
+  closeDetailBoard = function(){
+    hideCaptionOverlay();
+    _capReset();
+    _capText = null;
+    _origClose();  // ★ 原逻辑完整执行
+  };
+})();
+
+
+
+
+
+
 </script>
 </body>
 </html>
