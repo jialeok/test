@@ -1422,12 +1422,16 @@ const onMsg=evt=>{
         dbgLog('🔊 350 TTSSentenceStart (chip-我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
+        // ★ 直接触发字幕打字机（350是最可靠的播报开始信号）
+        if(typeof _capText !== 'undefined' && _capText){ const _ct=_capText; _capText=null; _capStart(_ct); }
       } else if(activeMode === 'ptt'){
         // ptt路径：我们发过500，这个350是我们自己TTS触发的，直接放行
         logEvt('←350',350,'ptt模式：我们的TTS触发');
         dbgLog('🔊 350 TTSSentenceStart (ptt-我们的TTS): '+t.substring(0,30));
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
+        // ★ 直接触发字幕打字机
+        if(typeof _capText !== 'undefined' && _capText){ const _ct=_capText; _capText=null; _capStart(_ct); }
       } else {
         // idle：LLM触发的350，压制
         logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
@@ -2505,19 +2509,7 @@ function _capStart(fullText){
   };
 })();
 
-// ── 检测 state 进入 'speaking'（350到达时）：启动打字机 ──
-(function(){
-  let _prevState = '';
-  setInterval(()=>{
-    // 检测 state 进入 'speaking'（350到达后设置），触发打字机
-    if(_prevState !== 'speaking' && state === 'speaking' && _capText){
-      const txt = _capText;
-      _capText = null;
-      _capStart(txt);
-    }
-    _prevState = state;
-  }, 30);
-})();
+// ── 字幕触发已移入 350 处理分支，直接调用 _capStart，无需轮询 ──
 
 // ── wrap openDetailBoard：打开看板时同步并直接显示字幕层 ──
 (function(){
