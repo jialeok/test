@@ -306,6 +306,46 @@
   .tabs .tab{min-width:0}
   .no-flow .subtitle-box{margin-top:20px}
 
+  /* ── 星球浮动模板 ── */
+  .planet-container{
+    position:relative;width:100%;flex:1;overflow:hidden;
+    background:var(--bg);
+  }
+  .planet-node{
+    position:absolute;
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    cursor:pointer;
+    animation:planet-float 6s ease-in-out infinite;
+    transition:transform .18s;
+  }
+  .planet-node:active{transform:scale(.93)}
+  .planet-bubble{
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;color:#fff;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);
+    transition:box-shadow .2s,transform .2s;
+    flex-shrink:0;
+  }
+  .planet-node:hover .planet-bubble{
+    box-shadow:0 6px 22px rgba(0,0,0,.18);
+    transform:scale(1.08);
+  }
+  .planet-label{
+    font-size:11px;font-weight:600;color:var(--text);
+    white-space:nowrap;letter-spacing:.01em;
+  }
+  .planet-date{
+    font-size:10px;color:var(--muted);
+    background:#fff;border:1px solid var(--border);
+    border-radius:20px;padding:1px 7px;
+    white-space:nowrap;
+  }
+  @keyframes planet-float{
+    0%,100%{transform:translateY(0)}
+    50%{transform:translateY(-8px)}
+  }
+
   /* ── 字幕大屏覆盖层（从tab栏底部到屏幕底部，替换tab0内容区） ── */
   .caption-overlay{
     position:absolute;
@@ -799,23 +839,19 @@ async function renderChips(){
   let chips = [];
   for(const name of employeeNames){
     try{
-      // 先找员工ID
       const {data:empList} = await sbClient
         .from('employees').select('id,name').eq('name',name).eq('enabled',true).limit(1);
       if(!empList||empList.length===0) continue;
       const empId = empList[0].id;
-      // 查最近5条日报，找到最近的日期
       const {data:recs} = await sbClient
         .from('work_records').select('record_date')
         .eq('employee_id', empId)
         .order('record_date',{ascending:false})
         .limit(5);
       if(!recs||recs.length===0){
-        // 没有日报 → 仍然显示chip，点击后会有语音提示未找到
         chips.push({name, dateStr:'', dateLabel:'暂无记录', hasRecord:false});
       } else {
         const dateStr = (recs[0].record_date||'').substring(0,10);
-        // 计算友好日期标签
         const dateLabel = _friendlyDate(dateStr);
         chips.push({name, dateStr, dateLabel, hasRecord:true});
       }
@@ -828,7 +864,14 @@ async function renderChips(){
     container.innerHTML = '<span style="font-size:11px;color:var(--muted);padding:20px 0;align-self:center">暂无员工数据</span>';
     return;
   }
-  // 每人一张卡片，支持点击展开查询看板
+
+  // ★ 星球浮动模板
+  if(window._uiLayoutPlanet){
+    _renderPlanet(container, chips);
+    return;
+  }
+
+  // 默认卡片列表
   let html = '';
   for(const c of chips){
     const initial = c.name.charAt(0);
@@ -848,6 +891,68 @@ async function renderChips(){
     </div>`;
   }
   container.innerHTML = html;
+}
+
+// ★ 星球浮动模板渲染
+function _renderPlanet(container, chips){
+  // 颜色池，与现有配色统一
+  const colors = [
+    'linear-gradient(135deg,#0ea87a,#2e8ce0)',
+    'linear-gradient(135deg,#2e8ce0,#8b5cf6)',
+    'linear-gradient(135deg,#8b5cf6,#0ea87a)',
+    'linear-gradient(135deg,#0ea87a,#5de8b8)',
+    'linear-gradient(135deg,#2e8ce0,#5de8b8)',
+    'linear-gradient(135deg,#d97706,#0ea87a)',
+  ];
+  // 尺寸按索引轮换，营造层次感
+  const sizes = [52, 44, 60, 48, 40, 56];
+
+  container.innerHTML = '';
+  container.style.position = 'relative';
+  container.style.overflow = 'hidden';
+
+  const W = container.offsetWidth || 360;
+  const H = container.offsetHeight || 400;
+
+  // 随机不重叠布局（简单排斥算法）
+  const placed = [];
+  const PADDING = 16;
+
+  chips.forEach((c, i)=>{
+    const size = sizes[i % sizes.length];
+    const color = colors[i % colors.length];
+    const dateLabel = c.hasRecord ? c.dateLabel : '暂无记录';
+    const dateStr = c.dateStr || '';
+
+    // 尝试找不重叠位置，最多50次
+    let x = 0, y = 0, ok = false;
+    for(let t=0; t<50; t++){
+      x = PADDING + Math.random() * (W - size - PADDING*2);
+      y = PADDING + Math.random() * (H - size - 48 - PADDING*2);
+      ok = placed.every(p=>{
+        const dx = x - p.x, dy = y - p.y;
+        return Math.sqrt(dx*dx+dy*dy) > (size/2 + p.r + 14);
+      });
+      if(ok) break;
+    }
+    placed.push({x, y, r: size/2});
+
+    // 每个节点动画延迟错开，避免同步漂浮
+    const delay = (i * 0.7).toFixed(1);
+
+    const node = document.createElement('div');
+    node.className = 'planet-node';
+    node.style.cssText = `left:${x}px;top:${y}px;animation-delay:-${delay}s`;
+    node.onclick = ()=> openDetailBoard(c.name, dateStr, dateLabel);
+    node.innerHTML = `
+      <div class="planet-bubble" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.33)}px;background:${color}">
+        ${c.name.charAt(0)}
+      </div>
+      <div class="planet-label">${c.name}</div>
+      <div class="planet-date">${dateLabel}</div>
+    `;
+    container.appendChild(node);
+  });
 }
 
 // 友好日期：今天/昨天/前天/具体日期
@@ -2408,7 +2513,7 @@ initWS();
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet').limit(1).single();
     if(error||!data) return;
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -2443,6 +2548,11 @@ async function applyUiConfig(){
     } else if(ragCard){
       ragCard.style.display = '';
     }
+
+    // 星球浮动模板：存全局变量，renderChips 会读取
+    window._uiLayoutPlanet = !!data.ui_layout_planet;
+    // 如果员工已加载完毕，立刻重新渲染（切换模板）
+    if(employeeNames.length) renderChips();
 
     // 重新均分可见 tab 宽度
     redistributeTabs();
