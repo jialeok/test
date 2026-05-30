@@ -1649,7 +1649,12 @@ function pttStart(){
   stopAudio();                    // 本地音频立刻静音
   _isGreeting = false;
   _pendingQueryText = null;
-  _chipTTSActive  = false;       // ★ 用户手动打断，重置chip上下文标记
+  // ★ 清除 chip 残留状态，防止点击标签后 PTT 被污染
+  _chipTTSActive      = false;
+  _pendingChipTTSText = null;
+  _blockLLMAudio      = false;
+  _our500Sent         = false;
+  _chipQueryInFlight  = false;
   _last515Time = Date.now(); // 同步节流时间
   logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
   ws.send(encode(515,JSON.stringify({}),sid));
