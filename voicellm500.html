@@ -1464,7 +1464,7 @@ const onMsg=evt=>{
             logEvt('⚠️看门狗',0,'ptt: 350后2s无352帧，重发兜底');
             state='idle'; activeMode='ptt';
             setStatus('等待中…'); setWave(false,false);
-            sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(看门狗重发兜底)');
+            sendChatTTS('抱歉没找到，麻烦说清楚姓名和日期，比如查小李今天的日报，或点击下方名字查询。','(看门狗重发兜底)');
           }
         }, 2000);
       } else {
@@ -1505,7 +1505,7 @@ const onMsg=evt=>{
         logEvt('→客户端',515,'ClientInterrupt (ptt无结果LLM说完，掐断)');
         ws.send(encode(515,JSON.stringify({}),sid));
         logEvt('←359→兜底',359,'LLM等待语播完，发500兜底');
-        sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(ptt无结果兜底)');
+        sendChatTTS('抱歉没找到，麻烦说清楚姓名和日期，比如查小李今天的日报，或点击下方名字查询。','(ptt无结果兜底)');
         return;
       }
       // 如果有待播的查询结果（过渡话术刚播完），立刻发出，不做会话刷新
@@ -1652,7 +1652,7 @@ const onMsg=evt=>{
             logEvt('⚠️截断检测',0,'ptt: 352来了又断，重发兜底');
             state='idle'; activeMode='ptt';
             setStatus('等待中…'); setWave(false,false);
-            sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(截断重发兜底)');
+            sendChatTTS('抱歉没找到，麻烦说清楚姓名和日期，比如查小李今天的日报，或点击下方名字查询。','(截断重发兜底)');
           }
         }, 1500);
       }
@@ -2123,7 +2123,7 @@ function fillAndSend(t){
         sendChatTTS('好的，稍等我查一下～','(chip过渡)');
       } else {
         activeMode = 'ptt'; // ★ 兜底TTS也需要放行352
-        sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(chip兜底)');
+        sendChatTTS('抱歉没找到，麻烦说清楚姓名和日期，比如查小李今天的日报，或点击下方名字查询。','(chip兜底)');
         setStatus('未找到相关内容');
       }
     })();
@@ -2153,7 +2153,7 @@ async function sendText(){
   } else {
     activeMode = 'ptt'; // ★ 兜底TTS也需要放行352
     logEvt('→客户端',500,'(兜底) 未匹配到RAG内容');
-    sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
+    sendChatTTS('抱歉没找到，麻烦说清楚姓名和日期，比如查小李今天的日报，或点击下方名字查询。','(兜底)');
     setStatus('未找到相关内容');
   }
 }
