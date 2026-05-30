@@ -875,6 +875,7 @@ let chunks=[], queue=[], playing=false, _currentAudio=null; // ★ 记住当前�
 let _lastChunkTime = 0; // ★ 最后一帧352入队的时间戳，用于判断音频是否真正播完
 let _lastSend500Time = 0; // ★ 最后一次发出500的时间戳，防止playNext定时器在新一轮兜底期间误设idle
 let _tts352WatchdogTimer = null; // ★ 350放行后等待首帧352的看门狗，超时则重置状态防卡死
+let _tts352CutoffTimer  = null; // ★ 首帧352到达后，若1.5s内无后续帧且无351/359，视为截断立即重发
 let _greetingDone = false; // 防止静默刷新后重复播开场白
 let _isGreeting   = false; // 开场白播出中，TTSEnded时跳过刷新，断循环
 
@@ -1060,6 +1061,7 @@ const stopAudio=()=>{
   if(_flushTimer){ clearTimeout(_flushTimer); _flushTimer = null; }
   if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
   if(_tts352WatchdogTimer){ clearTimeout(_tts352WatchdogTimer); _tts352WatchdogTimer = null; } // ★ 打断时清除352看门狗
+  if(_tts352CutoffTimer){  clearTimeout(_tts352CutoffTimer);  _tts352CutoffTimer  = null; } // ★ 打断时清除截断检测
   _pendingRefresh = false; // ★ 被打断时取消待刷新
   dbgLog('⏹ stopAudio: 清空 chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
   if(_currentAudio){
@@ -1448,26 +1450,31 @@ const onMsg=evt=>{
         setWave(true,false);litFlow(4);
         // ★ 直接触发字幕打字机
         if(typeof _capText !== 'undefined' && _capText){ const _ct=_capText; _capText=null; _capStart(_ct); }
-        // ★ 启动352看门狗：若4秒内没收到首帧352则强制重置，防卡死在"助理正在说话"
+        // ★ 启动352看门狗：若2秒内没收到首帧352则强制重置，防卡死在"助理正在说话"
         if(_tts352WatchdogTimer) clearTimeout(_tts352WatchdogTimer);
         _tts352WatchdogTimer = setTimeout(()=>{
           _tts352WatchdogTimer = null;
           if(state==='speaking' && queue.length===0 && !playing){
-            dbgLog('⚠️ 352看门狗触发(ptt)：350放行后4秒无352帧，重发兜底TTS');
-            logEvt('⚠️看门狗',0,'ptt: 350后4s无352帧，重发兜底');
+            dbgLog('⚠️ 352看门狗触发(ptt)：350放行后2秒无352帧，重发兜底TTS');
+            logEvt('⚠️看门狗',0,'ptt: 350后2s无352帧，重发兜底');
             state='idle'; activeMode='ptt';
             setStatus('等待中…'); setWave(false,false);
             sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(看门狗重发兜底)');
           }
-        }, 4000);
+        }, 2000);
       } else {
         // idle：LLM触发的350，压制
         logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
         dbgLog('🔇 忽略350 (LLM TTS，idle模式): '+t.substring(0,30));
         send515Throttled('(压制LLM TTS)');
       }
-    } else if(eid===351){dbgLog('📌 351 TTSSentenceEnd (服务端flush)');flushAudio();
+    } else if(eid===351){
+      // ★ 正常句末，清除截断检测（不是截断，是正常结束）
+      if(_tts352CutoffTimer){ clearTimeout(_tts352CutoffTimer); _tts352CutoffTimer = null; }
+      dbgLog('📌 351 TTSSentenceEnd (服务端flush)');flushAudio();
     } else if(eid===359){
+      // ★ 正常TTS结束，清除截断检测
+      if(_tts352CutoffTimer){ clearTimeout(_tts352CutoffTimer); _tts352CutoffTimer = null; }
       dbgLog('📌 359 TTSEnded 到达 chip='+_chipTTSActive);
       // ★ chip模式：LLM等待语("正在为您查询请稍等")播完 → 立刻发500
       if(_chipTTSActive && _pendingChipTTSText){
@@ -1616,8 +1623,22 @@ const onMsg=evt=>{
       // chip或ptt模式：放行我们自己路径的音频
       chunks.push(payload);
       _lastChunkTime = Date.now(); // ★ 记录最后一帧入队时间
-      // ★ 首帧352到达，清除看门狗（服务端已正常吐流，不会卡死）
+      // ★ 首帧352到达，清除零帧看门狗
       if(_tts352WatchdogTimer){ clearTimeout(_tts352WatchdogTimer); _tts352WatchdogTimer = null; }
+      // ★ ptt模式下启动/重置截断检测：1.5s内若无后续帧且无351/359，视为服务端截断，立即重发兜底
+      if(activeMode === 'ptt'){
+        if(_tts352CutoffTimer) clearTimeout(_tts352CutoffTimer);
+        _tts352CutoffTimer = setTimeout(()=>{
+          _tts352CutoffTimer = null;
+          if(activeMode === 'ptt' && state === 'speaking' && queue.length === 0 && !playing){
+            dbgLog('⚠️ 截断检测触发(ptt)：352来了但1.5s无后续帧/351/359，服务端截断，重发兜底');
+            logEvt('⚠️截断检测',0,'ptt: 352来了又断，重发兜底');
+            state='idle'; activeMode='ptt';
+            setStatus('等待中…'); setWave(false,false);
+            sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(截断重发兜底)');
+          }
+        }, 1500);
+      }
       const wasTimer = !!_flushTimer;
       if(_flushTimer) clearTimeout(_flushTimer);
       _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
