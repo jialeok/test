@@ -934,8 +934,31 @@ function _renderPlanet(container, chips){
   canvas.className = 'planet-canvas';
   container.appendChild(canvas);
 
+  // SVG 连线层（绝对定位，z-index 低于节点，在节点下方）
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible';
+  // 定义渐变和脉冲粒子用的 defs
+  const defs = document.createElementNS(svgNS, 'defs');
+  // 连线颜色渐变（从绿到蓝）
+  const grad = document.createElementNS(svgNS, 'linearGradient');
+  grad.setAttribute('id','neuron-grad');
+  grad.setAttribute('gradientUnits','userSpaceOnUse');
+  [['0%','#0ea87a','0.7'],['50%','#2e8ce0','0.5'],['100%','#8b5cf6','0.7']].forEach(([offset,color,opacity])=>{
+    const stop = document.createElementNS(svgNS,'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    stop.setAttribute('stop-opacity', opacity);
+    grad.appendChild(stop);
+  });
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+  canvas.appendChild(svg);
+
   // 用 ResizeObserver 确保拿到真实尺寸后再布局
   let nodes = [];
+  let svgLines = []; // [{line, pulseCircle, phaseFrac, speed, fromIdx, toIdx}]
+
   const doLayout = ()=>{
     const W = canvas.offsetWidth;
     const H = canvas.offsetHeight;
@@ -943,6 +966,12 @@ function _renderPlanet(container, chips){
 
     canvas.innerHTML = '';
     nodes = [];
+    svgLines = [];
+
+    // 重新添加 SVG（canvas.innerHTML 清空了）
+    canvas.appendChild(svg);
+    // 清除 SVG 内除 defs 以外的元素
+    while(svg.lastChild && svg.lastChild !== defs) svg.removeChild(svg.lastChild);
 
     const PADDING = 20;
     const placed = []; // {cx, cy, r} 圆心+半径，用于排斥
@@ -978,13 +1007,13 @@ function _renderPlanet(container, chips){
       placed.push({cx, cy, r});
 
       // 每个节点独立浮动参数
-      const floatAmp   = 6 + Math.random() * 8;   // 浮动幅度 px
-      const floatSpeed = 0.6 + Math.random() * 0.8; // 浮动速度
-      const floatPhase = Math.random() * Math.PI * 2; // 初始相位错开
+      const floatAmp   = 6 + Math.random() * 8;
+      const floatSpeed = 0.6 + Math.random() * 0.8;
+      const floatPhase = Math.random() * Math.PI * 2;
 
       const el = document.createElement('div');
       el.className = 'planet-node';
-      el.style.cssText = `left:${cx - r}px;top:${cy - r}px`;
+      el.style.cssText = `left:${cx - r}px;top:${cy - r}px;z-index:2;position:absolute`;
       el.onclick = ()=> openDetailBoard(c.name, dateStr, dateLabel);
       const nick = _getEmpNick(c.name);
       const showDate = window._uiDateBadgeEnabled !== false;
@@ -996,7 +1025,58 @@ function _renderPlanet(container, chips){
         ${showDate ? `<div class="planet-date">${dateLabel}</div>` : ''}
       `;
       canvas.appendChild(el);
-      nodes.push({ el, baseY: cy - r, floatAmp, floatSpeed, floatPhase });
+      // 存储节点信息：圆心坐标 + 当前dy偏移
+      nodes.push({ el, cx, cy, r, baseY: cy - r, floatAmp, floatSpeed, floatPhase, dy: 0 });
+    });
+
+    // ── 构建神经元连线 ──
+    // 策略：每个节点连接最近的 2~3 个邻居（距离阈值控制），避免过密
+    const MAX_CONNECT_DIST = Math.min(W, H) * 0.65; // 最大连线距离
+    const MAX_EDGES_PER_NODE = 3; // 每节点最多3条线
+    const edgeSet = new Set(); // "i-j" 去重
+    const edgeCount = new Array(nodes.length).fill(0);
+
+    // 按距离排序所有节点对
+    const pairs = [];
+    for(let i = 0; i < nodes.length; i++){
+      for(let j = i+1; j < nodes.length; j++){
+        const dx = nodes[i].cx - nodes[j].cx;
+        const dy2 = nodes[i].cy - nodes[j].cy;
+        const dist = Math.sqrt(dx*dx + dy2*dy2);
+        pairs.push({i, j, dist});
+      }
+    }
+    pairs.sort((a,b)=>a.dist - b.dist);
+
+    pairs.forEach(({i, j, dist})=>{
+      if(dist > MAX_CONNECT_DIST) return;
+      if(edgeCount[i] >= MAX_EDGES_PER_NODE || edgeCount[j] >= MAX_EDGES_PER_NODE) return;
+      const key = i+'-'+j;
+      if(edgeSet.has(key)) return;
+      edgeSet.add(key);
+      edgeCount[i]++; edgeCount[j]++;
+
+      // 创建连线 <line>
+      const line = document.createElementNS(svgNS, 'line');
+      line.setAttribute('stroke', 'url(#neuron-grad)');
+      line.setAttribute('stroke-width', '0.8');
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('opacity', '0.35');
+      svg.appendChild(line);
+
+      // 脉冲粒子 <circle>（沿连线滑动的小亮点）
+      const pulse = document.createElementNS(svgNS, 'circle');
+      pulse.setAttribute('r', '2');
+      pulse.setAttribute('fill', '#5de8b8');
+      pulse.setAttribute('opacity', '0.8');
+      svg.appendChild(pulse);
+
+      svgLines.push({
+        line, pulse,
+        fromIdx: i, toIdx: j,
+        phaseFrac: Math.random(), // 脉冲初始位置 0~1
+        speed: 0.12 + Math.random() * 0.18, // 脉冲速度（每秒走多少圈）
+      });
     });
 
     // 启动 RAF 动画
@@ -1004,10 +1084,37 @@ function _renderPlanet(container, chips){
     const startT = performance.now();
     function animate(now){
       const t = (now - startT) / 1000;
+
+      // 更新节点 dy
       for(const n of nodes){
-        const dy = Math.sin(t * n.floatSpeed + n.floatPhase) * n.floatAmp;
-        n.el.style.transform = `translateY(${dy.toFixed(2)}px)`;
+        n.dy = Math.sin(t * n.floatSpeed + n.floatPhase) * n.floatAmp;
+        n.el.style.transform = `translateY(${n.dy.toFixed(2)}px)`;
       }
+
+      // 更新 SVG 连线和脉冲粒子
+      for(const e of svgLines){
+        const nA = nodes[e.fromIdx];
+        const nB = nodes[e.toIdx];
+        // 圆心坐标（加上浮动偏移dy）
+        const ax = nA.cx, ay = nA.cy + nA.dy;
+        const bx = nB.cx, by = nB.cy + nB.dy;
+        e.line.setAttribute('x1', ax.toFixed(1));
+        e.line.setAttribute('y1', ay.toFixed(1));
+        e.line.setAttribute('x2', bx.toFixed(1));
+        e.line.setAttribute('y2', by.toFixed(1));
+
+        // 脉冲粒子沿线段运动
+        const frac = ((t * e.speed + e.phaseFrac) % 1 + 1) % 1; // 0~1 循环
+        const px = ax + (bx - ax) * frac;
+        const py = ay + (by - ay) * frac;
+        e.pulse.setAttribute('cx', px.toFixed(1));
+        e.pulse.setAttribute('cy', py.toFixed(1));
+
+        // 脉冲透明度：靠近端点时淡出，中间时亮
+        const fadeEdge = Math.sin(frac * Math.PI); // 0→1→0
+        e.pulse.setAttribute('opacity', (fadeEdge * 0.85).toFixed(2));
+      }
+
       _planetRAF = requestAnimationFrame(animate);
     }
     _planetRAF = requestAnimationFrame(animate);
