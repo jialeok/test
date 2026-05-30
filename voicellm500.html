@@ -1587,7 +1587,8 @@ const onMsg=evt=>{
       // 注意：若451已经把waitingForFinalASR置false，这里不会重复触发
     } else if(eid===550||eid===559){
       // ★ Chip流程由553→515→500接管，不重复发515以免干扰500 TTS生成
-      if(!_chipTTSActive){
+      // ★ _pendingPTTFallback=true时LLM正在说等待语，不压制，让它说完
+      if(!_chipTTSActive && !_pendingPTTFallback){
         send515Throttled('(压制LLM '+eid+' 回复，防叠音)');
       }
     } else if(eid===553){
@@ -1641,11 +1642,12 @@ const onMsg=evt=>{
       // ★ 首帧352到达，清除零帧看门狗
       if(_tts352WatchdogTimer){ clearTimeout(_tts352WatchdogTimer); _tts352WatchdogTimer = null; }
       // ★ ptt模式下启动/重置截断检测：1.5s内若无后续帧且无351/359，视为服务端截断，立即重发兜底
-      if(activeMode === 'ptt'){
+      // ★ _pendingPTTFallback=true时LLM正在说等待语，不触发截断检测
+      if(activeMode === 'ptt' && !_pendingPTTFallback){
         if(_tts352CutoffTimer) clearTimeout(_tts352CutoffTimer);
         _tts352CutoffTimer = setTimeout(()=>{
           _tts352CutoffTimer = null;
-          if(activeMode === 'ptt' && state === 'speaking' && queue.length === 0 && !playing){
+          if(activeMode === 'ptt' && !_pendingPTTFallback && state === 'speaking' && queue.length === 0 && !playing){
             dbgLog('⚠️ 截断检测触发(ptt)：352来了但1.5s无后续帧/351/359，服务端截断，重发兜底');
             logEvt('⚠️截断检测',0,'ptt: 352来了又断，重发兜底');
             state='idle'; activeMode='ptt';
