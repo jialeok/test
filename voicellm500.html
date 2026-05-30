@@ -1512,9 +1512,11 @@ const onMsg=evt=>{
         _blockLLMAudio = false; // 放行LLM TTS，让"正在为您查询请稍等"播完整
         setStatus('助理正在整理…');
         dbgLog('📥 553 → 解封LLM音频 + 2s兜底定时器');
+        const tokenAt553 = _chipToken; // ★ 记住553触发时的令牌
         _chipTTSTimer = setTimeout(()=>{
           _chipTTSTimer = null;
           if(!_pendingChipTTSText) return;
+          if(tokenAt553 !== _chipToken){ dbgLog('⚠️ 553兜底定时器：token已失效，放弃发500'); return; } // ★ 令牌检查
           const ttsText = _pendingChipTTSText;
           _pendingChipTTSText = null;
           dbgLog('⏰ 2s超时兜底 → 发500');
@@ -1655,6 +1657,7 @@ function pttStart(){
   _blockLLMAudio      = false;
   _our500Sent         = false;
   _chipQueryInFlight  = false;
+  _chipToken++;                  // ★ 令牌递增，使任何还在飞的 chip 异步回调自动失效
   _last515Time = Date.now(); // 同步节流时间
   logEvt('→客户端',515,'ClientInterrupt (pttStart，立刻打断)');
   ws.send(encode(515,JSON.stringify({}),sid));
@@ -1753,6 +1756,7 @@ function stopMic(){
 // ══ 文字输入 ════════════════════════════════════════════
 function fillText(t){ /* 文字输入框已移除，保留空函数避免报错 */ }
 let _chipQueryInFlight = false; // 防止用户快速重复点击chip
+let _chipToken = 0; // ★ 隔离令牌：每次chip查询递增，PTT按下时也递增，使旧chip回调自动失效
 
 // ★ 标签点击：用精确的员工名+日期查RAG，走501→553→500完成TTS播报
 // ★ 501建立上下文（必须），_blockLLMAudio封死LLM→553→500→我们的350解封
@@ -1760,6 +1764,7 @@ async function chipQuery(name, dateStr, dayLabel){
   if(_chipQueryInFlight){ logEvt('⚠️chip',0,'上一次chip查询还在进行，忽略重复点击'); return; }
   if(!ws||ws.readyState!==WebSocket.OPEN){ setStatus('未连接，请等待…'); return; }
   _chipQueryInFlight = true;
+  const myToken = ++_chipToken; // ★ 拿到本次令牌
   try{
   stopAudio();
   _blockLLMAudio = false;
@@ -1783,6 +1788,12 @@ async function chipQuery(name, dateStr, dayLabel){
     new Promise(r => setTimeout(r, 150)),
     dateStr ? lookupRAGDirect({name, date:dateStr}) : Promise.resolve(null)
   ]);
+
+  // ★ 令牌检查：如果 PTT 已按下（或新chip触发），myToken 已过期，直接放弃
+  if(myToken !== _chipToken){
+    dbgLog('⚠️ chipQuery token失效，已被PTT或新chip作废，放弃后续操作');
+    return;
+  }
 
   _blockLLMAudio = false;
 
