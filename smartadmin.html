@@ -646,6 +646,18 @@
                             <span class="ui-toggle-thumb" id="ui-layout-planet-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
                         </label>
                     </div>
+                    <!-- 日期小标签显示控制 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">🏷️ 日期小标签</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示员工圆圈下方的「今天」「昨天」等日期标签，关闭则全部隐藏</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-date-badge" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-date-badge')">
+                            <span class="ui-toggle-track" id="ui-date-badge-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-date-badge-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
                     </div>
 
                     <div style="margin-top:12px;padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
@@ -698,7 +710,9 @@
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;<br>
-                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;<br>
+                                ALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;
                             </code>
                             <span style="font-size:10px;color:#b45309;margin-top:3px;display:block">👆 点击代码可复制</span>
                         </div>
@@ -913,7 +927,14 @@
             <input type="hidden" id="emp-edit-id">
             <div class="form-group">
                 <label class="form-label">姓名</label>
-                <input type="text" class="form-input" id="emp-name" placeholder="请输入员工姓名">
+                <input type="text" class="form-input" id="emp-name" placeholder="请输入员工姓名" oninput="autoFillNickname()">
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                    昵称
+                    <span style="font-size:11px;font-weight:400;color:var(--ink-soft)">显示在首页圆圈中，默认取姓名最后一字</span>
+                </label>
+                <input type="text" class="form-input" id="emp-nickname" placeholder="单个汉字，如：明" maxlength="4">
             </div>
             <div class="form-group">
                 <label class="form-label">PIN 码</label>
@@ -1100,6 +1121,7 @@
                 'ui-flow-strip':   cfg.ui_flow_strip   ?? false,
                 'ui-rag-card':     cfg.ui_rag_card     ?? false,
                 'ui-layout-planet':cfg.ui_layout_planet ?? false,
+                'ui-date-badge':   cfg.ui_date_badge   ?? true,
             };
             for (const [id, val] of Object.entries(uiMap)) {
                 const el = document.getElementById(id);
@@ -1159,12 +1181,14 @@
             const uiFlowStrip = !!(document.getElementById('ui-flow-strip')?.checked);
             const uiRagCard   = !!(document.getElementById('ui-rag-card')?.checked);
             const uiLayoutPlanet = !!(document.getElementById('ui-layout-planet')?.checked);
+            const uiDateBadge = !!(document.getElementById('ui-date-badge')?.checked);
 
             const uiPayload = {
                 model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                 ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                 ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
-                ui_layout_planet: uiLayoutPlanet, updated_at: new Date().toISOString()
+                ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
+                updated_at: new Date().toISOString()
             };
 
             const { data: existing } = await sbClient.from('model_configs').select('id').limit(1).single();
@@ -1181,7 +1205,7 @@
                     .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                               ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                               ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
-                              ui_layout_planet: uiLayoutPlanet });
+                              ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge });
                 if (error) throw error;
             }
 
@@ -1214,7 +1238,7 @@
     }
 
     function copySql() {
-        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;`;
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {
@@ -1360,11 +1384,33 @@
     function openEmployeeModal(id) {
         document.getElementById('emp-edit-id').value = '';
         document.getElementById('emp-name').value = '';
+        document.getElementById('emp-nickname').value = '';
         document.getElementById('emp-pin').value = '';
         document.getElementById('emp-department').value = '';
         document.getElementById('employee-modal-title').textContent = id ? '编辑员工' : '添加员工';
         document.getElementById('employee-modal').classList.add('show');
     }
+
+    function autoFillNickname() {
+        const nameEl = document.getElementById('emp-name');
+        const nickEl = document.getElementById('emp-nickname');
+        if (!nameEl || !nickEl) return;
+        const name = nameEl.value.trim();
+        // Only auto-fill if user hasn't manually changed it
+        if (!nickEl.dataset.userEdited) {
+            nickEl.value = name.length > 0 ? name.slice(-1) : '';
+        }
+    }
+
+    // Mark nickname as manually edited when user types in it
+    document.addEventListener('DOMContentLoaded', function() {
+        const nickEl = document.getElementById('emp-nickname');
+        if (nickEl) {
+            nickEl.addEventListener('input', function() {
+                nickEl.dataset.userEdited = '1';
+            });
+        }
+    });
 
     function closeEmployeeModal() {
         document.getElementById('employee-modal').classList.remove('show');
@@ -1376,6 +1422,12 @@
             if (error) throw error;
             document.getElementById('emp-edit-id').value = data.id;
             document.getElementById('emp-name').value = data.name || '';
+            const nickEl = document.getElementById('emp-nickname');
+            if (nickEl) {
+                // If nickname stored, use it; otherwise derive from name
+                nickEl.value = data.nickname || (data.name ? data.name.slice(-1) : '');
+                nickEl.dataset.userEdited = data.nickname ? '1' : '';
+            }
             document.getElementById('emp-pin').value = data.pin || '';
             document.getElementById('emp-department').value = data.department || '';
             document.getElementById('employee-modal-title').textContent = '编辑员工';
@@ -1390,6 +1442,9 @@
         const name = document.getElementById('emp-name').value.trim();
         const pin = document.getElementById('emp-pin').value.trim();
         const department = document.getElementById('emp-department').value.trim();
+        const nickEl = document.getElementById('emp-nickname');
+        // Derive nickname: use field value if set, otherwise last character of name
+        const nickname = (nickEl && nickEl.value.trim()) ? nickEl.value.trim() : (name ? name.slice(-1) : '');
 
         if (!name) { showToast('请输入员工姓名', 'error'); return; }
         if (!pin) { showToast('请输入PIN码', 'error'); return; }
@@ -1398,7 +1453,7 @@
         btn.disabled = true;
 
         try {
-            const payload = { name, pin, department };
+            const payload = { name, pin, department, nickname };
             let error;
             if (id) {
                 ({ error } = await sbClient.from('employees').update(payload).eq('id', id));
