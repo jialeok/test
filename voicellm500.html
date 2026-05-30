@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260530-1 -->
+<!-- v=20260530-2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -761,15 +761,17 @@ function setPttLabel(pressing){
 }
 function setConnStatus(on,t){ $('connDot').classList.toggle('on',on); $('connStatus').textContent=t; }
 function setSub(t,active){
-  const el=$('subtitle');
-  el.textContent=t||'等待对话开始…';
-  el.classList.toggle('active',!!t&&active!==false);
-  // 字幕影院：只有日报内容（_captionIsTTS=true）才追加字幕行
-  const view = $('captionView');
-  if(view && view.classList.contains('show') && t && active!==false && _captionIsTTS){
-    const idle = $('captionIdle');
+  const el=$("subtitle");
+  el.textContent=t||"等待对话开始…";
+  el.classList.toggle("active",!!t&&active!==false);
+  const view = $("captionView");
+  const _vs = view&&view.classList.contains("show");
+  if(_vs && t && active!==false && _captionIsTTS){
+    const idle = $("captionIdle");
     if(idle) idle.remove();
-    captionAppendLine(t, 'current', 0);
+    captionAppendLine(t, "current", 0);
+  } else if(t && active!==false){
+    dbgLog("⚠️ setSub跳过字幕: viewShow="+_vs+" isTTS="+_captionIsTTS+" text=\""+t.substring(0,20)+"\"");
   }
 }
 function setWave(on,green){
@@ -1285,31 +1287,36 @@ const onMsg=evt=>{
       }
     } else if(eid===350){
       const t=j.text||'';
+      const _dbgView=$('captionView');
+      const _dbgViewShow=!!(_dbgView&&_dbgView.classList.contains('show'));
+      dbgLog('📡 [350] text="'+t.substring(0,25)+'" our500='+_our500Sent+' isTTS='+_captionIsTTS+' viewShow='+_dbgViewShow+' chip='+_chipTTSActive+' block='+_blockLLMAudio);
       if(_our500Sent){
         // ★ 方案B：我们发过500，这个350是我们自己TTS触发的，解除屏蔽
         _our500Sent    = false;
         _blockLLMAudio = false;
-        logEvt('←350',350,'我们的TTS触发，解除音频屏蔽 chipTTSActive='+_chipTTSActive);
-        dbgLog('🔊 350 TTSSentenceStart (我们的TTS): '+t.substring(0,30));
+        logEvt('←350',350,'我们的TTS触发 text="'+t.substring(0,20)+'" viewShow='+_dbgViewShow);
+        dbgLog('🔊 350(我们的TTS): text="'+t.substring(0,30)+'"');
         state='speaking';setStatus('助理正在说话…');
         setWave(true,false);litFlow(4);
-        // ★ 方案2：直接用350的j.text显示字幕，天然与语音同步
-        if(t){ setSub(t, true); dbgLog('📺 字幕(首句,350.text): '+t.substring(0,30)); }
+        // ★ 方案2：直接用350的j.text显示字幕
+        if(t){ setSub(t, true); dbgLog('📺 字幕写入(首句): "'+t.substring(0,30)+'"'); }
+        else { dbgLog('⚠️ 350首句 j.text为空，豆包未返回文本！raw='+JSON.stringify(j).substring(0,80)); }
       } else if(_captionIsTTS){
         // ★ 方案2：我们发出的500的后续350，直接用j.text
-        if(t){ setSub(t, true); dbgLog('📺 字幕(续句,350.text): '+t.substring(0,30)); }
-        logEvt('←350续句',350,'j.text字幕: '+t.substring(0,20));
+        logEvt('←350续',350,'text="'+t.substring(0,20)+'" viewShow='+_dbgViewShow);
+        if(t){ setSub(t, true); dbgLog('📺 字幕写入(续句): "'+t.substring(0,30)+'"'); }
+        else { dbgLog('⚠️ 350续句 j.text为空'); }
         state='speaking';setWave(true,false);
       } else {
-        // ★ 方案B：我们没发过500且队列空，这是LLM触发的350
+        // ★ 方案B：LLM触发的350
         if(_chipTTSActive){
-          logEvt('←350',350,'LLM触发(chip中，不额外操作)');
-          dbgLog('🔊 350 (LLM) chip中: '+t.substring(0,30));
+          logEvt('←350',350,'LLM触发(chip中) text="'+t.substring(0,15)+'"');
+          dbgLog('🔊 350(LLM/chip): "'+t.substring(0,30)+'"');
           if(t) setSub(t, true);
         } else {
           _blockLLMAudio = true;
-          logEvt('←忽略350',350,'LLM触发，开启音频屏蔽+515压制');
-          dbgLog('🔇 忽略350 (LLM TTS): '+t.substring(0,30));
+          logEvt('←忽略350',350,'LLM触发，屏蔽音频+515');
+          dbgLog('🔇 350忽略(LLM): "'+t.substring(0,30)+'"');
           send515Throttled('(压制LLM TTS)');
         }
       }
