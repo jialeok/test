@@ -1284,13 +1284,15 @@ function flushPendingRAG(){
   const doFlush = (ragText) => {
     dbgLog('🔔 doFlush: ragText='+(ragText?'"'+String(ragText).substring(0,30)+'"':'null'));
     if(!ragText){
-      // 兜底：activeMode='ptt' 已放行352，直接发兜底TTS
+      // 兜底：确保 activeMode='ptt'，让352音频帧放行
+      activeMode = 'ptt';
       logEvt('→客户端',500,'(兜底) lookupRAG无结果');
       sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
       return;
     }
     pendingRAG = null;
     // 515已在pttEnd松开时发过，不重复发
+    activeMode = 'ptt'; // ★ 确保ptt路径352放行
     _pendingQueryText = ragText;
     sendChatTTS('好的，稍等我查一下～','(过渡)');
   };
@@ -2058,7 +2060,7 @@ function fillAndSend(t){
         _ragFlushed=false;
         sendChatTTS('好的，稍等我查一下～','(chip过渡)');
       } else {
-        // 兜底：activeMode='ptt'已放行352，直接发兜底TTS
+        activeMode = 'ptt'; // ★ 兜底TTS也需要放行352
         sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(chip兜底)');
         setStatus('未找到相关内容');
       }
@@ -2087,7 +2089,7 @@ async function sendText(){
     sendChatTTS('好的，稍等我查一下～','(过渡-等TTSEnded再发结果)');
     setStatus('过渡话术已发，等待服务端TTSEnded后播报结果…');
   } else {
-    // 兜底：activeMode='ptt'已放行352，直接发兜底TTS
+    activeMode = 'ptt'; // ★ 兜底TTS也需要放行352
     logEvt('→客户端',500,'(兜底) 未匹配到RAG内容');
     sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(兜底)');
     setStatus('未找到相关内容');
