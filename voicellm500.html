@@ -1278,9 +1278,11 @@ function flushPendingRAG(){
   if(_ragFlushed) return;
   if(!ws||ws.readyState!==WebSocket.OPEN) return;
   _ragFlushed = true;
+  dbgLog('🔔 flushPendingRAG: pendingRAG='+(pendingRAG?'"'+String(pendingRAG).substring(0,30)+'"':'null')+' pendingRAGPromise='+(pendingRAGPromise?'有Promise':'null'));
 
   // 等待 lookupRAG 的 Promise（如果还在查就等，已完成则立即拿到结果）
   const doFlush = (ragText) => {
+    dbgLog('🔔 doFlush: ragText='+(ragText?'"'+String(ragText).substring(0,30)+'"':'null'));
     if(!ragText){
       // 兜底：activeMode='ptt' 已放行352，直接发兜底TTS
       logEvt('→客户端',500,'(兜底) lookupRAG无结果');
@@ -1499,33 +1501,40 @@ const onMsg=evt=>{
     } else if(eid===450){stopAudio();setSub('',false);
     } else if(eid===451){
       clearAsrTimeout();
+      // ★ 调试：打印451原始results，诊断识别内容
+      dbgLog('🎙 451原始results: '+JSON.stringify(j.results||[]).substring(0,200));
+      logEvt('←451',451,'results条数='+(j.results||[]).length+' raw='+JSON.stringify((j.results||[]).map(r=>({text:r.text,is_interim:r.is_interim}))).substring(0,150));
       const t=(j.results||[]).map(r=>r.text).join('');
+      dbgLog('🎙 451拼接文本: "'+t+'" 长度='+t.length);
       if(t){
         setSub(t,true);setStatus('识别到：'+t);litFlow(0);
         const finals=(j.results||[]).filter(r=>!r.is_interim);
+        dbgLog('🎙 451 finals条数='+finals.length+' texts='+finals.map(r=>r.text).join('|'));
         if(finals.length){
           // 拿到最终识别结果，异步查 Supabase
           // ★ 修复竞态：把Promise存起来，flushPendingRAG会等它完成
           pendingRAGPromise = lookupRAG(t).then(result=>{
             pendingRAGPromise = null; // Promise已完成，清掉
+            dbgLog('🔍 lookupRAG结果: '+(result?'✅ 找到 '+result.rec.name+' '+result.rec.date:'❌ null'));
             if(result){ applyRAGUI(result); pendingRAG=result.text; }
             else { pendingRAG=null; }
-            // push_to_talk模式：查询完成后，如果459/451已经触发了flushPendingRAG等待，
-            // 此处返回result供doFlush使用（由Promise链处理，无需再调flushPendingRAG）
-            // 如果459还没到，flushPendingRAG会在459时等这个Promise
             if(waitingForFinalASR){
               waitingForFinalASR=false;
               flushPendingRAG();
             }
-            return result; // ★ 必须return，供Promise链使用
+            return result;
           });
         }
+      } else {
+        dbgLog('⚠️ 451 t为空！j.results='+JSON.stringify(j.results||[]).substring(0,200));
       }
     } else if(eid===459){
       // push_to_talk模式：451已触发flushPendingRAG，459只做兜底（如451未带finals）
       clearAsrTimeout();
+      dbgLog('📌 459 ASREnded: waitingForFinalASR='+waitingForFinalASR+' pendingRAGPromise='+(pendingRAGPromise?'有':'null')+' pendingRAG='+(pendingRAG?'有':'null'));
       if(waitingForFinalASR){
         waitingForFinalASR=false;
+        dbgLog('📌 459 触发 flushPendingRAG（451未触发）');
         flushPendingRAG(); // 仅当451未触发时才执行
       }
       // 注意：若451已经把waitingForFinalASR置false，这里不会重复触发
