@@ -1453,10 +1453,11 @@ const onMsg=evt=>{
         _tts352WatchdogTimer = setTimeout(()=>{
           _tts352WatchdogTimer = null;
           if(state==='speaking' && queue.length===0 && !playing){
-            dbgLog('⚠️ 352看门狗触发(ptt)：350放行后4秒无352帧，强制重置 activeMode='+activeMode+'→idle');
-            logEvt('⚠️看门狗',0,'ptt: 350后4s无352帧，强制回idle');
-            state='idle'; activeMode='idle';
+            dbgLog('⚠️ 352看门狗触发(ptt)：350放行后4秒无352帧，重发兜底TTS');
+            logEvt('⚠️看门狗',0,'ptt: 350后4s无352帧，重发兜底');
+            state='idle'; activeMode='ptt';
             setStatus('等待中…'); setWave(false,false);
+            sendChatTTS('抱歉，没有找到相关记录。请您准确说出员工姓名，或在下方点击员工名字。','(看门狗重发兜底)');
           }
         }, 4000);
       } else {
