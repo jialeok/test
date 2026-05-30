@@ -872,6 +872,7 @@ let KB_GROUPS = [];
 let ws, sid, globalSeq=0, state='idle'; // globalSeq: 与服务端autoAssignedSequence完全同步，每发一帧+1
 let micStream, audioCtx, srcNode, processor;
 let chunks=[], queue=[], playing=false, _currentAudio=null; // ★ 记住当前播放的Audio对象
+let _lastChunkTime = 0; // ★ 最后一帧352入队的时间戳，用于判断音频是否真正播完
 let _greetingDone = false; // 防止静默刷新后重复播开场白
 let _isGreeting   = false; // 开场白播出中，TTSEnded时跳过刷新，断循环
 
@@ -1024,11 +1025,17 @@ const flushAudio=()=>{
 let _pendingRefresh = false; // ★ 收到359时先存起来，等本地队列真正播完再刷新会话
 const playNext=()=>{
   if(playing||!queue.length){
-    // ★ 队列空了且不在播放：检查有没有待执行的会话刷新
+    // ★ 队列空且不在播：检查距最后一帧入队是否超过2秒，防止段落间空隙误判为播完
     if(!playing && !queue.length && _pendingRefresh){
-      _pendingRefresh = false;
-      dbgLog('🏁 playNext: 队列播完，执行待延迟的_refreshSession');
-      _refreshSession();
+      const sinceLastChunk = Date.now() - _lastChunkTime;
+      if(sinceLastChunk >= 2000){
+        _pendingRefresh = false;
+        dbgLog('🏁 playNext: 队列播完且距最后入队'+sinceLastChunk+'ms≥2s，执行_refreshSession');
+        _refreshSession();
+      } else {
+        // 还没超过2秒，等剩余时间后再检查
+        setTimeout(()=>playNext(), 2000 - sinceLastChunk + 50);
+      }
     }
     return;
   }
@@ -1481,8 +1488,8 @@ const onMsg=evt=>{
         setTimeout(()=>{
           _pendingRefresh = true;
           dbgLog('⏰ 359延迟500ms → 设_pendingRefresh，等队列播完再刷新');
-          // 如果此时队列已空且没在播，立刻触发
-          if(!playing && !queue.length){ _pendingRefresh=false; _refreshSession(); }
+          // 如果此时队列已空且没在播，交给playNext的时间戳判断
+          if(!playing && !queue.length){ playNext(); }
         }, 500);
         setStatus('按住🎤说话…');
       }
@@ -1569,6 +1576,7 @@ const onMsg=evt=>{
       dbgLog('🔇 丢弃352: '+size+'B blockLLMAudio='+_blockLLMAudio+' chip='+_chipTTSActive);
     } else {
       chunks.push(payload);
+      _lastChunkTime = Date.now(); // ★ 记录最后一帧入队时间
       const wasTimer = !!_flushTimer;
       if(_flushTimer) clearTimeout(_flushTimer);
       _flushTimer = setTimeout(()=>{ _flushTimer = null; const n=chunks.length; flushAudio(); dbgLog('⏰ 自驱flush定时器触发 chunks入队前='+n); }, 200);
