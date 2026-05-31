@@ -760,7 +760,7 @@
         <div class="cap-wv-bar" style="height:10px"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="cap-back-btn" style="flex:1" onclick="hideCaptionOverlay(); closeDetailBoard()">← 返回列表</button>
+        <button class="cap-back-btn" style="flex:1" onclick="capBackToHome()">← 返回首页</button>
       </div>
     </div>
   </div>
@@ -2515,9 +2515,7 @@ function closeDetailBoard(){
   const board = $('detailBoard');
   if(board) board.classList.remove('show');
   if(container) container.style.display = '';
-  // 关看板时隐藏字幕按钮，恢复提示条
-  const captionBtn = $('captionEntryFloatBtn');
-  if(captionBtn) captionBtn.style.display = 'none';
+  // 字幕按钮的隐藏由 wrapped closeDetailBoard 统一处理
   const tips = $('voiceTipsStrip');
   if(tips) tips.classList.remove('hidden');
 }
@@ -3097,7 +3095,7 @@ function _capStart(fullText){
       showCaptionOverlay();
     }, 0);
   };
-})();
+})()
 
 // ── wrap closeDetailBoard：关看板时同步关字幕层 ──
 (function(){
@@ -3106,9 +3104,25 @@ function _capStart(fullText){
     hideCaptionOverlay();
     _capReset();
     _capText = null;
+    // 真正关闭看板时才隐藏字幕按钮
+    const captionBtn = document.getElementById('captionEntryFloatBtn');
+    if(captionBtn) captionBtn.style.display = 'none';
     _origClose();  // ★ 原逻辑完整执行
   };
 })();
+
+// ── 从字幕覆盖层返回首页：关字幕层 + 关看板，但保留字幕按钮（TTS可能还在播） ──
+function capBackToHome(){
+  hideCaptionOverlay();
+  // 直接执行原始关看板逻辑，不走 wrapped closeDetailBoard（避免隐藏字幕按钮）
+  const container = document.getElementById('chipContainer');
+  const board = document.getElementById('detailBoard');
+  if(board) board.classList.remove('show');
+  if(container) container.style.display = '';
+  const tips = document.getElementById('voiceTipsStrip');
+  if(tips) tips.classList.remove('hidden');
+  // 字幕按钮保持显示（TTS还在播时 _setEntryWave 已设为 display:''）
+}
 
 
 
