@@ -1943,8 +1943,6 @@ const onMsg=evt=>{
         },500);
       }
     } else if(eid===350){
-      // ★ widget 聊天助理开着时，主页面播报全部静默（互斥）
-      if(window._activeVoiceMode==='chat'){ logEvt('←350忽略',350,'widget开启中，主页面播报静默'); return; }
       const t=j.text||'';if(t)setSub(t,true);
       if(activeMode === 'chip'){
         // chip路径：我们发过500，这个350是我们自己TTS触发的，直接放行
@@ -2154,8 +2152,6 @@ const onMsg=evt=>{
     }
   }
   if(msgType===11&&payload){
-    // ★ widget 聊天助理开着时，丢弃主页面所有音频帧（互斥）
-    if(window._activeVoiceMode==='chat'){ return; }
     const size = payload.byteLength;
     if(activeMode === 'idle'){
       // idle模式：没有活跃路径，丢弃所有LLM音频
@@ -2406,12 +2402,9 @@ async function chipQuery(name, dateStr, dayLabel){
   pendingRAG        = null;
   pendingRAGPromise = null;
 
-  // ★ widget 开着时，主页面字幕/状态/流程条全部静默
-  if(window._activeVoiceMode!=='chat'){
-    setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
-    setStatus('查询 ' + name + ' ' + dayLabel + '…');
-    resetFlow(); litFlow(0); litFlow(1); litFlow(2);
-  }
+  setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
+  setStatus('查询 ' + name + ' ' + dayLabel + '…');
+  resetFlow(); litFlow(0); litFlow(1); litFlow(2);
 
   // 先发 515 打断任何进行中的服务端响应
   _last515Time = Date.now();
@@ -3601,6 +3594,15 @@ const DW = (() => {
     if(window._activeVoiceMode&&window._activeVoiceMode!=='chat'){
       alert('请先松开说话按钮，再开启聊天助理');return;
     }
+    // ★ 点击widget按钮：前端直接关掉主页面一切，不动任何语音逻辑
+    try{
+      if(typeof stopAudio==='function') stopAudio();
+      if(typeof setSub==='function') setSub('',false);
+      if(typeof resetFlow==='function') resetFlow();
+      if(typeof hideCaptionOverlay==='function') hideCaptionOverlay();
+      if(typeof _capReset==='function') _capReset();
+      if(typeof closeDetailBoard==='function') closeDetailBoard();
+    }catch(_){}
     window._activeVoiceMode='chat';_ringActive=true;
     if(!_ringAnimId)_ringLoop();
     $('dw-modal').style.display='flex';
