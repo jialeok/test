@@ -181,7 +181,7 @@
   .status-row{text-align:center;font-size:11px;color:var(--muted);padding:2px 0 8px;font-family:var(--mono);flex-shrink:0;letter-spacing:.04em}
 
   /* ── 员工列表 chip ── */
-  .hints{padding:6px 14px 10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+  .hints{padding:2px 14px 10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
 
   /* 员工卡片（列表态） */
   .emp-chip{
@@ -364,10 +364,10 @@
 
   /* ── 你可以这样说 提示条 ── */
   .voice-tips-strip{
-    flex-shrink:0;padding:8px 14px 10px;
+    flex-shrink:0;padding:6px 14px 8px;
     border-bottom:1px solid var(--border);
     background:#fafcfb;
-    display:flex;flex-direction:column;gap:6px;
+    display:flex;flex-direction:column;gap:5px;
     transition:max-height .25s ease, opacity .25s ease, padding .25s ease;
     overflow:hidden;
   }
@@ -760,8 +760,7 @@
         <div class="cap-wv-bar" style="height:10px"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="cap-back-btn" style="flex:1" onclick="hideCaptionOverlay()">← 返回看板</button>
-        <button class="cap-back-btn" style="flex:0 0 auto;padding:0 14px;font-size:12px;opacity:.7" onclick="hideCaptionOverlay(); closeDetailBoard()">关闭</button>
+        <button class="cap-back-btn" style="flex:1" onclick="hideCaptionOverlay(); closeDetailBoard()">← 返回列表</button>
       </div>
     </div>
   </div>
@@ -1998,6 +1997,9 @@ const onMsg=evt=>{
       state='listening';
       setWave(false,false);
       resetFlow();litFlow(0);
+      // 播报结束后延迟隐藏字幕框，回到空闲状态
+      clearTimeout(window._subHideTimer);
+      window._subHideTimer = setTimeout(()=>setSub('',false), 800);
       if(_isGreeting){
         _isGreeting = false;
         setStatus('按住🎤说话…');
@@ -2260,6 +2262,7 @@ function _doPttStart(){
     $('pttBtn').classList.add('pressing');
     setPttLabel(true);
     setStatus('🎤 正在录音，松开发送…');
+    setSub('🎤 正在录音，松开发送…', true);
     setWave(true,true);
     resetFlow();litFlow(0);
     logEvt('🎤麦克风',0,'开始录音 ctx状态:'+(audioCtx?audioCtx.state:'无')+' 采样率:'+(audioCtx?audioCtx.sampleRate:'?'));
@@ -2282,10 +2285,9 @@ function pttEnd(){
   const _sr=audioCtx?audioCtx.sampleRate:16000;
   logEvt('🎤麦克风',0,'松开 共'+pttFrameCount+'帧 约'+(pttFrameCount*1024/_sr*1000).toFixed(0)+'ms 采样率:'+_sr);
   setStatus('识别中…');
+  setSub('识别中…', true);
   if(ws&&ws.readyState===WebSocket.OPEN){
-    // ★ 515不在这里发：有结果时doFlush发，无结果时不发（让LLM说完再兜底）
-    _last515Time = Date.now(); // 同步节流时间
-
+    _last515Time = Date.now();
     waitingForFinalASR=true;
     clearAsrTimeout();
     asrTimeoutTimer=setTimeout(()=>{
@@ -2293,6 +2295,10 @@ function pttEnd(){
         waitingForFinalASR=false;
         logEvt('🎤麦克风',0,'ASR超时，未收到451，自动重置');
         setStatus('识别超时，请重试…');
+        setSub('识别超时，请重试…', true);
+        // 3秒后自动隐藏字幕框
+        clearTimeout(window._subHideTimer);
+        window._subHideTimer = setTimeout(()=>setSub('',false), 3000);
       }
     },8000);
     _sendEndASRAfterFlush();
@@ -3091,7 +3097,7 @@ function _capStart(fullText){
       showCaptionOverlay();
     }, 0);
   };
-})()
+})();
 
 // ── wrap closeDetailBoard：关看板时同步关字幕层 ──
 (function(){
