@@ -1914,8 +1914,11 @@ const onMsg=evt=>{
           // 只有替换词，不需要 twopass
           asrExtra.context = { correct_words: _hw.correct_words };
         }
-        logEvt('→热词',0,'hotwords='+(_hw.hotwords||[]).length+'个 correct_words='+Object.keys(_hw.correct_words||{}).length+'条');
+        logEvt('→热词注入',0,'hotwords='+(_hw.hotwords||[]).length+'个 correct_words='+Object.keys(_hw.correct_words||{}).length+'条');
+      } else {
+        logEvt('⚠️热词注入',0,'_asrHotwords为空，StartSession不带热词');
       }
+      logEvt('→ASR extra',0, JSON.stringify(asrExtra));
       const sessionPayload={
         tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:asrExtra},
@@ -2991,17 +2994,30 @@ async function applyUiConfig(){
     // ASR 热词 & 替换词：存全局，StartSession 时读取
     if(data.asr_hotwords){
       window._asrHotwords = data.asr_hotwords;
+      const hw = data.asr_hotwords;
+      const hwCount  = (hw.hotwords||[]).length;
+      const cwCount  = Object.keys(hw.correct_words||{}).length;
+      logEvt('✅热词加载',0,`Supabase读取成功 — 热词${hwCount}个 替换词${cwCount}条`);
+      if(hwCount)  logEvt('✅热词列表',0, JSON.stringify(hw.hotwords));
+      if(cwCount)  logEvt('✅替换词',0,  JSON.stringify(hw.correct_words));
     } else {
       window._asrHotwords = null;
+      logEvt('⚠️热词加载',0,'asr_hotwords 为空（Supabase未配置或字段不存在）');
     }
 
     // 模型版本：O2.0 → '1.2.1.1'，O → '0'
     if(data.model_version){
       window._modelStr = data.model_version === 'O2.0' ? '1.2.1.1' : '0';
+      logEvt('✅模型版本',0,`${data.model_version} → model="${window._modelStr}"`);
+    } else {
+      logEvt('⚠️模型版本',0,'未配置，使用默认 1.2.1.1 (O2.0)');
     }
     // 音色
     if(data.speaker){
       window._speakerStr = data.speaker;
+      logEvt('✅音色',0, data.speaker);
+    } else {
+      logEvt('⚠️音色',0,'未配置，使用默认 vv');
     }
 
     // 如果员工已加载完毕，立刻重新渲染（切换模板）
