@@ -1943,6 +1943,8 @@ const onMsg=evt=>{
         },500);
       }
     } else if(eid===350){
+      // ★ widget 聊天助理开着时，主页面播报全部静默（互斥）
+      if(window._activeVoiceMode==='chat'){ logEvt('←350忽略',350,'widget开启中，主页面播报静默'); return; }
       const t=j.text||'';if(t)setSub(t,true);
       if(activeMode === 'chip'){
         // chip路径：我们发过500，这个350是我们自己TTS触发的，直接放行
@@ -2152,6 +2154,8 @@ const onMsg=evt=>{
     }
   }
   if(msgType===11&&payload){
+    // ★ widget 聊天助理开着时，丢弃主页面所有音频帧（互斥）
+    if(window._activeVoiceMode==='chat'){ return; }
     const size = payload.byteLength;
     if(activeMode === 'idle'){
       // idle模式：没有活跃路径，丢弃所有LLM音频
@@ -2402,9 +2406,12 @@ async function chipQuery(name, dateStr, dayLabel){
   pendingRAG        = null;
   pendingRAGPromise = null;
 
-  setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
-  setStatus('查询 ' + name + ' ' + dayLabel + '…');
-  resetFlow(); litFlow(0); litFlow(1); litFlow(2);
+  // ★ widget 开着时，主页面字幕/状态/流程条全部静默
+  if(window._activeVoiceMode!=='chat'){
+    setSub('查 ' + name + ' ' + dayLabel + ' 的日报', true);
+    setStatus('查询 ' + name + ' ' + dayLabel + '…');
+    resetFlow(); litFlow(0); litFlow(1); litFlow(2);
+  }
 
   // 先发 515 打断任何进行中的服务端响应
   _last515Time = Date.now();
@@ -3594,25 +3601,6 @@ const DW = (() => {
     if(window._activeVoiceMode&&window._activeVoiceMode!=='chat'){
       alert('请先松开说话按钮，再开启聊天助理');return;
     }
-    // ★ 互斥：打开 widget 前，停掉主页面一切音频/字幕/状态，聚焦在 widget
-    try{
-      if(typeof stopAudio==='function') stopAudio();           // 停主页面音频队列
-      if(typeof setSub==='function') setSub('',false);         // 清主页面字幕
-      if(typeof setWave==='function') setWave(false,false);    // 停主页面波形（主页面的 .dw-bar 用的不是 widget 的那批）
-      if(typeof resetFlow==='function') resetFlow();           // 重置流程条
-      if(typeof hideCaptionOverlay==='function') hideCaptionOverlay(); // 关全屏字幕层
-      if(typeof _capReset==='function') _capReset();           // 清字幕打字机
-      if(typeof closeDetailBoard==='function') closeDetailBoard();     // 关看板（回到列表）
-      // 重置主页面路径状态，防止 352 帧继续被当作 chip/ptt 路径放行
-      if(typeof activeMode!=='undefined') window._mainActiveModeBackup=activeMode; // 暂存（close时可恢复）
-      activeMode='idle';
-      if(typeof _chipTTSActive!=='undefined') _chipTTSActive=false;
-      if(typeof _pendingChipTTSText!=='undefined') _pendingChipTTSText=null;
-      if(typeof _chipToken!=='undefined') _chipToken++;         // 使任何飞行中的 chip 回调失效
-      if(typeof _pendingQueryText!=='undefined') _pendingQueryText=null;
-      if(typeof pttReady!=='undefined') pttReady=false;
-      if(typeof _pendingRefresh!=='undefined') _pendingRefresh=false;
-    }catch(_){}
     window._activeVoiceMode='chat';_ringActive=true;
     if(!_ringAnimId)_ringLoop();
     $('dw-modal').style.display='flex';
@@ -3636,12 +3624,6 @@ const DW = (() => {
     stopMic();stopAudio();ws=null;state='idle';
     setWave(false,false);setDot(false);_ringActive=false;
     window._activeVoiceMode=null;
-    // ★ 关闭 widget 后恢复主页面待机状态
-    try{
-      const stEl=document.getElementById('statusTxt'); if(stEl) stEl.textContent='按住🎤说话…';
-      // 确保主页面波形条（tab0 内的）彻底关闭
-      document.querySelectorAll('#tab0 .dw-bar').forEach(b=>{b.classList.remove('active','green');});
-    }catch(_){}
   };
 
   _ringLoop();
