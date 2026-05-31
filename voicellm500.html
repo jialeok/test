@@ -3615,6 +3615,13 @@ const DW = (() => {
       if(typeof hideCaptionOverlay==='function') hideCaptionOverlay();
       if(typeof _capReset==='function') _capReset();
       if(typeof closeDetailBoard==='function') closeDetailBoard();
+      // ★ 主动关掉主页面 WS，防止它的 onMsg 干扰 widget session
+      try{
+        if(typeof ws!=='undefined'&&ws&&ws.readyState===WebSocket.OPEN){
+          ws.onmessage=null; ws.onclose=null; // 先摘掉回调，防止触发重连
+          ws.close();
+        }
+      }catch(_){}
     }catch(_){}
     window._activeVoiceMode='chat';_ringActive=true;
     if(!_ringAnimId)_ringLoop();
@@ -3639,6 +3646,10 @@ const DW = (() => {
     stopMic();stopAudio();ws=null;state='idle';
     setWave(false,false);setDot(false);_ringActive=false;
     window._activeVoiceMode=null;
+    // ★ 重启主页面 WS（之前被 open() 关掉了）
+    setTimeout(()=>{
+      try{ if(typeof initWS==='function') initWS(); }catch(_){}
+    }, 500);
   };
 
   _ringLoop();
