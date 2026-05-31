@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260530-7 -->
+<!-- v=20260531-9 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 </script>
 <style>
@@ -3565,19 +3565,25 @@ const DW = (() => {
           dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
         };
         if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
+        // ★ 修复：初始上下文用 StartSession 的 dialog_context 字段注入，而不是事后发510
+        // dialog_context 是一次性初始状态，每次新会话覆盖，不会像510一样叠加累积
+        // 只在全新会话（无旧dialog_id）时注入，续话会话服务端已有历史无需重注入
+        // ★ 必须加递增时间戳：文档要求时间戳策略一致，否则和dialog_id历史混用报错
+        const ctxItems = window._dwDialogContext || [];
+        if(!_pendingDialogId && ctxItems.length >= 2 && ctxItems.length % 2 === 0){
+          const baseTs = Date.now() - ctxItems.length * 1000;
+          startPayload.dialog.dialog_context = ctxItems.map((item, i) => ({
+            role: item.role, text: item.text, timestamp: baseTs + i * 1000
+          }));
+        }
         ws.send(encode(100,JSON.stringify(startPayload),sid));
       }else if(eid===150){
-        // SessionStarted：保存服务端返回的 dialog_id，发送初始上下文
+        // SessionStarted：保存服务端返回的 dialog_id
         const returnedDialogId = j.dialog_id || '';
         if(window._dwMemoryEnabled && returnedDialogId){
           localStorage.setItem('dw_dialog_id', returnedDialogId);
         }
-        // 注入初始上下文（eid 510 ConversationCreate）
-        const ctxItems = window._dwDialogContext || [];
-        if(ctxItems.length >= 2 && ctxItems.length % 2 === 0){
-          const items = ctxItems.map(item => ({ role: item.role, text: item.text }));
-          ws.send(encode(510, JSON.stringify({ items }), sid));
-        }
+        // ★ 510已移除：初始上下文已在StartSession的dialog_context里一次性设好
         state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
       }else if(eid===350){const t=j.text||'';if(t)setSub(t);state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
