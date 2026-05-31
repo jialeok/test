@@ -3525,7 +3525,7 @@ const DW = (() => {
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
     setStatus('正在聆听…');setListening(true);_ringActive=true;
-    stopMic(); // ★ 先释放残留麦克风，避免 NotReadableError
+    stopMic(); // ★ 先释放残留麦克风，避免NotReadableError
     try{
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       // ★ 不强制 sampleRate:16000，让浏览器用设备原生采样率，再手动重采样到16k
@@ -3609,7 +3609,7 @@ const DW = (() => {
     if(window._activeVoiceMode&&window._activeVoiceMode!=='chat'){
       alert('请先松开说话按钮，再开启聊天助理');return;
     }
-    // ★ 点击widget按钮：前端直接关掉主页面一切，不动任何语音逻辑
+    // ★ 点击widget按钮：关掉主页面一切，释放麦克风，禁止重连
     try{
       if(typeof stopAudio==='function') stopAudio();
       if(typeof setSub==='function') setSub('',false);
@@ -3617,14 +3617,14 @@ const DW = (() => {
       if(typeof hideCaptionOverlay==='function') hideCaptionOverlay();
       if(typeof _capReset==='function') _capReset();
       if(typeof closeDetailBoard==='function') closeDetailBoard();
-      // ★ 主动关掉主页面 WS，防止它的 onMsg 干扰 widget session
-      try{
-        window._wsDisabled = true; // 先禁止 initWS 重连
-        if(typeof ws!=='undefined'&&ws){
-          ws.onmessage=null; ws.onclose=null; // 摘掉回调，防止触发重连
-          if(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING) ws.close();
-        }
-      }catch(_){}
+      // ★ 关键：释放主页面麦克风，否则widget申请同一设备会报NotReadableError
+      if(typeof stopMic==='function') stopMic();
+      // ★ 禁止initWS自动重连，并关掉主页面WS
+      window._wsDisabled = true;
+      if(typeof ws!=='undefined'&&ws){
+        ws.onmessage=null; ws.onclose=null;
+        if(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING) ws.close();
+      }
     }catch(_){}
     window._activeVoiceMode='chat';_ringActive=true;
     if(!_ringAnimId)_ringLoop();
@@ -3649,9 +3649,13 @@ const DW = (() => {
     stopMic();stopAudio();ws=null;state='idle';
     setWave(false,false);setDot(false);_ringActive=false;
     window._activeVoiceMode=null;
+    // ★ 恢复主页面WS重连
+    setTimeout(()=>{
+      try{ window._wsDisabled=false; if(typeof initWS==='function') initWS(); }catch(_){}
+    },500);
     // ★ 重启主页面 WS（之前被 open() 关掉了）
     setTimeout(()=>{
-      try{ window._wsDisabled = false; if(typeof initWS==='function') initWS(); }catch(_){}
+      try{ if(typeof initWS==='function') initWS(); }catch(_){}
     }, 500);
   };
 
