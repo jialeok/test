@@ -2227,6 +2227,7 @@ function initMic(){
   }).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    window._sharedAudioCtx = audioCtx; // ★ 存全局，供 Widget 复用
     const nativeRate=audioCtx.sampleRate;
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 原生采样率:'+nativeRate+'→目标16000');
     srcNode=audioCtx.createMediaStreamSource(stream);
@@ -2376,9 +2377,12 @@ function _sendEndASRAfterFlush(){
 function stopMic(){
   try{processor?.disconnect();}catch(_){}
   try{srcNode?.disconnect();}catch(_){}
-  try{audioCtx?.close();}catch(_){}
+  // ★ 不关闭 audioCtx，保留给 Widget 复用，避免安卓Chrome第二个AudioContext被suspended
+  // try{audioCtx?.close();}catch(_){}
   micStream?.getTracks().forEach(t=>t.stop());
-  micStream=srcNode=processor=audioCtx=null;
+  micStream=srcNode=processor=null;
+  // audioCtx 保留，存到 window._sharedAudioCtx 供 Widget 使用
+  if(audioCtx) window._sharedAudioCtx = audioCtx;
 }
 
 // ══ 文字输入 ════════════════════════════════════════════
@@ -3519,8 +3523,14 @@ const DW = (() => {
     setStatus('正在聆听…');setListening(true);_ringActive=true;
     try{
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-      // ★ 不强制 sampleRate:16000，让浏览器用设备原生采样率，再手动重采样到16k
-      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+      // ★ 复用主页面已有的 AudioContext，避免安卓Chrome第二个AudioContext被suspended
+      if(window._sharedAudioCtx && window._sharedAudioCtx.state !== 'closed'){
+        audioCtx = window._sharedAudioCtx;
+        if(audioCtx.state === 'suspended') await audioCtx.resume();
+      } else {
+        audioCtx = new(window.AudioContext||window.webkitAudioContext)();
+        window._sharedAudioCtx = audioCtx;
+      }
       const nativeRate=audioCtx.sampleRate;
       srcNode=audioCtx.createMediaStreamSource(micStream);
       // bufferSize=1024 约等于20ms@48kHz，与主页面一致
@@ -3544,9 +3554,10 @@ const DW = (() => {
     _ringActive=false;
     try{processor?.disconnect();}catch(_){}
     try{srcNode?.disconnect();}catch(_){}
-    try{audioCtx?.close();}catch(_){}
+    // ★ 不关闭 audioCtx，因为是复用主页面的，关了主页面PTT也会坏
     micStream?.getTracks().forEach(t=>t.stop());
-    micStream=srcNode=processor=audioCtx=null;
+    micStream=srcNode=processor=null;
+    audioCtx=null; // 只清引用，不close
   };
 
   // 消息处理
