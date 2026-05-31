@@ -2693,7 +2693,7 @@ function initWS(){
   sid=uuid();globalSeq=0;chunks=[];
 
   const u=new URL(WS_URL);
-  u.searchParams.set('session_id','dw_'+Date.now());
+  u.searchParams.set('session_id','voice_'+Date.now());
   ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
   ws.onopen=()=>{
     ws.send(encode(1,'{}',null));
