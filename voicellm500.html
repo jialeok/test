@@ -764,7 +764,7 @@
         <div class="cap-wv-bar" style="height:10px"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="cap-back-btn" style="flex:1" onclick="hideCaptionOverlay(); closeDetailBoard()">← 返回列表</button>
+        <button class="cap-back-btn" style="flex:1" onclick="capBackToHome()">← 返回首页</button>
       </div>
     </div>
   </div>
@@ -2519,9 +2519,7 @@ function closeDetailBoard(){
   const board = $('detailBoard');
   if(board) board.classList.remove('show');
   if(container) container.style.display = '';
-  // 关看板时隐藏字幕按钮，恢复提示条
-  const captionBtn = $('captionEntryFloatBtn');
-  if(captionBtn) captionBtn.style.display = 'none';
+  // 字幕按钮隐藏由 wrapped 版统一处理
   const tips = $('voiceTipsStrip');
   if(tips) tips.classList.remove('hidden');
 }
@@ -3110,9 +3108,25 @@ function _capStart(fullText){
     hideCaptionOverlay();
     _capReset();
     _capText = null;
+    // 真正关闭看板时才隐藏字幕按钮
+    const captionBtn = document.getElementById('captionEntryFloatBtn');
+    if(captionBtn) captionBtn.style.display = 'none';
     _origClose();  // ★ 原逻辑完整执行
   };
 })();
+
+// ── 从字幕覆盖层返回首页：只关字幕层+看板，保留字幕按钮（TTS还在播） ──
+function capBackToHome(){
+  hideCaptionOverlay();
+  // 直接操作 DOM，不走 wrapped closeDetailBoard（避免隐藏字幕按钮）
+  const board = document.getElementById('detailBoard');
+  const container = document.getElementById('chipContainer');
+  if(board) board.classList.remove('show');
+  if(container) container.style.display = '';
+  const tips = document.getElementById('voiceTipsStrip');
+  if(tips) tips.classList.remove('hidden');
+  // captionEntryFloatBtn 保持当前显示状态（TTS播放时已被 _setEntryWave 设为可见）
+}
 
 
 
