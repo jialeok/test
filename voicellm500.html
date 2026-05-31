@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260531-8 -->
+<!-- v=20260530-7 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 </script>
 <style>
@@ -2227,7 +2227,6 @@ function initMic(){
   }).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    // ★ PTT 用自己的 audioCtx，不再共享给 Widget，两者完全独立
     const nativeRate=audioCtx.sampleRate;
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 原生采样率:'+nativeRate+'→目标16000');
     srcNode=audioCtx.createMediaStreamSource(stream);
@@ -2377,9 +2376,9 @@ function _sendEndASRAfterFlush(){
 function stopMic(){
   try{processor?.disconnect();}catch(_){}
   try{srcNode?.disconnect();}catch(_){}
-  // PTT 自己的 audioCtx 不关闭（保持可重用），但也不共享给 Widget
+  try{audioCtx?.close();}catch(_){}
   micStream?.getTracks().forEach(t=>t.stop());
-  micStream=srcNode=processor=null;
+  micStream=srcNode=processor=audioCtx=null;
 }
 
 // ══ 文字输入 ════════════════════════════════════════════
@@ -3515,65 +3514,37 @@ const DW = (() => {
   const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 
   // 麦克风
-  let _dwFrameCount=0;
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
     setStatus('正在聆听…');setListening(true);_ringActive=true;
-    _dwFrameCount=0;
     try{
-      // ★ 先获取麦克风流
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-      setStatus('麦克风已获取，初始化音频…');
-
-      // ★ Widget 始终新建独立 AudioContext，不复用主页面的
-      // 原因：安卓Chrome上，复用旧AudioCtx + 新micStream 会导致srcNode静音（RMS≈0）
-      // 两者各自独立的 AudioContext 可以共存，安卓Chrome支持多个并发AudioCtx
-      audioCtx = new(window.AudioContext||window.webkitAudioContext)();
-      setStatus('新建AudioCtx state='+audioCtx.state);
-      if(audioCtx.state === 'suspended'){
-        await audioCtx.resume();
-        setStatus('AudioCtx已resume');
-      }
-
+      // ★ 不强制 sampleRate:16000，让浏览器用设备原生采样率，再手动重采样到16k
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
       const nativeRate=audioCtx.sampleRate;
-      setStatus('正在聆听… ctx='+audioCtx.state+' rate='+nativeRate);
-
       srcNode=audioCtx.createMediaStreamSource(micStream);
+      // bufferSize=1024 约等于20ms@48kHz，与主页面一致
       processor=audioCtx.createScriptProcessor(1024,1,1);
+      // 静音 gain 节点，防回声同时保持 AudioGraph 活跃
       const silentGain=audioCtx.createGain();silentGain.gain.value=0;
       processor.connect(silentGain);silentGain.connect(audioCtx.destination);
       srcNode.connect(processor);
-
       processor.onaudioprocess=e=>{
-        if(!ws||ws.readyState!==WebSocket.OPEN){
-          if(_dwFrameCount===0) setStatus('ws未就绪 state='+(ws?ws.readyState:'无'));
-          return;
-        }
+        if(!ws||ws.readyState!==WebSocket.OPEN)return;
         const raw=e.inputBuffer.getChannelData(0);
-        let rms=0;for(let i=0;i<raw.length;i++)rms+=raw[i]*raw[i];
-        rms=Math.sqrt(rms/raw.length);
+        // ★ 重采样到16kHz（复用主页面的 resampleTo16k 函数）
         const resampled=resampleTo16k(raw,nativeRate);
         const i16=new Int16Array(resampled.length);
         for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
         ws.send(encodeAudio(i16.buffer));
-        _dwFrameCount++;
-        // 第1帧和每50帧显示一次状态，方便手机上直接看到
-        if(_dwFrameCount===1) setStatus('✅首帧已发 rms='+rms.toFixed(4)+' ctx='+audioCtx.state);
-        if(_dwFrameCount===50) setStatus('正在聆听… 已发50帧 rms='+rms.toFixed(4));
       };
-    }catch(e){
-      setStatus('❌麦克风错误: '+e.name+' '+e.message);
-      _ringActive=false;
-    }
+    }catch(e){setStatus('麦克风错误: '+(e.name||e.message));_ringActive=false;}
   };
   const stopMic=()=>{
     _ringActive=false;
     try{processor?.disconnect();}catch(_){}
     try{srcNode?.disconnect();}catch(_){}
-    // ★ Widget 自己创建的 audioCtx，用完直接 close，不影响主页面PTT
-    if(audioCtx && audioCtx.state !== 'closed'){
-      try{audioCtx.close();}catch(_){}
-    }
+    try{audioCtx?.close();}catch(_){}
     micStream?.getTracks().forEach(t=>t.stop());
     micStream=srcNode=processor=audioCtx=null;
   };
@@ -3583,10 +3554,8 @@ const DW = (() => {
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
     const{msgType,eid,payload}=parseFrame(evt.data);
-    // ★ 所有服务端消息都显示在状态栏，方便手机调试
     if(msgType===9&&payload){
       let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
-      setStatus('←服务端 eid='+eid+' '+JSON.stringify(j).substring(0,60));
       if(eid===50){
         setStatus('连接成功，初始化中…');
         // StartSession：带入 dialog_id（若有）实现多轮记忆
