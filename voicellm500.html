@@ -3555,21 +3555,18 @@ const DW = (() => {
       srcNode.connect(processor);
 
       processor.onaudioprocess=e=>{
-        if(!ws||ws.readyState!==WebSocket.OPEN){
-          if(_dwFrameCount===0) setStatus('ws未就绪 state='+(ws?ws.readyState:'无'));
-          return;
-        }
+        if(!ws||ws.readyState!==WebSocket.OPEN) return;
         const raw=e.inputBuffer.getChannelData(0);
         let rms=0;for(let i=0;i<raw.length;i++)rms+=raw[i]*raw[i];
         rms=Math.sqrt(rms/raw.length);
+        // ★ 静音过滤：rms低于阈值时不发送，让服务端VAD正确检测说话
+        if(rms < 0.008) return;
         const resampled=resampleTo16k(raw,nativeRate);
         const i16=new Int16Array(resampled.length);
         for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
         ws.send(encodeAudio(i16.buffer));
         _dwFrameCount++;
-        // 第1帧和每50帧显示一次状态，方便手机上直接看到
-        if(_dwFrameCount===1) setStatus('✅首帧已发 rms='+rms.toFixed(4)+' ctx='+audioCtx.state);
-        if(_dwFrameCount===50) setStatus('正在聆听… 已发50帧 rms='+rms.toFixed(4));
+        if(_dwFrameCount===1) setStatus('正在聆听…');
       };
     }catch(e){
       setStatus('❌麦克风错误: '+e.name+' '+e.message);
@@ -3599,7 +3596,7 @@ const DW = (() => {
         const startPayload = {
           tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-          dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+          dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',strict_audit:false}}
         };
         if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
         ws.send(encode(100,JSON.stringify(startPayload),sid));
