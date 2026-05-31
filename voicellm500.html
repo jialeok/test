@@ -3596,6 +3596,7 @@ const DW = (() => {
     }
     // ★ 点击widget按钮：前端直接关掉主页面一切，不动任何语音逻辑
     try{
+      if(typeof stopMic==='function') stopMic();       // 释放主页面麦克风，让widget能正常申请
       if(typeof stopAudio==='function') stopAudio();
       if(typeof setSub==='function') setSub('',false);
       if(typeof resetFlow==='function') resetFlow();
