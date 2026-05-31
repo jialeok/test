@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260530-7 -->
+<!-- v=20260531-8 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 </script>
 <style>
@@ -2227,7 +2227,7 @@ function initMic(){
   }).then(stream=>{
     micStream=stream;
     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    window._sharedAudioCtx = audioCtx; // ★ 存全局，供 Widget 复用
+    // ★ PTT 用自己的 audioCtx，不再共享给 Widget，两者完全独立
     const nativeRate=audioCtx.sampleRate;
     logEvt('🎤麦克风',0,'初始化完成 状态:'+audioCtx.state+' 原生采样率:'+nativeRate+'→目标16000');
     srcNode=audioCtx.createMediaStreamSource(stream);
@@ -2377,12 +2377,9 @@ function _sendEndASRAfterFlush(){
 function stopMic(){
   try{processor?.disconnect();}catch(_){}
   try{srcNode?.disconnect();}catch(_){}
-  // ★ 不关闭 audioCtx，保留给 Widget 复用，避免安卓Chrome第二个AudioContext被suspended
-  // try{audioCtx?.close();}catch(_){}
+  // PTT 自己的 audioCtx 不关闭（保持可重用），但也不共享给 Widget
   micStream?.getTracks().forEach(t=>t.stop());
   micStream=srcNode=processor=null;
-  // audioCtx 保留，存到 window._sharedAudioCtx 供 Widget 使用
-  if(audioCtx) window._sharedAudioCtx = audioCtx;
 }
 
 // ══ 文字输入 ════════════════════════════════════════════
@@ -3528,21 +3525,14 @@ const DW = (() => {
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       setStatus('麦克风已获取，初始化音频…');
 
-      // ★ 关键：必须在用户手势上下文内 resume/create AudioContext
-      // 复用主页面已有的 AudioContext，避免安卓Chrome第二个AudioContext被suspended
-      if(window._sharedAudioCtx && window._sharedAudioCtx.state !== 'closed'){
-        audioCtx = window._sharedAudioCtx;
-        setStatus('复用主页AudioCtx state='+audioCtx.state);
-        if(audioCtx.state === 'suspended'){
-          await audioCtx.resume();
-          setStatus('AudioCtx已resume');
-        }
-      } else {
-        audioCtx = new(window.AudioContext||window.webkitAudioContext)();
-        window._sharedAudioCtx = audioCtx;
-        setStatus('新建AudioCtx state='+audioCtx.state);
-        // 新建的也可能是suspended，强制resume
-        if(audioCtx.state === 'suspended') await audioCtx.resume();
+      // ★ Widget 始终新建独立 AudioContext，不复用主页面的
+      // 原因：安卓Chrome上，复用旧AudioCtx + 新micStream 会导致srcNode静音（RMS≈0）
+      // 两者各自独立的 AudioContext 可以共存，安卓Chrome支持多个并发AudioCtx
+      audioCtx = new(window.AudioContext||window.webkitAudioContext)();
+      setStatus('新建AudioCtx state='+audioCtx.state);
+      if(audioCtx.state === 'suspended'){
+        await audioCtx.resume();
+        setStatus('AudioCtx已resume');
       }
 
       const nativeRate=audioCtx.sampleRate;
@@ -3580,10 +3570,12 @@ const DW = (() => {
     _ringActive=false;
     try{processor?.disconnect();}catch(_){}
     try{srcNode?.disconnect();}catch(_){}
-    // ★ 不关闭 audioCtx，因为是复用主页面的，关了主页面PTT也会坏
+    // ★ Widget 自己创建的 audioCtx，用完直接 close，不影响主页面PTT
+    if(audioCtx && audioCtx.state !== 'closed'){
+      try{audioCtx.close();}catch(_){}
+    }
     micStream?.getTracks().forEach(t=>t.stop());
-    micStream=srcNode=processor=null;
-    audioCtx=null; // 只清引用，不close
+    micStream=srcNode=processor=audioCtx=null;
   };
 
   // 消息处理
