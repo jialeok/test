@@ -150,6 +150,7 @@
 
   /* 字幕区 - 动态出现，只在说话/识别时显示 */
   .subtitle-box{
+    display:none;
     margin:10px 14px 0;padding:10px 16px;
     background:#fff;
     border:1px solid var(--border);border-radius:14px;
@@ -157,16 +158,12 @@
     color:var(--muted);font-style:italic;word-break:break-all;
     flex-shrink:0;
     box-shadow:0 1px 4px rgba(0,0,0,.04);
-    /* 默认隐藏 */
-    max-height:0;padding-top:0;padding-bottom:0;
-    margin-top:0;margin-bottom:0;
     opacity:0;overflow:hidden;
-    transition:max-height .3s ease, opacity .3s ease, padding .3s ease, margin .3s ease;
+    transition:opacity .3s ease;
   }
   .subtitle-box.active{
+    display:block;
     color:var(--text);font-style:normal;border-color:rgba(14,168,122,.3);background:#f7fdfb;
-    max-height:120px;padding-top:10px;padding-bottom:10px;
-    margin-top:10px;margin-bottom:0;
     opacity:1;overflow:visible;
   }
 
@@ -1379,10 +1376,19 @@ document.addEventListener('click', function(e){
 function setSub(t,active){
   const el=$('subtitle');
   el.textContent=t||'';
-  el.classList.toggle('active',!!t&&active!==false);
+  const show = !!t && active!==false;
+  if(show){
+    // 先 display:block，再下一帧加 active 触发 opacity 过渡
+    el.style.display='block';
+    requestAnimationFrame(()=>{ el.classList.add('active'); });
+  } else {
+    el.classList.remove('active');
+    // opacity 过渡结束后再 display:none
+    setTimeout(()=>{ if(!el.classList.contains('active')) el.style.display='none'; }, 320);
+  }
   // 有内容时隐藏「你可以这样说」提示条
   const tips=$('voiceTipsStrip');
-  if(tips) tips.classList.toggle('hidden', !!t && active!==false);
+  if(tips) tips.classList.toggle('hidden', show);
 }
 function setWave(on,green){
   document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); });
