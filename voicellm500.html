@@ -1874,6 +1874,43 @@ function logEvt(dir,eid,note=''){
 // ══ WS 消息处理 ════════════════════════════════════════════
 const onMsg=evt=>{
   if(!(evt.data instanceof ArrayBuffer))return;
+  // ★ DW 模式：帧转发给 DW 处理（activeMode==='chat' 时主页面静默，所有帧给 DW）
+  if(activeMode==='chat'){
+    if(window._dwDispatchMsg) window._dwDispatchMsg(evt.data);
+    return;
+  }
+  // dw-closing：等 152 触发重建，其余帧忽略
+  if(activeMode==='dw-closing'){
+    const{msgType,eid,payload}=parseFrame(evt.data);
+    if(msgType===9&&eid===152){
+      // 触发 152 处理（重建主页面 session），和下面 eid===152 分支合并
+      // 这里直接 fall through：把 activeMode 改回 idle，让下面逻辑处理
+      // 简单做法：改 activeMode，然后直接调用 152 处理逻辑
+      activeMode='idle';
+      _refreshPending=false;
+      sid=uuid();
+      const _asrExtraRefresh={};
+      const _hwR=window._asrHotwords;
+      if(_hwR&&(_hwR.hotwords&&_hwR.hotwords.length>0||Object.keys(_hwR.correct_words||{}).length>0)){
+        if(_hwR.hotwords&&_hwR.hotwords.length>0){
+          _asrExtraRefresh.enable_asr_twopass=true;
+          _asrExtraRefresh.context={hotwords:_hwR.hotwords.map(w=>({word:w}))};
+          if(Object.keys(_hwR.correct_words||{}).length>0) _asrExtraRefresh.context.correct_words=_hwR.correct_words;
+        } else if(Object.keys(_hwR.correct_words||{}).length>0){
+          _asrExtraRefresh.context={correct_words:_hwR.correct_words};
+        }
+      }
+      const sessionPayload={
+        tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:_asrExtraRefresh},
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
+      };
+      logEvt('→客户端',100,'StartSession (DW关闭后重建)');
+      ws.send(encode(100,JSON.stringify(sessionPayload),sid));
+    }
+    // dw-closing 期间其余帧忽略
+    return;
+  }
   // 老手风格：打印收到帧的大小和前60字节
   const recvBytes=new Uint8Array(evt.data);
   const recvHex=Array.from(recvBytes.slice(0,Math.min(60,recvBytes.length))).join(' ');
@@ -2118,8 +2155,27 @@ const onMsg=evt=>{
         }, 2000);
       }
     } else if(eid===152){
-      // SessionFinished：如果是静默刷新触发的，立刻重新 StartSession
-      if(_refreshPending){
+      // SessionFinished：区分三种情况
+      // 1. activeMode==='chat'：主页面 session 刚结束 → 立刻发 DW 的 StartSession
+      // 2. activeMode==='dw-closing'：DW session 刚结束 → 重建主页面 session
+      // 3. _refreshPending：普通静默刷新 → 重建主页面 session
+      if(activeMode==='chat'){
+        // ★ DW.open() 触发的：主页面 session 已结束，现在发 DW 的 StartSession
+        logEvt('←152',152,'DW模式：主页面session已结束，发DW的StartSession');
+        if(window._dwStartSession){
+          window._dwStartSession();
+        } else {
+          logEvt('⚠️DW',0,'_dwStartSession 未注册，无法发DW StartSession');
+        }
+        return;
+      }
+      if(activeMode==='dw-closing'){
+        // ★ DW.close() 触发的：DW session 已结束，重建主页面 session（push_to_talk 模式）
+        activeMode = 'idle';
+        logEvt('←152',152,'DW关闭：session已结束，重建主页面session');
+      }
+      // 普通静默刷新 或 dw-closing 后续：重建主页面 session
+      if(_refreshPending || activeMode === 'idle'){
         _refreshPending = false;
         sid = uuid(); // 新会话用新 session id
         // 静默刷新也带上热词配置
@@ -2141,7 +2197,7 @@ const onMsg=evt=>{
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:_asrExtraRefresh},
           dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
         };
-        logEvt('→客户端',100,'StartSession (静默刷新)');
+        logEvt('→客户端',100,'StartSession (静默刷新/DW关闭后重建)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
         // 注意：不发 SayHello，静默重连用户无感知
       }
@@ -3361,14 +3417,18 @@ function capBackToHome(){
 <!-- 4. 核心逻辑 -->
 <script>
 const DW = (() => {
-  const DW_WS_URL     = typeof WS_URL !== 'undefined' ? WS_URL : 'wss://doubao-ktvy.onrender.com/proxy';
+  // ★ DW 不再自建 WS，复用主页面 ws/sid
+  // DW_WS_URL 保留以备降级，但 open() 里不用它建连接
   const DW_SYS_PROMPT = window._doubaoSystemPrompt || '你是一个亲切的智能助理，请简短口语化地回答，每次不超过3句话。';
   const DW_SPEAKER    = window._doubaoSpeaker || (typeof SPEAKER !== 'undefined' ? SPEAKER : 'zh_female_vv_jupiter_bigtts');
 
-  let ws, sid, seq=2, state='idle';
+  // ws / sid 直接引用主页面变量（闭包外的 let ws, sid）
+  // seq 用主页面的 globalSeq，encodeAudio 也用主页面的 encodeAudio
+  let state='idle';
   let _pendingDialogId = '';
   let micStream, audioCtx, srcNode, processor;
   let chunks=[], queue=[], playing=false;
+  let _dwSid = ''; // DW 自己的 session id（和主页面 sid 区分）
   const $ = id => document.getElementById(id);
 
   const setStatus = t => { $('dw-status').textContent = t; };
@@ -3463,40 +3523,21 @@ const DW = (() => {
     $('dw-modal').addEventListener('click',e=>{if(e.target===$('dw-modal'))DW.close();});
   })();
 
-  // 协议
-  const uuid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
-  const encode=(eid,payload,sessionId)=>{
-    const hdr=new Uint8Array([0x11,0x14,0x10,0x00]),parts=[];
-    const eb=new ArrayBuffer(4);new DataView(eb).setUint32(0,eid,false);parts.push(new Uint8Array(eb));
-    if(sessionId){const sb=new TextEncoder().encode(sessionId);const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);parts.push(new Uint8Array(sl));parts.push(sb);}
-    const pb=typeof payload==='string'?new TextEncoder().encode(payload):new Uint8Array(payload);
-    const pl=new ArrayBuffer(4);new DataView(pl).setUint32(0,pb.byteLength,false);parts.push(new Uint8Array(pl));parts.push(pb);
-    const tot=parts.reduce((s,p)=>s+p.byteLength,hdr.byteLength);
-    const out=new Uint8Array(tot);let o=0;out.set(hdr,o);o+=hdr.byteLength;
-    parts.forEach(p=>{out.set(p,o);o+=p.byteLength;});return out.buffer;
-  };
-  const encodeAudio=pcm=>{
-    const hdr=new Uint8Array([0x11,0x25,0x00,0x00]);seq++;
-    const sq=new ArrayBuffer(4);new DataView(sq).setInt32(0,seq,false);
+  // ★ 协议：复用主页面的 encode()，encodeAudio 用 DW 自己的 sid (_dwSid)
+  const _dwEncodeAudio=pcm=>{
+    // 复用主页面 globalSeq 计数（统一序列号，服务端不混乱）
+    globalSeq++;
+    const hdr=new Uint8Array([0x11,0x25,0x00,0x00]);
+    const sq=new ArrayBuffer(4);new DataView(sq).setInt32(0,globalSeq,false);
     const ev=new ArrayBuffer(4);new DataView(ev).setUint32(0,200,false);
-    const sb=sid?new TextEncoder().encode(sid):new Uint8Array(0);
+    const sb=_dwSid?new TextEncoder().encode(_dwSid):new Uint8Array(0);
     const sl=new ArrayBuffer(4);new DataView(sl).setUint32(0,sb.byteLength,false);
     const pb=new Uint8Array(pcm);const pl=new ArrayBuffer(4);new DataView(pl).setUint32(0,pb.byteLength,false);
     const tot=4+4+4+4+sb.byteLength+4+pb.byteLength;const out=new Uint8Array(tot);let o=0;
     [hdr,new Uint8Array(sq),new Uint8Array(ev),new Uint8Array(sl),sb,new Uint8Array(pl),pb].forEach(p=>{out.set(p,o);o+=p.byteLength;});
     return out.buffer;
   };
-  const parseFrame=buf=>{
-    const dv=new DataView(buf);
-    const hSz=(dv.getUint8(0)&0x0f)*4,msgType=(dv.getUint8(1)>>4)&0x0f,flags=dv.getUint8(1)&0x0f;
-    let o=hSz;if(msgType===15)o+=4;if(flags&0x03)o+=4;
-    let eid=0;if(flags&0x04){eid=dv.getUint32(o,false);o+=4;}
-    let sessId=null;
-    if(o+4<=buf.byteLength){const sl=dv.getUint32(o,false);if(sl>0&&sl<200&&o+4+sl<=buf.byteLength){o+=4;sessId=new TextDecoder().decode(new Uint8Array(buf,o,sl));o+=sl;}}
-    let payload=null;
-    if(o+4<=buf.byteLength){const pl=dv.getUint32(o,false);o+=4;if(pl>0&&o+pl<=buf.byteLength)payload=buf.slice(o,o+pl);}
-    return{msgType,eid,payload};
-  };
+  // parseFrame 复用主页面的，这里不重复定义
 
   // 音频
   const flushAudio=()=>{
@@ -3523,10 +3564,11 @@ const DW = (() => {
       srcNode=audioCtx.createMediaStreamSource(micStream);
       processor=audioCtx.createScriptProcessor(512,1,1);
       processor.onaudioprocess=e=>{
+        // ★ 复用主页面 ws，音频帧带 DW 自己的 _dwSid
         if(!ws||ws.readyState!==WebSocket.OPEN)return;
         const f32=e.inputBuffer.getChannelData(0),i16=new Int16Array(f32.length);
         f32.forEach((v,i)=>{i16[i]=Math.max(-32768,Math.min(32767,v*32767));});
-        ws.send(encodeAudio(i16.buffer));
+        ws.send(_dwEncodeAudio(i16.buffer));
       };
       srcNode.connect(processor);processor.connect(audioCtx.destination);
     }catch(e){setStatus('麦克风错误: '+(e.name||e.message));_ringActive=false;}
@@ -3541,23 +3583,14 @@ const DW = (() => {
   };
 
   // 消息处理
+  // ★ DW 不自己接 ws.onmessage，改为由主页面 onMsg 在 activeMode==='chat' 时调用
   const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
-  const onMsg=evt=>{
-    if(!(evt.data instanceof ArrayBuffer))return;
-    const{msgType,eid,payload}=parseFrame(evt.data);
+  const dispatchMsg=(buf)=>{
+    // buf 是 ArrayBuffer，由主页面 onMsg 转发过来
+    const{msgType,eid,payload}=parseFrame(buf);
     if(msgType===9&&payload){
       let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
-      if(eid===50){
-        setStatus('连接成功，初始化中…');
-        // StartSession：带入 dialog_id（若有）实现多轮记忆
-        const startPayload = {
-          tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-          dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-        };
-        if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
-        ws.send(encode(100,JSON.stringify(startPayload),sid));
-      }else if(eid===150){
+      if(eid===150){
         // SessionStarted：保存服务端返回的 dialog_id，发送初始上下文
         const returnedDialogId = j.dialog_id || '';
         if(window._dwMemoryEnabled && returnedDialogId){
@@ -3567,50 +3600,98 @@ const DW = (() => {
         const ctxItems = window._dwDialogContext || [];
         if(ctxItems.length >= 2 && ctxItems.length % 2 === 0){
           const items = ctxItems.map(item => ({ role: item.role, text: item.text }));
-          ws.send(encode(510, JSON.stringify({ items }), sid));
+          ws.send(encode(510, JSON.stringify({ items }), _dwSid));
         }
-        state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
+        state='listening';setStatus('点击下方开始说话');setDot(true);$('dw-tapbtn').style.display='flex';
+        logEvt('←DW-150',150,'DW SessionStarted → 可以说话了');
       }else if(eid===350){const t=j.text||'';if(t)setSub(t);state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
       }else if(eid===359){flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
       }else if(eid===450){stopAudio();
       }else if(eid===451){const t=(j.results||[]).map(r=>r.text).join('');if(t){setStatus('我听到：'+t);setSub(t);}
+      }else if(eid===152){
+        // DW 的 SessionFinished（关闭时发的 FinishSession 102 触发）
+        // 关闭流程已在 close() 里处理，这里只记录日志
+        logEvt('←DW-152',152,'DW SessionFinished');
       }else if(eid===153||eid===599){setStatus('连接出错，请重试');}
     }
     if(msgType===11&&payload)chunks.push(payload);
   };
+  // 暴露给主页面 onMsg 调用
+  window._dwDispatchMsg = dispatchMsg;
 
   // open / close
+  // ★ 不再自建 WS，复用主页面的 ws（外层闭包变量）
   const open=()=>{
     if(window._activeVoiceMode&&window._activeVoiceMode!=='chat'){
       alert('请先松开说话按钮，再开启聊天助理');return;
     }
-    window._activeVoiceMode='chat';_ringActive=true;
+    if(!ws||ws.readyState!==WebSocket.OPEN){
+      alert('主页面尚未连接，请稍等几秒再试');return;
+    }
+    window._activeVoiceMode='chat';
+    _ringActive=true;
     if(!_ringAnimId)_ringLoop();
     $('dw-modal').style.display='flex';
-    setSub('');setStatus('正在连接…');setDot(false);setWave(false,false);
+    setSub('');setStatus('正在切换模式…');setDot(false);setWave(false,false);
     $('dw-tapbtn').style.display='none';
-    sid=uuid();seq=2;chunks=[];
+    chunks=[];queue=[];playing=false;
+
+    // ★ 停掉主页面当前的 session（FinishSession 102）
+    // 主页面 onMsg 的 152 会触发 _refreshPending 逻辑，但我们把 _refreshPending 设为 false，
+    // 然后在主页面的 152 里检查 activeMode==='chat'，直接发 DW 的 StartSession
+    stopAudio(); // 停主页面正在播的音频
+    activeMode = 'chat'; // ★ 告诉主页面 onMsg：后续帧转发给 DW
+    _refreshPending = false; // 阻止主页面 152 触发自动重连
+
     // 读取保存的 dialog_id（多轮记忆）
     _pendingDialogId = (window._dwMemoryEnabled && localStorage.getItem('dw_dialog_id')) || '';
-    const u=new URL(DW_WS_URL);u.searchParams.set('session_id','dw_'+Date.now());
-    ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
-    ws.onopen=()=>{ws.send(encode(1,'{}',null));};
-    ws.onmessage=onMsg;
-    ws.onerror=()=>setStatus('连接失败，请检查网络');
-    ws.onclose=e=>{stopMic();setStatus('已断开 ('+e.code+')');state='idle';setWave(false,false);setDot(false);_ringActive=false;};
+
+    // 生成 DW 自己的 session id
+    _dwSid = uuid();
+    logEvt('→DW-open',0,'发 FinishSession(102) → 切换到 DW 的 StartSession');
+    // 先 FinishSession 结束主页面会话，收到 152 后发 DW 的 StartSession（在主页面 onMsg 里处理）
+    if(ws.readyState===WebSocket.OPEN){
+      ws.send(encode(102,JSON.stringify({}),sid));
+    }
+    setStatus('正在初始化…');
   };
+
   const close=()=>{
     $('dw-modal').style.display='none';
+    stopMic();
+    // ★ 发 DW 的 FinishSession，然后让主页面重新 StartSession（push_to_talk 模式）
     if(ws&&ws.readyState===WebSocket.OPEN){
-      try{ws.send(encode(102,'{}',sid));setTimeout(()=>{try{ws.send(encode(2,'{}',null));setTimeout(()=>ws?.close(),300);}catch(_){}},300);}catch(_){}
+      try{
+        ws.send(encode(102,JSON.stringify({}),_dwSid));
+        logEvt('→DW-close',102,'发 FinishSession(_dwSid)，等主页面 152 重建会话');
+      }catch(_){}
     }
-    stopMic();stopAudio();ws=null;state='idle';
+    stopAudio();state='idle';
     setWave(false,false);setDot(false);_ringActive=false;
     window._activeVoiceMode=null;
+    // ★ 通知主页面：DW 关了，152 来了就重建主页面会话
+    activeMode = 'dw-closing'; // 特殊状态：等待 152 后切回 idle 并重建主页面会话
+    logEvt('←DW-close',0,'activeMode→dw-closing，等152重建主页面会话');
   };
 
   _ringLoop();
+
+  // ★ 注册 _dwStartSession 供主页面 onMsg 的 152 分支调用
+  window._dwStartSession = ()=>{
+    if(!ws||ws.readyState!==WebSocket.OPEN){ logEvt('⚠️DW',0,'_dwStartSession: ws未就绪'); return; }
+    const _sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
+    const startPayload = {
+      tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+      asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
+      dialog:{bot_name:'助理',system_role:_sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+    };
+    if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
+    logEvt('→DW',100,'StartSession (keep_alive) _dwSid='+_dwSid.substring(0,8)+'…');
+    ws.send(encode(100,JSON.stringify(startPayload),_dwSid));
+    setStatus('正在连接…');
+  };
+
   return{open,close,_startMic};
 })();
 
