@@ -240,7 +240,7 @@
         }
         .tab-nav::-webkit-scrollbar { display: none; }
         .tab-btn {
-            flex: 1; min-width: 0;
+            flex: 0 0 auto; min-width: 68px;
             padding: 10px 8px; border: none; border-radius: var(--r-sm);
             background: transparent;
             font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; font-weight: 600;
@@ -468,6 +468,10 @@
             <span class="material-icons-round">tune</span>
             <span>豆包配置</span>
         </button>
+        <button class="tab-btn" data-tab="tab-advanced" onclick="switchTab('tab-advanced')">
+            <span class="material-icons-round">auto_fix_high</span>
+            <span>高级功能</span>
+        </button>
         <button class="tab-btn" data-tab="tab-employees" onclick="switchTab('tab-employees')">
             <span class="material-icons-round">people</span>
             <span>员工管理</span>
@@ -683,6 +687,7 @@
                         <span class="material-icons-round" style="font-size:13px!important">info</span>
                         保存后，前台刷新即可生效。隐藏的 Tab 不会丢失数据。
                     </div>
+
                 </div>
 
                 <!-- ── Debug 模式开关 ── -->
@@ -769,6 +774,73 @@
         </div>
 
         <div id="doubao-save-status" style="font-size:12px;color:var(--ink-soft);min-height:16px;margin-bottom:20px"></div>
+    </div>
+
+    <!-- ═══════════ Tab-高级功能 ═══════════ -->
+    <div class="tab-panel" id="tab-advanced">
+        <div class="section-header">
+            <div>
+                <div class="section-title">⚙️ 高级功能</div>
+                <div class="section-sub">ASR 热词、替换词及其他高级配置</div>
+            </div>
+            <button class="btn-primary" id="advanced-save-btn" onclick="saveDoubaoConfig()">
+                <span class="material-icons-round">save</span>保存配置
+            </button>
+        </div>
+
+        <!-- ASR 热词 & 替换词 -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">record_voice_over</span>ASR 热词 &amp; 替换词</div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;color:var(--ink-soft);line-height:1.6;padding:10px 12px;background:rgba(91,79,255,.06);border-radius:10px">
+                    <strong>热词</strong>：让豆包 ASR 更容易识别员工姓名（需开启二遍识别，会启用 enable_asr_twopass）。<br>
+                    <strong>替换词</strong>：识别后自动纠正错字，支持正则。格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词</code> → <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">正确词</code>，每行一条。
+                </div>
+                <!-- 热词列表 -->
+                <div>
+                    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+                        <span style="font-weight:600">热词列表</span>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="asrHwImportEmployees(this)" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(0,196,140,.4);background:rgba(0,196,140,.07);color:var(--success);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">group</span>导入员工名
+                            </button>
+                            <button onclick="asrHwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                            </button>
+                        </div>
+                    </div>
+                    <div id="asr-hw-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:10px;width:100%;overflow:hidden"></div>
+                    <div id="asr-hw-import-tip" style="display:none;margin-top:6px;font-size:11px;color:var(--success)"></div>
+                </div>
+                <!-- 替换词 -->
+                <div>
+                    <div style="font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+                        <span>替换词列表</span>
+                        <button onclick="asrCwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                            <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                        </button>
+                    </div>
+                    <!-- 表头 -->
+                    <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center;padding:0 2px;margin-bottom:4px">
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">错误词（ASR识别出的）</span>
+                        <span></span>
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">正确词（替换成）</span>
+                        <span></span>
+                    </div>
+                    <div id="asr-cw-list" style="display:flex;flex-direction:column;gap:7px;min-height:10px"></div>
+                    <!-- 隐藏textarea保持原有读写兼容 -->
+                    <textarea id="asr-cw-textarea" style="display:none"></textarea>
+                </div>
+                <div style="padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
+                    <span class="material-icons-round" style="font-size:13px!important">info</span>
+                    保存后，前台刷新即可生效。
+                </div>
+            </div>
+        </div>
+
+        <div id="advanced-save-status" style="font-size:12px;color:var(--ink-soft);min-height:16px;margin-bottom:20px"></div>
     </div>
 
     <!-- ═══════════ Tab2: 员工管理 ═══════════ -->
@@ -1153,6 +1225,11 @@
             const vtsTitle = document.getElementById('vts-title');
             if (vtsTitle) vtsTitle.value = vtips.title || '你可以这样说';
             vtsRenderTags(vtips.tags || []);
+
+            // 加载 ASR 热词 & 替换词
+            const asrHw = cfg.asr_hotwords || { hotwords: [], correct_words: {} };
+            asrHwRenderList(asrHw.hotwords || []);
+            asrCwRenderList(asrHw.correct_words || {});
         } catch(_) {
             fillDoubaoDefaults();
         }
@@ -1231,6 +1308,113 @@
         btn.closest('div')?.remove();
     }
 
+    /* ── ASR 热词列表管理 ── */
+    function asrHwRenderList(words) {
+        const list = document.getElementById('asr-hw-list');
+        if (!list) return;
+        list.innerHTML = '';
+        (words || []).forEach(w => asrHwAddRow(w));
+    }
+    function asrHwAdd() {
+        asrHwAddRow('');
+        const list = document.getElementById('asr-hw-list');
+        list?.lastElementChild?.querySelector('input')?.focus();
+    }
+    function asrHwAddRow(word) {
+        const list = document.getElementById('asr-hw-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden';
+        row.innerHTML = `
+            <input class="asr-hw-input" type="text" value="${(word||'').replace(/"/g,'&quot;')}"
+                style="flex:1;min-width:0;width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="如：黄韩漫">
+            <button onclick="this.closest('div').remove()" title="删除"
+                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+    }
+
+    /* ── 替换词行编辑器 ── */
+    function asrCwRenderList(cwMap) {
+        const list = document.getElementById('asr-cw-list');
+        if (!list) return;
+        list.innerHTML = '';
+        Object.entries(cwMap || {}).forEach(([k, v]) => asrCwAddRow(k, v));
+    }
+    function asrCwAdd() {
+        asrCwAddRow('', '');
+        const list = document.getElementById('asr-cw-list');
+        list?.lastElementChild?.querySelector('.asr-cw-from')?.focus();
+    }
+    function asrCwAddRow(from, to) {
+        const list = document.getElementById('asr-cw-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center';
+        row.innerHTML = `
+            <input class="asr-cw-from" type="text" value="${(from||'').replace(/"/g,'&quot;')}"
+                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="黄汉漫">
+            <span style="font-size:14px;color:var(--ink-soft);font-weight:700;text-align:center;flex-shrink:0">→</span>
+            <input class="asr-cw-to" type="text" value="${(to||'').replace(/"/g,'&quot;')}"
+                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="黄韩漫">
+            <button onclick="this.closest('div').remove()" title="删除"
+                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+    }
+
+    /* ── 一键导入员工名为热词（自动去重，保留已有手动词） ── */
+    async function asrHwImportEmployees(btn) {
+        const tipEl = document.getElementById('asr-hw-import-tip');
+        const origHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:13px!important;animation:spin 1s linear infinite">refresh</span>导入中…';
+        if (tipEl) { tipEl.style.display = 'none'; tipEl.textContent = ''; }
+
+        try {
+            const { data, error } = await sbClient
+                .from('employees')
+                .select('name')
+                .eq('enabled', true)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+
+            const names = (data || []).map(e => e.name.trim()).filter(Boolean);
+            if (!names.length) { showToast('没有启用的员工', 'error'); return; }
+
+            // 读取当前已有热词，去重合并
+            const existingEls = document.querySelectorAll('#asr-hw-list .asr-hw-input');
+            const existing = new Set(Array.from(existingEls).map(el => el.value.trim()).filter(Boolean));
+
+            let added = 0;
+            names.forEach(name => {
+                if (!existing.has(name)) {
+                    asrHwAddRow(name);
+                    existing.add(name);
+                    added++;
+                }
+            });
+
+            if (tipEl) {
+                tipEl.style.display = 'block';
+                tipEl.textContent = added > 0
+                    ? `✅ 已导入 ${added} 个员工名（跳过 ${names.length - added} 个已存在）`
+                    : `ℹ️ ${names.length} 个员工名已全部存在，无需重复导入`;
+                setTimeout(() => { tipEl.style.display = 'none'; }, 4000);
+            }
+        } catch(e) {
+            showToast('导入失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
+
     /* ── 保存配置 ── */
     async function saveDoubaoConfig() {
         const saveBtn  = document.getElementById('doubao-save-btn');
@@ -1258,12 +1442,24 @@
             const vtsTagsVal = Array.from(vtsTagEls).map(el => el.value.trim()).filter(Boolean);
             const voiceTips = { title: vtsTitleVal, tags: vtsTagsVal };
 
+            // 读取 ASR 热词 & 替换词
+            const hwEls = document.querySelectorAll('#asr-hw-list .asr-hw-input');
+            const hwWords = Array.from(hwEls).map(el => el.value.trim()).filter(Boolean);
+            const cwMap = {};
+            document.querySelectorAll('#asr-cw-list > div').forEach(row => {
+                const from = row.querySelector('.asr-cw-from')?.value.trim();
+                const to   = row.querySelector('.asr-cw-to')?.value.trim();
+                if (from && to) cwMap[from] = to;
+            });
+            const asrHotwords = { hotwords: hwWords, correct_words: cwMap };
+
             const uiPayload = {
                 model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                 ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                 ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
                 ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
                 voice_tips: voiceTips,
+                asr_hotwords: asrHotwords,
                 updated_at: new Date().toISOString()
             };
 
@@ -1282,7 +1478,7 @@
                               ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                               ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
                               ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
-                              voice_tips: voiceTips });
+                              voice_tips: voiceTips, asr_hotwords: asrHotwords });
                 if (error) throw error;
             }
 
@@ -1315,7 +1511,7 @@
     }
 
     function copySql() {
-        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;`;
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS asr_hotwords jsonb DEFAULT NULL;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {

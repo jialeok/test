@@ -888,6 +888,10 @@ const WS_URL      = 'wss://doubao-ktvy.onrender.com/proxy';
 const SYSTEM_PROMPT = '你是一个亲切的智能助理，请用不超过1句话回答，每句10字以内。';
 const SPEAKER     = 'zh_female_vv_jupiter_bigtts';
 
+// 后台可配置：model 版本和音色，由 applyUiConfig() 加载后覆盖
+window._modelStr  = '1.2.1.1';   // 默认 O2.0
+window._speakerStr = SPEAKER;     // 默认 vv 音色
+
 // ══ Supabase 配置 ═════════════════════════════════════════
 const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
@@ -1896,10 +1900,26 @@ const onMsg=evt=>{
     if(eid===50){
       setConnStatus(true,'连接成功');
       setStatus('初始化会话…');
+      // 构建 ASR extra：如果后台配置了热词则带上
+      const asrExtra = {};
+      const _hw = window._asrHotwords;
+      if(_hw && (_hw.hotwords && _hw.hotwords.length > 0 || Object.keys(_hw.correct_words||{}).length > 0)){
+        if(_hw.hotwords && _hw.hotwords.length > 0){
+          asrExtra.enable_asr_twopass = true;
+          asrExtra.context = { hotwords: _hw.hotwords.map(w=>({word:w})) };
+          if(Object.keys(_hw.correct_words||{}).length > 0){
+            asrExtra.context.correct_words = _hw.correct_words;
+          }
+        } else if(Object.keys(_hw.correct_words||{}).length > 0){
+          // 只有替换词，不需要 twopass
+          asrExtra.context = { correct_words: _hw.correct_words };
+        }
+        logEvt('→热词',0,'hotwords='+(_hw.hotwords||[]).length+'个 correct_words='+Object.keys(_hw.correct_words||{}).length+'条');
+      }
       const sessionPayload={
-        tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+        tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+        asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:asrExtra},
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -2098,10 +2118,24 @@ const onMsg=evt=>{
       if(_refreshPending){
         _refreshPending = false;
         sid = uuid(); // 新会话用新 session id
+        // 静默刷新也带上热词配置
+        const _asrExtraRefresh = {};
+        const _hwR = window._asrHotwords;
+        if(_hwR && (_hwR.hotwords && _hwR.hotwords.length > 0 || Object.keys(_hwR.correct_words||{}).length > 0)){
+          if(_hwR.hotwords && _hwR.hotwords.length > 0){
+            _asrExtraRefresh.enable_asr_twopass = true;
+            _asrExtraRefresh.context = { hotwords: _hwR.hotwords.map(w=>({word:w})) };
+            if(Object.keys(_hwR.correct_words||{}).length > 0){
+              _asrExtraRefresh.context.correct_words = _hwR.correct_words;
+            }
+          } else if(Object.keys(_hwR.correct_words||{}).length > 0){
+            _asrExtraRefresh.context = { correct_words: _hwR.correct_words };
+          }
+        }
         const sessionPayload={
-          tts:{speaker:SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:{}},
-          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:'1.2.1.1',input_mod:'push_to_talk',strict_audit:false}}
+          tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:_asrExtraRefresh},
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
         };
         logEvt('→客户端',100,'StartSession (静默刷新)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -2892,14 +2926,14 @@ async function dbgDiagnose(){
 
 // ══ 初始化 ════════════════════════════════════════════════
 loadEmployeeNames(); // 启动时从数据库加载员工名单
-applyUiConfig();    // 读取后台配置，隐藏/显示 Tab 和流程条
-initWS();
+// ★ 先等后台配置（含热词）加载完，再建 WS，确保 StartSession 时 _asrHotwords 已就绪
+applyUiConfig().then(()=>{ initWS(); }).catch(()=>{ initWS(); });
 
 // ── 读取后台 UI 显示配置 ──────────────────────────────────
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker').limit(1).single();
     if(error||!data) return;
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -2952,6 +2986,22 @@ async function applyUiConfig(){
           `<span class="vts-tag">${t.replace(/</g,'&lt;')}</span>`
         ).join('');
       }
+    }
+
+    // ASR 热词 & 替换词：存全局，StartSession 时读取
+    if(data.asr_hotwords){
+      window._asrHotwords = data.asr_hotwords;
+    } else {
+      window._asrHotwords = null;
+    }
+
+    // 模型版本：O2.0 → '1.2.1.1'，O → '0'
+    if(data.model_version){
+      window._modelStr = data.model_version === 'O2.0' ? '1.2.1.1' : '0';
+    }
+    // 音色
+    if(data.speaker){
+      window._speakerStr = data.speaker;
     }
 
     // 如果员工已加载完毕，立刻重新渲染（切换模板）
