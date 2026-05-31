@@ -1932,10 +1932,12 @@ const onMsg=evt=>{
       litFlow(0);
       initMic(); // 提前申请麦克风权限，避免按下时延迟
       // 仅首次发开场白，静默刷新后的 SessionStarted 跳过
-      if(!_greetingDone){
+      if(!_greetingDone && window._activeVoiceMode !== 'chat'){
         _greetingDone = true;
         _isGreeting   = true;
         setTimeout(()=>{
+          // 再次检查：发送前 widget 可能已打开
+          if(window._activeVoiceMode === 'chat') return;
           const _h=new Date().getHours();
           const _greet=_h<6?'夜深了':_h<12?'早上好':_h<14?'中午好':_h<18?'下午好':'晚上好';
           logEvt('→客户端',300,'SayHello');
@@ -1973,10 +1975,15 @@ const onMsg=evt=>{
           }
         }, 2000);
       } else {
-        // idle：LLM触发的350，压制
-        logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
-        dbgLog('🔇 忽略350 (LLM TTS，idle模式): '+t.substring(0,30));
-        send515Throttled('(压制LLM TTS)');
+        // idle：LLM触发的350
+        // ★ widget开着时，这个350属于widget session，主页面不干预
+        if(window._activeVoiceMode === 'chat'){
+          logEvt('←忽略350',350,'idle模式：widget开启中，跳过515压制');
+        } else {
+          logEvt('←忽略350',350,'idle模式：LLM触发，开启515压制');
+          dbgLog('🔇 忽略350 (LLM TTS，idle模式): '+t.substring(0,30));
+          send515Throttled('(压制LLM TTS)');
+        }
       }
     } else if(eid===351){
       // ★ 正常句末，清除截断检测（不是截断，是正常结束）
