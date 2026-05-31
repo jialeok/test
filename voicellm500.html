@@ -651,8 +651,6 @@
   </div>
 </header>
 
-<!-- 热词状态角标（配置加载后显示） -->
-<div id="hw-status-badge" style="display:none;position:fixed;bottom:12px;right:12px;z-index:999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,196,140,.15);color:#059669;pointer-events:none"></div>
 
 <div class="tabs" id="tabBar">
   <div class="tab active" id="tabBtn0" onclick="switchTab(0)">🎙️ 语音对话</div>
@@ -3003,14 +3001,9 @@ async function applyUiConfig(){
       logEvt('✅热词加载',0,`Supabase读取成功 — 热词${hwCount}个 替换词${cwCount}条`);
       if(hwCount)  logEvt('✅热词列表',0, JSON.stringify(hw.hotwords));
       if(cwCount)  logEvt('✅替换词',0,  JSON.stringify(hw.correct_words));
-      // 固定状态角标，不被日志顶掉
-      const badge = document.getElementById('hw-status-badge');
-      if(badge){ badge.textContent = `🔤 热词${hwCount} 替换词${cwCount}`; badge.style.display=''; }
     } else {
       window._asrHotwords = null;
       logEvt('⚠️热词加载',0,'asr_hotwords 为空（Supabase未配置或字段不存在）');
-      const badge = document.getElementById('hw-status-badge');
-      if(badge){ badge.textContent = '⚠️ 热词未配置'; badge.style.display=''; badge.style.background='rgba(239,68,68,.15)'; badge.style.color='#dc2626'; }
     }
 
     // 模型版本：O2.0 → '1.2.1.1'，O → '0'
