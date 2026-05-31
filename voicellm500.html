@@ -674,10 +674,10 @@
     <div class="flow-node" id="fn-reply">播报</div>
   </div>
 
-  <!-- 你可以这样说 提示条（空闲时显示，说话/识别时隐藏） -->
+  <!-- 你可以这样说 提示条（空闲时显示，说话/识别时隐藏；内容由后台配置动态渲染） -->
   <div class="voice-tips-strip" id="voiceTipsStrip">
-    <span class="vts-label">你可以这样说</span>
-    <div class="vts-tags">
+    <span class="vts-label" id="vtsTitleEl">你可以这样说</span>
+    <div class="vts-tags" id="vtsTagsEl">
       <span class="vts-tag">查询今天的工作内容 →</span>
       <span class="vts-tag">查看本周的工作汇总 →</span>
       <span class="vts-tag">李四的工作日报 →</span>
@@ -2899,7 +2899,7 @@ initWS();
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips').limit(1).single();
     if(error||!data) return;
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -2940,6 +2940,19 @@ async function applyUiConfig(){
 
     // 日期标签：默认显示（true），开关关闭时隐藏
     window._uiDateBadgeEnabled = data.ui_date_badge !== undefined ? !!data.ui_date_badge : true;
+
+    // 语音提示条：从后台读取标题和胶囊
+    if(data.voice_tips){
+      const vt = data.voice_tips;
+      const titleEl = document.getElementById('vtsTitleEl');
+      const tagsEl  = document.getElementById('vtsTagsEl');
+      if(titleEl && vt.title) titleEl.textContent = vt.title;
+      if(tagsEl && Array.isArray(vt.tags)){
+        tagsEl.innerHTML = vt.tags.map(t =>
+          `<span class="vts-tag">${t.replace(/</g,'&lt;')}</span>`
+        ).join('');
+      }
+    }
 
     // 如果员工已加载完毕，立刻重新渲染（切换模板）
     if(employeeNames.length) renderChips();

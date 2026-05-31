@@ -660,6 +660,25 @@
                     </div>
                     </div>
 
+                    <!-- 语音提示条编辑 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:16px;margin-bottom:10px">💬 语音提示条</div>
+                    <div style="background:var(--surface);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span style="font-size:12px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0">标题文字</span>
+                            <input id="vts-title" type="text" value="你可以这样说"
+                                style="flex:1;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                                placeholder="你可以这样说">
+                        </div>
+                        <div>
+                            <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px">胶囊提示（可拖拽排序）</div>
+                            <div id="vts-tag-list" style="display:flex;flex-direction:column;gap:6px;min-height:10px"></div>
+                            <button onclick="vtsAddTag()" style="margin-top:8px;display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;width:100%;justify-content:center">
+                                <span class="material-icons-round" style="font-size:15px!important">add</span>新增胶囊
+                            </button>
+                        </div>
+                        <div style="font-size:11px;color:var(--ink-soft)">提示：最多建议 5 个胶囊，过多会超出屏幕宽度</div>
+                    </div>
+
                     <div style="margin-top:12px;padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
                         <span class="material-icons-round" style="font-size:13px!important">info</span>
                         保存后，前台刷新即可生效。隐藏的 Tab 不会丢失数据。
@@ -712,6 +731,7 @@
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;<br>
                                 ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;<br>
                                 ALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;
                             </code>
                             <span style="font-size:10px;color:#b45309;margin-top:3px;display:block">👆 点击代码可复制</span>
@@ -1127,6 +1147,12 @@
                 const el = document.getElementById(id);
                 if (el) { el.checked = !!val; syncUiToggleUI(id); }
             }
+
+            // 加载语音提示条
+            const vtips = cfg.voice_tips || { title: '你可以这样说', tags: ['查询今天的工作内容 →', '查看本周的工作汇总 →', '李四的工作日报 →'] };
+            const vtsTitle = document.getElementById('vts-title');
+            if (vtsTitle) vtsTitle.value = vtips.title || '你可以这样说';
+            vtsRenderTags(vtips.tags || []);
         } catch(_) {
             fillDoubaoDefaults();
         }
@@ -1160,6 +1186,49 @@
         if (radO2) { radO2.checked = true; doubaoVerChange(); }
         const greet = document.getElementById('doubao-greeting');
         if (greet) greet.value = '您好，请问有什么可以帮您？';
+        // 默认提示条
+        vtsRenderTags(['查询今天的工作内容 →', '查看本周的工作汇总 →', '李四的工作日报 →']);
+    }
+
+    /* ── 语音提示条胶囊管理 ── */
+    function vtsRenderTags(tags) {
+        const list = document.getElementById('vts-tag-list');
+        if (!list) return;
+        list.innerHTML = '';
+        (tags || []).forEach((t, i) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:6px';
+            row.innerHTML = `
+                <span class="material-icons-round" style="font-size:16px!important;color:#ccc;cursor:grab;flex-shrink:0" title="拖拽排序">drag_indicator</span>
+                <input class="vts-admin-input" type="text" value="${t.replace(/"/g,'&quot;')}"
+                    style="flex:1;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                    placeholder="胶囊文字，如：查询今天工作内容 →">
+                <button onclick="vtsRemoveTag(this)" title="删除"
+                    style="width:28px;height:28px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <span class="material-icons-round" style="font-size:15px!important">close</span>
+                </button>`;
+            list.appendChild(row);
+        });
+    }
+    function vtsAddTag() {
+        const list = document.getElementById('vts-tag-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px';
+        row.innerHTML = `
+            <span class="material-icons-round" style="font-size:16px!important;color:#ccc;cursor:grab;flex-shrink:0" title="拖拽排序">drag_indicator</span>
+            <input class="vts-admin-input" type="text" value=""
+                style="flex:1;border:1.5px solid rgba(91,79,255,.4);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="输入胶囊文字，如：查询今天工作内容 →" autofocus>
+            <button onclick="vtsRemoveTag(this)" title="删除"
+                style="width:28px;height:28px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+        row.querySelector('input')?.focus();
+    }
+    function vtsRemoveTag(btn) {
+        btn.closest('div')?.remove();
     }
 
     /* ── 保存配置 ── */
@@ -1183,11 +1252,18 @@
             const uiLayoutPlanet = !!(document.getElementById('ui-layout-planet')?.checked);
             const uiDateBadge = !!(document.getElementById('ui-date-badge')?.checked);
 
+            // 读取语音提示条
+            const vtsTitleVal = document.getElementById('vts-title')?.value?.trim() || '你可以这样说';
+            const vtsTagEls = document.querySelectorAll('#vts-tag-list .vts-admin-input');
+            const vtsTagsVal = Array.from(vtsTagEls).map(el => el.value.trim()).filter(Boolean);
+            const voiceTips = { title: vtsTitleVal, tags: vtsTagsVal };
+
             const uiPayload = {
                 model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                 ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                 ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
                 ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
+                voice_tips: voiceTips,
                 updated_at: new Date().toISOString()
             };
 
@@ -1205,7 +1281,8 @@
                     .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                               ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
                               ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
-                              ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge });
+                              ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
+                              voice_tips: voiceTips });
                 if (error) throw error;
             }
 
@@ -1238,7 +1315,7 @@
     }
 
     function copySql() {
-        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;`;
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {
