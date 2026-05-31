@@ -2937,7 +2937,7 @@ applyUiConfig().then(()=>{ initWS(); }).catch(()=>{ initWS(); });
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker,widget_memory_enabled,widget_dialog_context,widget_reset_ts').limit(1).single();
     if(error||!data){ logEvt('❌配置加载',0,'error='+(error?.message||'no data')); return; }
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -3020,6 +3020,19 @@ async function applyUiConfig(){
     } else {
       logEvt('⚠️音色',0,'未配置，使用默认 vv');
     }
+
+    // Widget 聊天助理：多轮记忆 + 初始上下文
+    window._dwMemoryEnabled     = !!(data.widget_memory_enabled);
+    window._dwDialogContext     = Array.isArray(data.widget_dialog_context) ? data.widget_dialog_context : [];
+    // 重置指令：后台点了"清除dialog_id"时 widget_reset_ts 会更新
+    const newResetTs = data.widget_reset_ts || 0;
+    const storedResetTs = parseInt(localStorage.getItem('dw_reset_ts') || '0', 10);
+    if (newResetTs && newResetTs !== storedResetTs) {
+      localStorage.removeItem('dw_dialog_id');
+      localStorage.setItem('dw_reset_ts', String(newResetTs));
+      logEvt('🔄Widget',0,'后台重置指令：已清除 dialog_id');
+    }
+    logEvt('✅Widget配置',0,`记忆=${window._dwMemoryEnabled ? '开' : '关'} 初始上下文=${window._dwDialogContext.length}条`);
 
     // 如果员工已加载完毕，立刻重新渲染（切换模板）
     if(employeeNames.length) renderChips();
@@ -3353,6 +3366,7 @@ const DW = (() => {
   const DW_SPEAKER    = window._doubaoSpeaker || (typeof SPEAKER !== 'undefined' ? SPEAKER : 'zh_female_vv_jupiter_bigtts');
 
   let ws, sid, seq=2, state='idle';
+  let _pendingDialogId = '';
   let micStream, audioCtx, srcNode, processor;
   let chunks=[], queue=[], playing=false;
   const $ = id => document.getElementById(id);
@@ -3535,12 +3549,27 @@ const DW = (() => {
       let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
       if(eid===50){
         setStatus('连接成功，初始化中…');
-        ws.send(encode(100,JSON.stringify({
+        // StartSession：带入 dialog_id（若有）实现多轮记忆
+        const startPayload = {
           tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
           dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
-        }),sid));
-      }else if(eid===150){state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
+        };
+        if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
+        ws.send(encode(100,JSON.stringify(startPayload),sid));
+      }else if(eid===150){
+        // SessionStarted：保存服务端返回的 dialog_id，发送初始上下文
+        const returnedDialogId = j.dialog_id || '';
+        if(window._dwMemoryEnabled && returnedDialogId){
+          localStorage.setItem('dw_dialog_id', returnedDialogId);
+        }
+        // 注入初始上下文（eid 510 ConversationCreate）
+        const ctxItems = window._dwDialogContext || [];
+        if(ctxItems.length >= 2 && ctxItems.length % 2 === 0){
+          const items = ctxItems.map(item => ({ role: item.role, text: item.text }));
+          ws.send(encode(510, JSON.stringify({ items }), sid));
+        }
+        state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
       }else if(eid===350){const t=j.text||'';if(t)setSub(t);state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
       }else if(eid===359){flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
@@ -3562,6 +3591,8 @@ const DW = (() => {
     setSub('');setStatus('正在连接…');setDot(false);setWave(false,false);
     $('dw-tapbtn').style.display='none';
     sid=uuid();seq=2;chunks=[];
+    // 读取保存的 dialog_id（多轮记忆）
+    _pendingDialogId = (window._dwMemoryEnabled && localStorage.getItem('dw_dialog_id')) || '';
     const u=new URL(DW_WS_URL);u.searchParams.set('session_id','dw_'+Date.now());
     ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
     ws.onopen=()=>{ws.send(encode(1,'{}',null));};
