@@ -3517,9 +3517,11 @@ const DW = (() => {
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
     setStatus('正在聆听…');setListening(true);_ringActive=true;
+    try{if(typeof logEvt==='function')logEvt('DW麦克风',0,'申请中…');}catch(_){}
     try{
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       // ★ 不强制 sampleRate:16000，让浏览器用设备原生采样率，再手动重采样到16k
+      try{if(typeof logEvt==='function')logEvt('DW麦克风',0,'申请成功，开始录音');}catch(_){}
       audioCtx=new(window.AudioContext||window.webkitAudioContext)();
       const nativeRate=audioCtx.sampleRate;
       srcNode=audioCtx.createMediaStreamSource(micStream);
@@ -3538,7 +3540,11 @@ const DW = (() => {
         for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
         ws.send(encodeAudio(i16.buffer));
       };
-    }catch(e){setStatus('麦克风错误: '+(e.name||e.message));_ringActive=false;}
+    }catch(e){
+      const msg='麦克风错误: '+(e.name||e.message);
+      setStatus(msg);_ringActive=false;
+      try{if(typeof logEvt==='function')logEvt('DW麦克风',0,msg);}catch(_){}
+    }
   };
   const stopMic=()=>{
     _ringActive=false;
@@ -3554,6 +3560,9 @@ const DW = (() => {
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
     const{msgType,eid,payload}=parseFrame(evt.data);
+    // ★ widget日志：写入主页面事件日志方便调试
+    if(msgType===9){try{if(typeof logEvt==='function')logEvt('←DW服务端',eid);}catch(_){}}
+    else if(msgType===11){try{if(typeof logEvt==='function')logEvt('←DW音频帧',352,'TTSResponse');}catch(_){}}
     if(msgType===9&&payload){
       let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
       if(eid===50){
@@ -3596,7 +3605,6 @@ const DW = (() => {
     }
     // ★ 点击widget按钮：前端直接关掉主页面一切，不动任何语音逻辑
     try{
-      if(typeof stopMic==='function') stopMic();       // 释放主页面麦克风，让widget能正常申请
       if(typeof stopAudio==='function') stopAudio();
       if(typeof setSub==='function') setSub('',false);
       if(typeof resetFlow==='function') resetFlow();
