@@ -1890,7 +1890,15 @@ const onMsg=evt=>{
     }catch(_){}
     console.log('[Doubao] ❌ 错误帧 code='+errCode+' msg='+errMsg);
     logEvt('←错误帧',599,'code='+errCode+' '+errMsg);
-    setStatus('服务端错误: '+errMsg.substring(0,60));
+    if(errCode===45000003){
+      // 超过10分钟无对话，服务端主动断开，自动重连
+      logEvt('⚠️超时',0,'10分钟无对话，3秒后自动重连…');
+      setStatus('会话超时，正在重连…');
+      setConnStatus(false,'已断开');
+      setTimeout(initWS, 3000);
+    } else {
+      setStatus('服务端错误: '+errMsg.substring(0,60));
+    }
     return;
   }
   // 记录所有服务端事件（msgType===9 是 JSON 事件，11 是音频帧）
@@ -1920,6 +1928,7 @@ const onMsg=evt=>{
         logEvt('⚠️热词注入',0,'_asrHotwords为空，StartSession不带热词');
       }
       logEvt('→ASR extra',0, JSON.stringify(asrExtra));
+      if(window._endSmoothWindowMs) asrExtra.end_smooth_window_ms = window._endSmoothWindowMs;
       const sessionPayload={
         tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:asrExtra},
@@ -2145,9 +2154,25 @@ const onMsg=evt=>{
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
         // 注意：不发 SayHello，静默重连用户无感知
       }
-    } else if(eid===153||eid===599){
+    } else if(eid===153){
       const errMsg=j.error||JSON.stringify(j);
-      logEvt('←错误',eid,errMsg);
+      logEvt('←SessionFailed',153,errMsg);
+      // 会话失败：重置状态，3秒后重新建立会话
+      state='idle'; activeMode='idle';
+      stopMic(); setWave(false,false);
+      setStatus('会话失败，正在重连…'); setConnStatus(false,'出错');
+      setTimeout(()=>{
+        if(ws && ws.readyState===WebSocket.OPEN){
+          sid=uuid(); globalSeq=0; chunks=[];
+          ws.send(encode(1,'{}',null));
+          logEvt('→重连',0,'SessionFailed后重新StartConnection');
+        } else {
+          initWS();
+        }
+      }, 3000);
+    } else if(eid===599){
+      const errMsg=j.error||JSON.stringify(j);
+      logEvt('←错误',599,errMsg);
       setStatus('连接出错：'+errMsg);setConnStatus(false,'出错');
     }
   }
@@ -2933,11 +2958,20 @@ loadEmployeeNames(); // 启动时从数据库加载员工名单
 // ★ 先等后台配置（含热词）加载完，再建 WS，确保 StartSession 时 _asrHotwords 已就绪
 applyUiConfig().then(()=>{ initWS(); }).catch(()=>{ initWS(); });
 
+// 页面关闭前正常发 FinishSession，避免触发 ContextCanceled 错误
+window.addEventListener('beforeunload', ()=>{
+  try{
+    if(ws && ws.readyState===WebSocket.OPEN){
+      ws.send(encode(102,'{}',sid));
+    }
+  }catch(_){}
+});
+
 // ── 读取后台 UI 显示配置 ──────────────────────────────────
 async function applyUiConfig(){
   try{
     const {data,error} = await sbClient
-      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker,widget_memory_enabled,widget_dialog_context,widget_reset_ts').limit(1).single();
+      .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker,widget_memory_enabled,widget_dialog_context,widget_reset_ts,end_smooth_window_ms').limit(1).single();
     if(error||!data){ logEvt('❌配置加载',0,'error='+(error?.message||'no data')); return; }
 
     // Tab 2 = RAG详情, Tab 3 = 事件日志, Tab 4 = 调试
@@ -3019,6 +3053,15 @@ async function applyUiConfig(){
       logEvt('✅音色',0, data.speaker);
     } else {
       logEvt('⚠️音色',0,'未配置，使用默认 vv');
+    }
+
+    // VAD停顿判断时长
+    if(data.end_smooth_window_ms){
+      window._endSmoothWindowMs = parseInt(data.end_smooth_window_ms, 10);
+      logEvt('✅停顿判断',0, data.end_smooth_window_ms+'ms');
+    } else {
+      window._endSmoothWindowMs = 0; // 0表示不传，使用服务端默认1500ms
+      logEvt('⚠️停顿判断',0,'未配置，使用服务端默认1500ms');
     }
 
     // Widget 聊天助理：多轮记忆 + 初始上下文

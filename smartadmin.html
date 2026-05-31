@@ -925,6 +925,20 @@
                     </button>
                 </div>
 
+                <!-- ── VAD 停顿判断时长 ── -->
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="font-size:12px;font-weight:600;color:var(--ink)">停顿判断时长</div>
+                    <div style="font-size:11px;color:var(--ink-soft);line-height:1.6">
+                        判断用户停止说话的等待时间，默认 1500ms。说话快可调短到 800ms，网络差可调长到 2000ms。留空使用服务端默认值。
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <input id="end-smooth-window-ms" type="number" min="500" max="50000" step="100"
+                            placeholder="默认 1500"
+                            style="width:140px;padding:7px 10px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:13px;outline:none" />
+                        <span style="font-size:12px;color:var(--ink-soft)">ms（范围 500 ～ 50000）</span>
+                    </div>
+                </div>
+
                 <div style="padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
                     <span class="material-icons-round" style="font-size:13px!important">info</span>
                     保存后，前台刷新即可生效。新字段需先执行 SQL（点顶部「复制SQL」）。
@@ -1323,6 +1337,10 @@
             asrHwRenderList(asrHw.hotwords || []);
             asrCwRenderList(asrHw.correct_words || {});
 
+            // 加载停顿判断时长
+            const eswEl = document.getElementById('end-smooth-window-ms');
+            if (eswEl) eswEl.value = cfg.end_smooth_window_ms || '';
+
             // 加载 Widget 聊天助理配置
             const wMemToggle = document.getElementById('widget-memory-toggle');
             if (wMemToggle) {
@@ -1618,6 +1636,10 @@
             }
             const widgetDialogContext = widgetCtxGetList();
 
+            // 读取停顿判断时长
+            const eswVal = parseInt(document.getElementById('end-smooth-window-ms')?.value || '0', 10);
+            const endSmoothWindowMs = (eswVal >= 500 && eswVal <= 50000) ? eswVal : null;
+
             const uiPayload = {
                 model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
                 ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
@@ -1627,6 +1649,7 @@
                 asr_hotwords: asrHotwords,
                 widget_memory_enabled: widgetMemoryEnabled,
                 widget_dialog_context: widgetDialogContext,
+                end_smooth_window_ms: endSmoothWindowMs,
                 updated_at: new Date().toISOString()
             };
 
@@ -1680,7 +1703,7 @@
     }
 
     function copySql() {
-        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS asr_hotwords jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_memory_enabled boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_dialog_context jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_reset_ts bigint DEFAULT 0;`;
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS asr_hotwords jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_memory_enabled boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_dialog_context jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_reset_ts bigint DEFAULT 0;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS end_smooth_window_ms integer DEFAULT NULL;`;
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
         } else {
