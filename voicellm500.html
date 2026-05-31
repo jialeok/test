@@ -3518,37 +3518,63 @@ const DW = (() => {
   const stopAudio=()=>{queue=[];chunks=[];playing=false;};
 
   // 麦克风
+  let _dwFrameCount=0;
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
     setStatus('正在聆听…');setListening(true);_ringActive=true;
+    _dwFrameCount=0;
     try{
+      // ★ 先获取麦克风流
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
-      // ★ 复用主页面已有的 AudioContext，避免安卓Chrome第二个AudioContext被suspended
+      setStatus('麦克风已获取，初始化音频…');
+
+      // ★ 关键：必须在用户手势上下文内 resume/create AudioContext
+      // 复用主页面已有的 AudioContext，避免安卓Chrome第二个AudioContext被suspended
       if(window._sharedAudioCtx && window._sharedAudioCtx.state !== 'closed'){
         audioCtx = window._sharedAudioCtx;
-        if(audioCtx.state === 'suspended') await audioCtx.resume();
+        setStatus('复用主页AudioCtx state='+audioCtx.state);
+        if(audioCtx.state === 'suspended'){
+          await audioCtx.resume();
+          setStatus('AudioCtx已resume');
+        }
       } else {
         audioCtx = new(window.AudioContext||window.webkitAudioContext)();
         window._sharedAudioCtx = audioCtx;
+        setStatus('新建AudioCtx state='+audioCtx.state);
+        // 新建的也可能是suspended，强制resume
+        if(audioCtx.state === 'suspended') await audioCtx.resume();
       }
+
       const nativeRate=audioCtx.sampleRate;
+      setStatus('正在聆听… ctx='+audioCtx.state+' rate='+nativeRate);
+
       srcNode=audioCtx.createMediaStreamSource(micStream);
-      // bufferSize=1024 约等于20ms@48kHz，与主页面一致
       processor=audioCtx.createScriptProcessor(1024,1,1);
-      // 静音 gain 节点，防回声同时保持 AudioGraph 活跃
       const silentGain=audioCtx.createGain();silentGain.gain.value=0;
       processor.connect(silentGain);silentGain.connect(audioCtx.destination);
       srcNode.connect(processor);
+
       processor.onaudioprocess=e=>{
-        if(!ws||ws.readyState!==WebSocket.OPEN)return;
+        if(!ws||ws.readyState!==WebSocket.OPEN){
+          if(_dwFrameCount===0) setStatus('ws未就绪 state='+(ws?ws.readyState:'无'));
+          return;
+        }
         const raw=e.inputBuffer.getChannelData(0);
-        // ★ 重采样到16kHz（复用主页面的 resampleTo16k 函数）
+        let rms=0;for(let i=0;i<raw.length;i++)rms+=raw[i]*raw[i];
+        rms=Math.sqrt(rms/raw.length);
         const resampled=resampleTo16k(raw,nativeRate);
         const i16=new Int16Array(resampled.length);
         for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
         ws.send(encodeAudio(i16.buffer));
+        _dwFrameCount++;
+        // 第1帧和每50帧显示一次状态，方便手机上直接看到
+        if(_dwFrameCount===1) setStatus('✅首帧已发 rms='+rms.toFixed(4)+' ctx='+audioCtx.state);
+        if(_dwFrameCount===50) setStatus('正在聆听… 已发50帧 rms='+rms.toFixed(4));
       };
-    }catch(e){setStatus('麦克风错误: '+(e.name||e.message));_ringActive=false;}
+    }catch(e){
+      setStatus('❌麦克风错误: '+e.name+' '+e.message);
+      _ringActive=false;
+    }
   };
   const stopMic=()=>{
     _ringActive=false;
