@@ -3198,7 +3198,7 @@ function _capStart(fullText){
       showCaptionOverlay();
     }, 0);
   };
-})()
+})();
 
 // ── wrap closeDetailBoard：关看板时同步关字幕层 ──
 (function(){
@@ -3529,14 +3529,20 @@ const DW = (() => {
       const silentGain=audioCtx.createGain();silentGain.gain.value=0;
       processor.connect(silentGain);silentGain.connect(audioCtx.destination);
       srcNode.connect(processor);
+      let _dwFrameCount=0;
       processor.onaudioprocess=e=>{
-        if(!ws||ws.readyState!==WebSocket.OPEN)return;
+        if(!ws||ws.readyState!==WebSocket.OPEN){
+          if(_dwFrameCount===0){try{if(typeof logEvt==='function')logEvt('DW音频',0,'ws未就绪 state='+ws?.readyState);}catch(_){}}
+          return;
+        }
         const raw=e.inputBuffer.getChannelData(0);
-        // ★ 重采样到16kHz（复用主页面的 resampleTo16k 函数）
         const resampled=resampleTo16k(raw,nativeRate);
         const i16=new Int16Array(resampled.length);
         for(let i=0;i<resampled.length;i++) i16[i]=Math.max(-32768,Math.min(32767,resampled[i]*32767));
         ws.send(encodeAudio(i16.buffer));
+        _dwFrameCount++;
+        if(_dwFrameCount===1){try{if(typeof logEvt==='function')logEvt('DW音频',0,'首帧已发 nativeRate='+nativeRate+' i16len='+i16.length);}catch(_){}}
+        if(_dwFrameCount%100===0){try{if(typeof logEvt==='function')logEvt('DW音频',0,'已发'+_dwFrameCount+'帧');}catch(_){}}
       };
     }catch(e){setStatus('麦克风错误: '+(e.name||e.message));_ringActive=false;}
   };
@@ -3594,6 +3600,15 @@ const DW = (() => {
     if(window._activeVoiceMode&&window._activeVoiceMode!=='chat'){
       alert('请先松开说话按钮，再开启聊天助理');return;
     }
+    // ★ 点击widget按钮：前端直接关掉主页面一切，不动任何语音逻辑
+    try{
+      if(typeof stopAudio==='function') stopAudio();
+      if(typeof setSub==='function') setSub('',false);
+      if(typeof resetFlow==='function') resetFlow();
+      if(typeof hideCaptionOverlay==='function') hideCaptionOverlay();
+      if(typeof _capReset==='function') _capReset();
+      if(typeof closeDetailBoard==='function') closeDetailBoard();
+    }catch(_){}
     window._activeVoiceMode='chat';_ringActive=true;
     if(!_ringAnimId)_ringLoop();
     $('dw-modal').style.display='flex';
