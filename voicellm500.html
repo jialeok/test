@@ -1874,10 +1874,17 @@ function logEvt(dir,eid,note=''){
 // ══ WS 消息处理 ════════════════════════════════════════════
 const onMsg=evt=>{
   if(!(evt.data instanceof ArrayBuffer))return;
-  // ★ DW 模式：帧转发给 DW 处理（activeMode==='chat' 时主页面静默，所有帧给 DW）
+  // ★ DW 模式：业务帧转发给 DW 处理，但 152/153/599 等流程控制帧必须由主页面处理
   if(activeMode==='chat'){
-    if(window._dwDispatchMsg) window._dwDispatchMsg(evt.data);
-    return;
+    const _dwFrame = parseFrame(evt.data);
+    // 152=SessionFinished：DW.open()发的FinishSession触发，必须由主页面的eid===152分支发DW的StartSession
+    // 153/599=错误帧：也让主页面处理
+    if(_dwFrame.msgType===9 && (_dwFrame.eid===152||_dwFrame.eid===153||_dwFrame.eid===599)){
+      // fall through，让下面的主页面逻辑处理
+    } else {
+      if(window._dwDispatchMsg) window._dwDispatchMsg(evt.data);
+      return;
+    }
   }
   // dw-closing：等 152 触发重建，其余帧忽略
   if(activeMode==='dw-closing'){
