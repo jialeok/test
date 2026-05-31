@@ -181,7 +181,7 @@
   .status-row{text-align:center;font-size:11px;color:var(--muted);padding:2px 0 8px;font-family:var(--mono);flex-shrink:0;letter-spacing:.04em}
 
   /* ── 员工列表 chip ── */
-  .hints{padding:2px 14px 10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+  .hints{padding:2px 14px 10px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0}
 
   /* 员工卡片（列表态） */
   .emp-chip{
@@ -422,6 +422,10 @@
   /* ── 隐藏Tab后布局优化 ── */
   .tabs .tab{min-width:0}
   .no-flow .subtitle-box{margin-top:20px}
+
+  /* rag-card 空时不占空间 */
+  .rag-card:empty{display:none!important}
+  .rag-card{flex-shrink:0}
 
   /* ── 星球浮动模板 ── */
   .hints.planet-mode{
@@ -760,7 +764,7 @@
         <div class="cap-wv-bar" style="height:10px"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="cap-back-btn" style="flex:1" onclick="capBackToHome()">← 返回首页</button>
+        <button class="cap-back-btn" style="flex:1" onclick="hideCaptionOverlay(); closeDetailBoard()">← 返回列表</button>
       </div>
     </div>
   </div>
@@ -2515,7 +2519,9 @@ function closeDetailBoard(){
   const board = $('detailBoard');
   if(board) board.classList.remove('show');
   if(container) container.style.display = '';
-  // 字幕按钮的隐藏由 wrapped closeDetailBoard 统一处理
+  // 关看板时隐藏字幕按钮，恢复提示条
+  const captionBtn = $('captionEntryFloatBtn');
+  if(captionBtn) captionBtn.style.display = 'none';
   const tips = $('voiceTipsStrip');
   if(tips) tips.classList.remove('hidden');
 }
@@ -3104,25 +3110,9 @@ function _capStart(fullText){
     hideCaptionOverlay();
     _capReset();
     _capText = null;
-    // 真正关闭看板时才隐藏字幕按钮
-    const captionBtn = document.getElementById('captionEntryFloatBtn');
-    if(captionBtn) captionBtn.style.display = 'none';
     _origClose();  // ★ 原逻辑完整执行
   };
 })();
-
-// ── 从字幕覆盖层返回首页：关字幕层 + 关看板，但保留字幕按钮（TTS可能还在播） ──
-function capBackToHome(){
-  hideCaptionOverlay();
-  // 直接执行原始关看板逻辑，不走 wrapped closeDetailBoard（避免隐藏字幕按钮）
-  const container = document.getElementById('chipContainer');
-  const board = document.getElementById('detailBoard');
-  if(board) board.classList.remove('show');
-  if(container) container.style.display = '';
-  const tips = document.getElementById('voiceTipsStrip');
-  if(tips) tips.classList.remove('hidden');
-  // 字幕按钮保持显示（TTS还在播时 _setEntryWave 已设为 display:''）
-}
 
 
 
