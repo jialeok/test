@@ -1396,6 +1396,13 @@ function setSub(t,active){
   if(tips) tips.classList.toggle('hidden', show);
 }
 window._mainSetSub = setSub;
+// ★ 强制隐藏字幕板（setSub只清文字，这里直接隐藏DOM）
+window._mainHideSub = () => {
+  const el = document.getElementById('subtitle');
+  if(el){ el.classList.remove('active'); el.style.display='none'; el.textContent=''; }
+  const tips = document.getElementById('voiceTipsStrip');
+  if(tips) tips.classList.remove('hidden');
+};
 function setWave(on,green){
   document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); });
 }
@@ -3515,7 +3522,20 @@ const DW = (() => {
       const rect=btn.getBoundingClientRect();
       if(rect.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
       else{btn.style.right='16px';btn.style.left='auto';}
-      if(!moved)DW.open();
+      if(!moved){
+        // ★ 点击外部麦克风时先打断主页面音频和字幕
+        if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
+        if(typeof window._mainHideSub === 'function') window._mainHideSub();
+        if(typeof activeMode !== 'undefined') activeMode = 'idle';
+        if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
+        if(typeof _chipToken !== 'undefined') _chipToken++;
+        const _mws = window._mainGetWs && window._mainGetWs();
+        const _msid = window._mainGetSid && window._mainGetSid();
+        if(_mws && _mws.readyState === WebSocket.OPEN && window._mainEncode){
+          _mws.send(window._mainEncode(515, JSON.stringify({}), _msid));
+        }
+        DW.open();
+      }
     };
     btn.addEventListener('mousedown',onStart,{passive:false});
     btn.addEventListener('touchstart',onStart,{passive:false});
@@ -3582,7 +3602,7 @@ const DW = (() => {
     $('dw-tapbtn').style.display='none';
     // ★ 打断主页面（ptt/chip）：停音、关字幕、重置状态、用主页面ws发515
     if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
-    if(typeof window._mainSetSub === 'function') window._mainSetSub('', false);
+    if(typeof window._mainHideSub === 'function') window._mainHideSub();
     if(typeof activeMode !== 'undefined') activeMode = 'idle';
     if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
     if(typeof _chipToken !== 'undefined') _chipToken++;
