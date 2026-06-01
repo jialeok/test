@@ -21,10 +21,20 @@
   }
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<script>
+(function(){
+  var s=document.createElement('script');
+  s.src='https://unpkg.com/@supabase/supabase-js@2.49.4/dist/umd/supabase.js';
+  s.onerror=function(){
+    var s2=document.createElement('script');
+    s2.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js';
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s);
+})();
 </script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.loli.net/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
   :root {
     --bg:#f5f7fa;
     --panel:#ffffff;
@@ -926,7 +936,14 @@ window._speakerStr = SPEAKER;     // 默认 vv 音色
 // ══ Supabase 配置 ═════════════════════════════════════════
 const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
-const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let sbClient = null;
+function getSbClient(){
+  if(sbClient) return sbClient;
+  if(window.supabase && window.supabase.createClient){
+    sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return sbClient;
+}
 
 // ══ 日期工具 ══════════════════════════════════════════════
 function getDateStr(offsetDays=0){
@@ -978,7 +995,7 @@ function extractEmployeeName(text){
 // 启动时拉取员工名单
 async function loadEmployeeNames(){
   try{
-    const {data,error}=await sbClient
+    const {data,error}=await getSbClient()
       .from('employees')
       .select('name,nickname')
       .eq('enabled',true)
@@ -1018,11 +1035,11 @@ async function renderChips(){
   let chips = [];
   for(const name of employeeNames){
     try{
-      const {data:empList} = await sbClient
+      const {data:empList} = await getSbClient()
         .from('employees').select('id,name').eq('name',name).eq('enabled',true).limit(1);
       if(!empList||empList.length===0) continue;
       const empId = empList[0].id;
-      const {data:recs} = await sbClient
+      const {data:recs} = await getSbClient()
         .from('work_records').select('record_date')
         .eq('employee_id', empId)
         .order('record_date',{ascending:false})
@@ -1475,7 +1492,7 @@ function renderQueryLogs(){
   const todayStr = getDateStr(0);
   const start = new Date(todayStr + 'T00:00:00').toISOString();
   const end   = new Date(todayStr + 'T23:59:59').toISOString();
-  sbClient.from('query_logs')
+  getSbClient().from('query_logs')
     .select('id,question,ai_response,rag_content,matched_count,created_at')
     .in('source', ['chip', 'ptt', 'keepalive'])
     .gte('created_at', start)
@@ -1768,7 +1785,7 @@ async function lookupRAG(input){
   try{
     // 1. 查员工 ID（先精确匹配，再模糊匹配）
     let empList, empErr;
-    ({data:empList, error:empErr}=await sbClient
+    ({data:empList, error:empErr}=await getSbClient()
       .from('employees')
       .select('id,name')
       .eq('name', query.name)
@@ -1779,7 +1796,7 @@ async function lookupRAG(input){
     // 精确匹配失败 → 模糊匹配（ilike）
     if(!empList||empList.length===0){
       dbgLog('⚠️ 精确匹配无结果，尝试模糊: %'+query.name+'%');
-      ({data:empList, error:empErr}=await sbClient
+      ({data:empList, error:empErr}=await getSbClient()
         .from('employees')
         .select('id,name')
         .ilike('name', '%'+query.name+'%')
@@ -1796,7 +1813,7 @@ async function lookupRAG(input){
     dbgLog('✅ 员工ID: '+emp.id.substring(0,8)+'…');
 
     // 2. 查日报
-    const {data:records, error:recErr}=await sbClient
+    const {data:records, error:recErr}=await getSbClient()
       .from('work_records')
       .select('*')
       .eq('employee_id', emp.id)
@@ -1899,7 +1916,7 @@ function applyRAGUI(result, skipStop=false){
     const dayLabel = _friendlyDate(rec.date);
     openDetailBoard(rec.name, rec.date, dayLabel, true /* voiceMode: skip chipQuery */);
     // 写 query_logs（纯异步.then，不影响语音流程）
-    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'ptt'}).then(()=>{}).catch(()=>{});
+    getSbClient().from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'ptt'}).then(()=>{}).catch(()=>{});
     // ★ 已在此处写库，清空累积变量，防止359再次重复写入对话卡
     _logQuestion=''; _logAiReply='';
   }
@@ -2186,7 +2203,7 @@ const onMsg=evt=>{
       if(!_isGreeting && _logQuestion){
         const _q=_logQuestion, _a=_logAiReply||null;
         _logQuestion=''; _logAiReply='';
-        sbClient.from('query_logs').insert({
+        getSbClient().from('query_logs').insert({
           question: _q,
           ai_response: _a,
           matched_count: pendingRAG ? 1 : 0,
@@ -2641,7 +2658,7 @@ async function chipQuery(name, dateStr, dayLabel){
     applyRAGUI(result, true);
     litFlow(3);
     // 写 query_logs（纯异步.then，不影响语音流程）
-    sbClient.from('query_logs').insert({question:'查'+name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'chip'}).then(()=>{}).catch(()=>{});
+    getSbClient().from('query_logs').insert({question:'查'+name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'chip'}).then(()=>{}).catch(()=>{});
   }
 
   // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
@@ -2767,16 +2784,16 @@ async function lookupRAGDirect(query){
   dbgLog('🔍 lookupRAGDirect: 查 '+query.name+' / '+query.date);
   try{
     let empList, empErr;
-    ({data:empList, error:empErr}=await sbClient
+    ({data:empList, error:empErr}=await getSbClient()
       .from('employees').select('id,name').eq('name', query.name).eq('enabled', true).limit(1));
     if(empErr){ dbgLog('⚠️ 查员工报错: '+empErr.message); return null; }
     if(!empList||empList.length===0){
-      ({data:empList, error:empErr}=await sbClient
+      ({data:empList, error:empErr}=await getSbClient()
         .from('employees').select('id,name').ilike('name','%'+query.name+'%').eq('enabled',true).limit(1));
       if(empErr||!empList||empList.length===0){ dbgLog('❌ 找不到员工: '+query.name); return null; }
     }
     const emp=empList[0];
-    const {data:records, error:recErr}=await sbClient
+    const {data:records, error:recErr}=await getSbClient()
       .from('work_records').select('*').eq('employee_id', emp.id).eq('record_date', query.date)
       .order('created_at',{ascending:false}).limit(1);
     if(recErr){ dbgLog('⚠️ 查日报报错: '+recErr.message); return null; }
@@ -2959,7 +2976,7 @@ async function dbgLoadEmployees(){
   const el = document.getElementById('dbg-emp-list');
   if(!el) return;
   try{
-    const {data,error}=await sbClient.from('employees').select('id,name,department,enabled').order('created_at',{ascending:true});
+    const {data,error}=await getSbClient().from('employees').select('id,name,department,enabled').order('created_at',{ascending:true});
     if(error) throw error;
     if(!data||data.length===0){ el.textContent='（无员工数据）'; return; }
     el.textContent = data.map(e=>
@@ -2974,7 +2991,7 @@ async function dbgLoadRecords(){
   const el = document.getElementById('dbg-records');
   if(!el) return;
   try{
-    const {data,error}=await sbClient
+    const {data,error}=await getSbClient()
       .from('work_records')
       .select('*, employees(name)')
       .order('created_at',{ascending:false})
@@ -3027,7 +3044,7 @@ async function dbgRawSearch(){
   el.textContent='查询中…';
   try{
     // 先查 employees 表（模糊匹配）
-    const {data:emps, error:e1}=await sbClient
+    const {data:emps, error:e1}=await getSbClient()
       .from('employees')
       .select('*')
       .ilike('name','%'+nameInput+'%')
@@ -3037,7 +3054,7 @@ async function dbgRawSearch(){
     let out='=== employees (ilike "%'+nameInput+'%") ===\n';
     if(!emps||emps.length===0){
       out+='⚠️ 没找到员工！\n\n数据库里所有员工名：\n';
-      const {data:allEmps}=await sbClient.from('employees').select('id,name,enabled').order('created_at');
+      const {data:allEmps}=await getSbClient().from('employees').select('id,name,enabled').order('created_at');
       out+=(allEmps||[]).map(e=>'  '+(e.enabled?'🟢':'🔴')+' "'+e.name+'" id='+e.id).join('\n');
     } else {
       emps.forEach(emp=>{
@@ -3048,7 +3065,7 @@ async function dbgRawSearch(){
       // 查这个员工的 work_records
       const empId=emps[0].id;
       out+='\n=== work_records (employee_id='+empId.substring(0,8)+'…) ===\n';
-      const {data:recs, error:e2}=await sbClient
+      const {data:recs, error:e2}=await getSbClient()
         .from('work_records')
         .select('*')
         .eq('employee_id', empId)
@@ -3087,14 +3104,14 @@ async function dbgDiagnose(){
   let out='';
   try{
     // employees 表结构
-    const {data:emps, error:e1}=await sbClient.from('employees').select('*').limit(1);
+    const {data:emps, error:e1}=await getSbClient().from('employees').select('*').limit(1);
     out+='=== employees 表 ===\n';
     if(e1){ out+='❌ 报错: '+e1.message+'\n'; }
     else if(!emps||emps.length===0){ out+='⚠️ 表为空\n'; }
     else{ out+='✅ 字段: '+JSON.stringify(Object.keys(emps[0]))+'\n  name示例: "'+emps[0].name+'" enabled='+emps[0].enabled+'\n'; }
 
     // work_records 表结构
-    const {data:recs, error:e2}=await sbClient.from('work_records').select('*').limit(1);
+    const {data:recs, error:e2}=await getSbClient().from('work_records').select('*').limit(1);
     out+='\n=== work_records 表 ===\n';
     if(e2){ out+='❌ 报错: '+e2.message+'\n'; }
     else if(!recs||recs.length===0){ out+='⚠️ 表为空，没有任何日报\n'; }
@@ -3139,7 +3156,7 @@ window.addEventListener('beforeunload', ()=>{
 // ── 读取后台 UI 显示配置 ──────────────────────────────────
 async function applyUiConfig(){
   try{
-    const {data,error} = await sbClient
+    const {data,error} = await getSbClient()
       .from('model_configs').select('ui_tab_rag,ui_tab_log,ui_tab_debug,ui_flow_strip,ui_rag_card,ui_layout_planet,ui_date_badge,voice_tips,asr_hotwords,model_version,speaker,widget_memory_enabled,widget_dialog_context,widget_reset_ts,end_smooth_window_ms').limit(1).single();
     if(error||!data){ logEvt('❌配置加载',0,'error='+(error?.message||'no data')); return; }
 
@@ -3857,7 +3874,7 @@ const DW = (() => {
           if(_isWaitOnly){ dwLog('[359] 跳过写库（等待话术）A='+(_a||'')); }
           else {
           dwLog('[359] 准备写库 Q='+_q+' A='+(_a||'(空)'));
-          const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
+          const _sb=getSbClient();
           if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
             if(error) dwLog('[359] ❌写库失败: '+error.message);
             else dwLog('[359] ✅写库成功 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
