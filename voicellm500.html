@@ -424,6 +424,29 @@
   .rag-card:empty{display:none!important}
   .rag-card{flex-shrink:0}
 
+  /* ── 对话卡（keepalive）── */
+  .kb-chat-card{
+    background:#fff;border:1px solid var(--border);border-radius:14px;
+    padding:14px;margin-bottom:0;
+    box-shadow:0 1px 4px rgba(0,0,0,.05);
+    border-left:3px solid var(--accent3);
+  }
+  .kb-chat-tag{
+    font-size:10px;font-weight:700;letter-spacing:.08em;
+    color:var(--accent3);background:rgba(139,92,246,.08);
+    border:1px solid rgba(139,92,246,.18);
+    padding:2px 8px;border-radius:20px;
+  }
+  .kb-chat-q{
+    font-size:14px;font-weight:600;color:var(--text);
+    margin-bottom:6px;line-height:1.5;
+  }
+  .kb-chat-a{
+    font-size:13px;color:var(--muted);line-height:1.6;
+    padding:8px 10px;background:#f8fafc;border-radius:8px;
+    border:1px solid var(--border);
+  }
+
   /* ── 星球浮动模板 ── */
   .hints.planet-mode{
     padding:0;overflow:hidden;
@@ -1322,6 +1345,7 @@ const contentEls = document.querySelectorAll('.tab-content');
 function switchTab(i){
   tabEls.forEach((t,j)=>t.classList.toggle('active',i===j));
   contentEls.forEach((c,j)=>c.classList.toggle('active',i===j));
+  if(i===1){ renderKB(); }
   if(i===4){ dbgLoadEmployees(); dbgLoadRecords(); }
 }
 
@@ -1432,19 +1456,96 @@ function setWave(on,green){
 }
 function showRagCard(t){ if(!window._uiRagCardEnabled) return; const c=$('ragCard'); if(t){c.textContent='⚡ '+t;c.classList.add('show');}else{c.classList.remove('show');} }
 
-// ══ 知识库渲染 ════════════════════════════════════════════
-function renderKB(matchedKey){
-  const list=$('kbList'); list.innerHTML='';
-  KB_GROUPS.forEach(rec=>{
-    const key=rec.name+rec.date;
-    const div=document.createElement('div');
-    div.className='kb-item'+(matchedKey===key?' matched':'');
-    let html=`<div class="kb-name">${rec.name}</div><div class="kb-date">${rec.date}</div>`;
-    rec.items.forEach(it=>{ html+=`<div class="kb-row"><div class="kb-section">${it.section}</div><div class="kb-content">${it.content}</div></div>`; });
-    div.innerHTML=html; list.appendChild(div);
-  });
+// ══ 知识库渲染（从 query_logs 读当天数据）═══════════════
+async function renderKB(){
+  const list=$('kbList');
+  if(!list) return;
+  list.innerHTML='<div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:12px;font-family:var(--mono)">加载中…</div>';
+
+  try{
+    // 当天时间范围（本地时间转UTC）
+    const todayStr = getDateStr(0); // YYYY-MM-DD 本地
+    const startLocal = new Date(todayStr + 'T00:00:00');
+    const endLocal   = new Date(todayStr + 'T23:59:59');
+
+    const {data, error} = await sbClient
+      .from('query_logs')
+      .select('id, question, ai_response, rag_content, matched_count, created_at')
+      .gte('created_at', startLocal.toISOString())
+      .lte('created_at', endLocal.toISOString())
+      .order('created_at', {ascending: false});
+
+    if(error){ list.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">加载失败</div>'; return; }
+    if(!data||data.length===0){
+      list.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:2.2"><div style="font-size:32px;opacity:.35;margin-bottom:10px">📋</div>今日暂无查询记录<br>使用语音或点击员工标签开始查询</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    data.forEach(row => {
+      const isRAG = (row.matched_count > 0) || (row.rag_content && row.rag_content.trim());
+      const timeStr = row.created_at ? new Date(row.created_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : '';
+
+      if(isRAG){
+        // ── RAG日报卡（chip / ptt）──
+        const ragText = row.rag_content || row.ai_response || '';
+        // 解析姓名（rag_content 第一个"，"前 或 question 里提取）
+        let empName = '';
+        const nameMatch = ragText.match(/^([^，,]+)[，,]/);
+        if(nameMatch) empName = nameMatch[1].replace('，','').trim();
+        if(!empName){
+          const qNameM = (row.question||'').match(/查(.{1,4})的?日报/);
+          if(qNameM) empName = qNameM[1];
+        }
+        // 解析日期
+        let dateStr = '';
+        const dateMatch = ragText.match(/(\d{4}-\d{2}-\d{2})/);
+        if(dateMatch) dateStr = dateMatch[1];
+        // 解析三段内容
+        const doneM    = ragText.match(/今日完成[：:]\s*([^。]+)/);
+        const probM    = ragText.match(/遇到[的]?问题[：:]\s*([^。]+)/);
+        const planM    = ragText.match(/明日计划[：:]\s*([^。]+)/);
+
+        const div = document.createElement('div');
+        div.className = 'kb-item';
+        let fieldsHtml = '';
+        if(doneM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent)">做了什么</div><div class="kb-content">${doneM[1]}</div></div>`;
+        if(probM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--warn)">遇到的问题</div><div class="kb-content">${probM[1]}</div></div>`;
+        if(planM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent2)">明日计划</div><div class="kb-content">${planM[1]}</div></div>`;
+        if(!fieldsHtml && ragText) fieldsHtml = `<div class="kb-row"><div class="kb-content" style="color:var(--muted)">${ragText.substring(0,120)}</div></div>`;
+
+        div.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="kb-name">${empName||'日报查询'}</div>
+            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${timeStr} ✓ 已检索</span>
+          </div>
+          ${dateStr?`<div class="kb-date">${dateStr}</div>`:''}
+          ${fieldsHtml}`;
+        list.appendChild(div);
+
+      } else {
+        // ── 对话卡（keepalive）──
+        const div = document.createElement('div');
+        div.className = 'kb-chat-card';
+        const q = row.question || '';
+        const a = row.ai_response || '';
+        div.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="kb-chat-tag">💬 对话</span>
+            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${timeStr}</span>
+          </div>
+          <div class="kb-chat-q">${q}</div>
+          ${a?`<div class="kb-chat-a">${a}</div>`:''}`;
+        list.appendChild(div);
+      }
+    });
+
+  }catch(e){
+    dbgLog('⚠️ renderKB 异常: '+e.message);
+    list.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">加载异常</div>';
+  }
 }
-renderKB(null);
+renderKB();
 
 // ══ RAG详情渲染（500版本）════════════════════════════════
 function renderDetail500(query,rec,text){
@@ -1759,6 +1860,8 @@ async function lookupRAG(input){
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name, date:recDate, items:[{section:'工作内容', content:rawContent}]});
         renderKB(emp.name+recDate);
+        // ★ 写 query_logs（RAG成功）
+        sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
         return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
       }
       return null;
@@ -1780,6 +1883,8 @@ async function lookupRAG(input){
     // 立刻渲染知识库tab（不等 applyRAGUI 的 setTimeout）
     renderKB(emp.name+recDate);
     dbgLog('✅ KB_GROUPS 已更新并渲染，key='+emp.name+recDate);
+    // ★ 写 query_logs（RAG成功）
+    sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
 
     return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
   }catch(e){
@@ -2709,6 +2814,8 @@ async function lookupRAGDirect(query){
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name,date:recDate,items:[{section:'工作内容',content:rawContent}]});
         renderKB(emp.name+recDate);
+        // ★ 写 query_logs（RAG成功）
+        sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
         return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
       }
       return null;
@@ -2720,6 +2827,8 @@ async function lookupRAGDirect(query){
     ].filter(it=>it.content)});
     renderKB(emp.name+recDate);
     dbgLog('✅ lookupRAGDirect 播报文本: '+ttsText.substring(0,80));
+    // ★ 写 query_logs（RAG成功）
+    sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
     return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
   }catch(e){
     dbgLog('⚠️ lookupRAGDirect 异常: '+e.message);
