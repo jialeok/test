@@ -1,0 +1,2532 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><!-- v1.4 -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>管理后台 · Voiq</title>
+    <!-- 字体：国内 CDN -->
+    <link rel="stylesheet" href="https://puhuiti.oss-cn-hangzhou.aliyuncs.com/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3.css">
+    <link rel="stylesheet" href="https://sf1-cdn-tos.toutiaostatic.com/obj/eden-cn/jlduhbuvnulog/harmonyos_sans/harmonyos_sans.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @font-face {
+            font-family: 'Material Icons Round';
+            font-style: normal; font-weight: 400; font-display: block;
+            src: url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff2) format('woff2'),
+                 url(https://registry.npmmirror.com/material-icons/1.13.12/files/iconfont/material-icons-round.woff) format('woff');
+        }
+        .material-icons-round {
+            font-family: 'Material Icons Round'; font-weight: normal; font-style: normal;
+            font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none;
+            display: inline-block; white-space: nowrap; word-wrap: normal; direction: ltr;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        :root {
+            --ink: #0e0e12;
+            --ink-soft: #6b6b80;
+            --accent: #5b4fff;
+            --accent-glow: rgba(91,79,255,0.25);
+            --accent-light: rgba(91,79,255,0.08);
+            --surface: #f4f4f8;
+            --surface2: #ebebf3;
+            --white: #ffffff;
+            --danger: #ff4d6d;
+            --danger-light: rgba(255,77,109,0.1);
+            --success: #00c48c;
+            --success-light: rgba(0,196,140,0.1);
+            --warning: #f59e0b;
+            --border: rgba(0,0,0,0.07);
+            --r-sm: 12px;
+            --r-md: 18px;
+            --r-lg: 24px;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 20px rgba(0,0,0,0.09);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        code { word-break: break-all; white-space: normal; }
+        html, body {
+            min-height: 100%; background: var(--surface);
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink);
+        }
+
+        /* ── Top Bar ── */
+        .topbar {
+            position: sticky; top: 0; z-index: 200;
+            height: 56px; background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 20px; gap: 14px;
+        }
+        .topbar-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+        .topbar-logo-icon {
+            width: 32px; height: 32px; background: var(--accent);
+            border-radius: 9px; display: flex; align-items: center; justify-content: center;
+        }
+        .topbar-logo-icon .material-icons-round { font-size: 17px !important; color: #fff; }
+        .topbar-logo-name { font-family: 'HarmonyOS Sans', sans-serif; font-size: 15px; font-weight: 800; color: var(--ink); }
+        .topbar-badge {
+            font-size: 10px; font-weight: 700; background: var(--accent-light);
+            color: var(--accent); padding: 2px 7px; border-radius: 20px;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .topbar-logo { flex-shrink: 0; }
+        .topbar-logo-name { white-space: nowrap; }
+        .topbar-sep { flex: 1; min-width: 0; }
+        @media (max-width: 480px) {
+            .topbar { padding: 0 12px; gap: 8px; }
+            .topbar-sep { display: none; }
+            .topbar-logo-name { font-size: 13px; }
+            .topbar-badge { font-size: 9px; padding: 2px 5px; }
+        }
+        .topbar-status {
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 11px; background: var(--surface); border-radius: 20px;
+            font-size: 12px; font-weight: 600; color: var(--ink-soft);
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #ccc; transition: background 0.3s; }
+        .status-dot.connected { background: var(--success); box-shadow: 0 0 0 2px var(--success-light); }
+        .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+        .status-dot.error { background: var(--danger); }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+        /* ── Mobile status bar below topbar ── */
+        .topbar-status-bar {
+            display: none;
+        }
+        @media (max-width: 540px) {
+            .topbar-status { display: none !important; }
+            .topbar-status-bar {
+                display: flex; align-items: center; justify-content: flex-end;
+                gap: 6px; padding: 4px 14px;
+                background: rgba(255,255,255,0.9);
+                border-bottom: 1px solid var(--border);
+                font-size: 11px; font-weight: 600; color: var(--ink-soft);
+            }
+            .topbar-status-bar .status-dot-sm {
+                width: 6px; height: 6px; border-radius: 50%; background: #ccc;
+                flex-shrink: 0;
+            }
+            .topbar-status-bar .status-dot-sm.connected { background: var(--success); }
+            .topbar-status-bar .status-dot-sm.connecting { background: var(--warning); animation: pulse 1s infinite; }
+            .topbar-status-bar .status-dot-sm.error { background: var(--danger); }
+        }
+
+        /* ── Main ── */
+        .main {
+            max-width: 720px; margin: 0 auto;
+            padding: 28px 20px 80px;
+        }
+
+        /* ── Section Header ── */
+        .section-header {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+        }
+        .section-title { font-family: 'HarmonyOS Sans', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -.4px; }
+        .section-sub { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+
+        /* ── Card ── */
+        .card {
+            background: var(--white); border-radius: var(--r-lg);
+            box-shadow: var(--shadow-sm); overflow: hidden;
+        }
+        .card-header {
+            padding: 18px 22px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .card-title {
+            display: flex; align-items: center; gap: 8px;
+            font-family: 'HarmonyOS Sans', sans-serif; font-size: 14px; font-weight: 700;
+        }
+        .card-title .material-icons-round { font-size: 17px !important; color: var(--accent); }
+        .card-body { padding: 22px; }
+
+        /* ── Buttons ── */
+        .btn-primary {
+            padding: 10px 20px; border: none; border-radius: var(--r-sm);
+            background: var(--accent); color: #fff;
+            font-family: 'HarmonyOS Sans', sans-serif; font-size: 13px; font-weight: 700;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+            box-shadow: 0 4px 14px var(--accent-glow);
+            transition: transform .12s, box-shadow .12s, opacity .12s;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+        .btn-primary:active { transform: scale(.97); }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+        .btn-primary .material-icons-round { font-size: 16px !important; }
+        .btn-ghost {
+            padding: 9px 16px; border: 1.5px solid var(--border);
+            border-radius: var(--r-sm); background: transparent;
+            color: var(--ink-soft); font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s, border-color .15s;
+            width: 100%; justify-content: center;
+        }
+        .btn-ghost:hover { background: var(--surface); border-color: #d0d0da; }
+        .btn-ghost .material-icons-round { font-size: 15px !important; }
+
+        /* ── Form elements ── */
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-label { font-size: 12px; font-weight: 700; color: var(--ink); letter-spacing: .3px; }
+        .form-input {
+            padding: 10px 13px; border: 1.5px solid #e2e2ec;
+            border-radius: var(--r-sm); font-size: 13px;
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink); background: var(--surface); outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            width: 100%;
+        }
+        .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); background: var(--white); }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: var(--ink); color: #fff; padding: 12px 20px;
+            border-radius: 14px; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.25); z-index: 9999;
+            opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+            white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.success .material-icons-round { color: var(--success); }
+        .toast.error   .material-icons-round { color: var(--danger); }
+        .toast .material-icons-round { font-size: 16px !important; }
+
+        .btn-sm {
+            padding: 6px 12px; border: none; border-radius: 8px;
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 4px;
+            transition: opacity .12s, transform .12s;
+        }
+        .btn-sm:hover { opacity: .85; }
+        .btn-sm:active { transform: scale(.96); }
+        .btn-sm .material-icons-round { font-size: 14px !important; }
+        .btn-sm-accent { background: var(--accent-light); color: var(--accent); }
+        .btn-sm-danger { background: var(--danger-light); color: var(--danger); }
+        .btn-sm-success { background: var(--success-light); color: var(--success); }
+        .btn-sm-warning { background: var(--warning-light); color: var(--warning); }
+        .btn-sm-ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--border); }
+
+        .form-select {
+            padding: 10px 13px; border: 1.5px solid #e2e2ec;
+            border-radius: var(--r-sm); font-size: 13px;
+            font-family: 'Alibaba PuHuiTi 3', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--ink); background: var(--surface); outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            width: 100%; cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b80' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+        .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); background: var(--white); }
+
+        .tab-nav {
+            display: flex; gap: 4px; padding: 4px;
+            background: var(--white); border-radius: var(--r-md);
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 24px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-nav::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            flex: 0 0 auto; min-width: 68px;
+            padding: 10px 8px; border: none; border-radius: var(--r-sm);
+            background: transparent;
+            font-family: 'HarmonyOS Sans', sans-serif; font-size: 12px; font-weight: 600;
+            color: var(--ink-soft); cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 3px;
+            transition: background .15s, color .15s;
+            white-space: nowrap;
+        }
+        .tab-btn:hover { background: var(--surface); }
+        .tab-btn.active {
+            background: var(--accent); color: #fff;
+            box-shadow: 0 2px 10px var(--accent-glow);
+        }
+        .tab-btn .material-icons-round { font-size: 18px !important; }
+        .tab-btn span:last-child { font-size: 11px; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .data-table th { white-space: nowrap; }
+
+        /* ── Field card list ── */
+        .field-list { display: flex; flex-direction: column; gap: 10px; }
+        .field-card {
+            background: var(--white); border-radius: var(--r-md);
+            box-shadow: var(--shadow-sm); padding: 12px 14px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .field-card .drag-handle { color: var(--ink-soft); cursor: grab; flex-shrink: 0; display: flex; align-items: center; }
+        .field-card-info { flex: 1; min-width: 0; }
+        .field-card-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .field-card-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .field-card-id { font-family: monospace; font-size: 11px; background: var(--surface); padding: 1px 6px; border-radius: 4px; color: var(--ink-soft); }
+        .field-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        /* ── Employee card list ── */
+        .emp-list { display: flex; flex-direction: column; gap: 10px; }
+        .emp-card {
+            background: var(--white); border-radius: var(--r-md);
+            box-shadow: var(--shadow-sm); padding: 14px 16px;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .emp-avatar {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--accent-light); color: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: 700; flex-shrink: 0;
+        }
+        .emp-info { flex: 1; min-width: 0; }
+        .emp-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .emp-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .emp-pin { background: var(--surface); padding: 1px 7px; border-radius: 5px; font-family: monospace; font-size: 12px; }
+        .emp-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+        .data-table {
+            width: 100%; border-collapse: collapse;
+            font-size: 13px;
+        }
+        .data-table th {
+            text-align: left; padding: 10px 14px;
+            font-size: 11px; font-weight: 700; color: var(--ink-soft);
+            text-transform: uppercase; letter-spacing: .5px;
+            border-bottom: 1.5px solid var(--border);
+            background: var(--surface);
+        }
+        .data-table td {
+            padding: 12px 14px; border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: var(--accent-light); }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 11px; font-weight: 700;
+        }
+        .badge-success { background: var(--success-light); color: var(--success); }
+        .badge-danger { background: var(--danger-light); color: var(--danger); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); }
+        .badge-accent { background: var(--accent-light); color: var(--accent); }
+
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 500;
+            background: rgba(0,0,0,.4); backdrop-filter: blur(4px);
+            display: none; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: var(--white); border-radius: var(--r-lg);
+            box-shadow: var(--shadow-md); width: 100%; max-width: 480px;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .modal-header {
+            padding: 18px 22px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header-title {
+            font-family: 'HarmonyOS Sans', sans-serif;
+            font-size: 15px; font-weight: 700;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .modal-header-title .material-icons-round { font-size: 18px !important; color: var(--accent); }
+        .modal-close {
+            width: 32px; height: 32px; border: none; border-radius: 8px;
+            background: transparent; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--ink-soft); transition: background .15s;
+        }
+        .modal-close:hover { background: var(--surface); }
+        .modal-close .material-icons-round { font-size: 20px !important; }
+        .modal-body { padding: 22px; }
+        .modal-footer {
+            padding: 14px 22px; border-top: 1px solid var(--border);
+            display: flex; justify-content: flex-end; gap: 10px;
+        }
+
+        .drag-handle {
+            cursor: grab; color: var(--ink-soft);
+            display: flex; align-items: center;
+            padding: 2px;
+        }
+        .drag-handle:active { cursor: grabbing; }
+        .drag-handle .material-icons-round { font-size: 18px !important; }
+        .drag-row { transition: background .15s; }
+        .drag-row.dragging { opacity: .4; }
+        .drag-row.drag-over { background: var(--accent-light) !important; }
+
+        .empty-state {
+            text-align: center; padding: 40px 20px;
+            color: var(--ink-soft);
+        }
+        .empty-state .material-icons-round { font-size: 40px !important; color: #d0d0da; margin-bottom: 12px; }
+        .empty-state p { font-size: 13px; margin-top: 6px; }
+
+        /* ── Record card list ── */
+        .record-list { display: flex; flex-direction: column; gap: 10px; }
+        .record-card {
+            background: var(--white); border-radius: var(--r-md);
+            box-shadow: var(--shadow-sm); padding: 14px 16px;
+            display: flex; align-items: flex-start; gap: 12px;
+        }
+        .record-avatar {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--accent-light); color: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: 700; flex-shrink: 0;
+        }
+        .record-info { flex: 1; min-width: 0; }
+        .record-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+        .record-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+        .record-date { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+        .record-text { font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; }
+        .record-meta { font-size: 11px; color: #aaa; }
+        .record-actions { display: flex; gap: 6px; flex-shrink: 0; align-self: center; }
+
+        .filter-bar {
+            display: flex; flex-direction: column; gap: 8px;
+            margin-bottom: 16px;
+        }
+        .filter-bar .filter-row {
+            display: flex; gap: 8px; align-items: center;
+        }
+        .filter-bar .form-select {
+            width: 100%; padding: 8px 12px; font-size: 13px;
+        }
+        .filter-bar .form-input {
+            flex: 1; min-width: 0; padding: 8px 10px; font-size: 13px;
+        }
+        .filter-bar .filter-sep {
+            font-size: 12px; color: var(--ink-soft); flex-shrink: 0;
+        }
+
+        @media (max-width: 600px) {
+            .main { padding: 16px 12px 80px; }
+            .toast { left: 16px; right: 16px; transform: translateY(20px); white-space: normal; width: auto; }
+            .toast.show { transform: translateY(0); }
+            .tab-btn { padding: 8px 6px; }
+            .tab-btn span:last-child { font-size: 10px; }
+            .data-table { font-size: 12px; }
+            .data-table th, .data-table td { padding: 8px 10px; }
+            .filter-bar .form-input { font-size: 12px; }
+            .filter-bar .form-select { font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<header class="topbar">
+    <a class="topbar-logo" href="#">
+        <div class="topbar-logo-icon">
+            <span class="material-icons-round">auto_awesome</span>
+        </div>
+        <span class="topbar-logo-name">Voiq</span>
+    </a>
+    <span class="topbar-badge">管理后台</span>
+    <nav style="display:flex;gap:6px;margin-left:auto;flex-shrink:0">
+        <a href="index.html" style="padding:5px 10px;border-radius:20px;font-size:12px;font-weight:600;color:var(--ink-soft);text-decoration:none;background:var(--surface);display:flex;align-items:center;gap:3px;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'"><span class="material-icons-round" style="font-size:14px!important">smart_toy</span>查询</a>
+        <a href="employee.html" style="padding:5px 10px;border-radius:20px;font-size:12px;font-weight:600;color:var(--ink-soft);text-decoration:none;background:var(--surface);display:flex;align-items:center;gap:3px;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'"><span class="material-icons-round" style="font-size:14px!important">assignment</span>汇报</a>
+    </nav>
+    <div class="topbar-status">
+        <div class="status-dot connecting" id="status-dot"></div>
+        <span id="status-text">连接中…</span>
+    </div>
+</header>
+<!-- Mobile status bar -->
+<div class="topbar-status-bar">
+    <div class="status-dot-sm connecting" id="status-dot-sm"></div>
+    <span id="status-text-sm">连接中…</span>
+</div>
+
+<!-- ── Main Content ── -->
+<main class="main">
+
+    <div class="section-header">
+        <div>
+            <div class="section-title">🤖 智能助理配置</div>
+            <div class="section-sub">Voiq · 员工汇报 & AI 查询管理系统</div>
+        </div>
+    </div>
+
+    <!-- ── Tab Navigation ── -->
+    <div class="tab-nav" id="tab-nav">
+        <button class="tab-btn active" data-tab="tab-doubao" onclick="switchTab('tab-doubao')">
+            <span class="material-icons-round">tune</span>
+            <span>Voiq配置</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-advanced" onclick="switchTab('tab-advanced')">
+            <span class="material-icons-round">auto_fix_high</span>
+            <span>高级功能</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-employees" onclick="switchTab('tab-employees')">
+            <span class="material-icons-round">people</span>
+            <span>员工管理</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-fields" onclick="switchTab('tab-fields')">
+            <span class="material-icons-round">dynamic_form</span>
+            <span>表单字段</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-prompts" onclick="switchTab('tab-prompts')">
+            <span class="material-icons-round">edit_note</span>
+            <span>Prompt</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-records" onclick="switchTab('tab-records')">
+            <span class="material-icons-round">assignment</span>
+            <span>汇报记录</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-conversations" onclick="switchTab('tab-conversations')">
+            <span class="material-icons-round">chat</span>
+            <span>对话记录</span>
+        </button>
+    </div>
+
+    <!-- ═══════════ Tab1: Voiq配置 ═══════════ -->
+    <div class="tab-panel active" id="tab-doubao">
+
+        <div class="section-header">
+            <div></div>
+            <button class="btn-primary" id="doubao-save-btn" onclick="saveDoubaoConfig()">
+                <span class="material-icons-round">save</span>保存配置
+            </button>
+        </div>
+
+        <div id="doubao-disabled-tip" style="display:none;margin-bottom:20px;padding:12px 16px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:14px;font-size:12px;color:#92400e;align-items:center;gap:8px;line-height:1.5">
+            <span class="material-icons-round" style="font-size:16px!important;color:var(--warning);flex-shrink:0;margin-right:4px">info</span>
+            <span style="white-space:normal;line-height:1.6">智能助理当前处于<strong>关闭状态</strong>，前台不会显示入口。如需启用，请在「Voiq配置」中完成配置并保存。</span>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">tune</span>基础设置</div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:18px">
+                <div class="form-group">
+                    <label class="form-label">Voiq模型版本</label>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--border);border-radius:12px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s" id="doubao-ver-O2-label">
+                            <input type="radio" name="doubao-model-ver" value="O2.0" id="doubao-ver-O2" style="accent-color:var(--accent)" onchange="doubaoVerChange()">
+                            O2.0 版本
+                            <span style="font-size:11px;font-weight:400;color:var(--ink-soft)">推荐 · 能力更强</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1.5px solid var(--border);border-radius:12px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s" id="doubao-ver-O-label">
+                            <input type="radio" name="doubao-model-ver" value="O" id="doubao-ver-O" style="accent-color:var(--accent)" onchange="doubaoVerChange()">
+                            O 版本
+                            <span style="font-size:11px;font-weight:400;color:var(--ink-soft)">标准版</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">音色选择</label>
+                    <select class="form-input" id="doubao-speaker">
+                        <optgroup label="👩 女声">
+                            <option value="zh_female_vv_jupiter_bigtts">vv · 活泼灵动女声（推荐）</option>
+                            <option value="zh_female_xiaohe_jupiter_bigtts">小禾 · 甜美活泼（台湾口音）</option>
+                        </optgroup>
+                        <optgroup label="👨 男声">
+                            <option value="zh_male_yunzhou_jupiter_bigtts">云州 · 清爽沉稳男声</option>
+                            <option value="zh_male_xiaotian_jupiter_bigtts">小天 · 清爽磁性男声</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        开场白
+                        <span style="font-size:11px;font-weight:400;color:var(--ink-soft);margin-left:6px">连接成功后Voiq说的第一句话</span>
+                    </label>
+                    <textarea class="form-input" id="doubao-greeting" rows="2"
+                        placeholder="您好，请问有什么可以帮您？"
+                        style="resize:vertical;line-height:1.6;font-size:13px"></textarea>
+                    <div style="font-size:11px;color:var(--ink-soft);margin-top:4px">建议简短亲切，1～2句，让客户知道 AI 已就位</div>
+                </div>
+
+                <!-- ── VoiQ 界面显示控制 ── -->
+                <div class="form-group" style="padding:14px 16px;background:rgba(91,79,255,.04);border:1.5px solid rgba(91,79,255,.18);border-radius:14px">
+                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                        <span class="material-icons-round" style="font-size:16px!important;color:var(--accent)">tune</span>
+                        VoiQ 前台界面控制
+                    </div>
+                    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5">
+                        控制前台查询页的 Tab 和流程条的显示/隐藏。隐藏后界面更简洁，适合日常展示。
+                    </div>
+
+                    <!-- Tab 显示控制 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Tab 显示</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+
+                        <!-- RAG详情 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🔍 RAG详情</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示检索到的 Payload 详情</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-rag" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-rag')">
+                                <span class="ui-toggle-track" id="ui-tab-rag-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-rag-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+
+                        <!-- 事件日志 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🪲 事件日志</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示实时 WebSocket 事件流</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-log" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-log')">
+                                <span class="ui-toggle-track" id="ui-tab-log-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-log-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+
+                        <!-- 调试 -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                            <div>
+                                <div style="font-size:13px;font-weight:600">🔧 调试面板</div>
+                                <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示手动测试、Supabase 诊断工具</div>
+                            </div>
+                            <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                                <input type="checkbox" id="ui-tab-debug" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-tab-debug')">
+                                <span class="ui-toggle-track" id="ui-tab-debug-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                                <span class="ui-toggle-thumb" id="ui-tab-debug-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 流程条显示控制 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">流程条 &amp; 状态提示</div>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">语音 → 意图 → 检索 → 500 → 播报</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示顶部流程高亮动画条</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-flow-strip" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-flow-strip')">
+                            <span class="ui-toggle-track" id="ui-flow-strip-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-flow-strip-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
+
+                    <!-- TTS 状态提示卡 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">✅ TTS 状态提示</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示「TTS已发送(500)！切换 RAG详情 tab查看」提示条</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-rag-card" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-rag-card')">
+                            <span class="ui-toggle-track" id="ui-rag-card-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-rag-card-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
+                    </div>
+
+                    <!-- 员工列表布局模板 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:16px;margin-bottom:10px">员工列表布局</div>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">🪐 星球浮动模板</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">开启后员工列表切换为星球漂浮样式，关闭则使用默认卡片列表</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-layout-planet" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-layout-planet')">
+                            <span class="ui-toggle-track" id="ui-layout-planet-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-layout-planet-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
+                    <!-- 日期小标签显示控制 -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface);border-radius:12px">
+                        <div>
+                            <div style="font-size:13px;font-weight:600">🏷️ 日期小标签</div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">显示员工圆圈下方的「今天」「昨天」等日期标签，关闭则全部隐藏</div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="ui-date-badge" style="opacity:0;width:0;height:0" onchange="syncUiToggleUI('ui-date-badge')">
+                            <span class="ui-toggle-track" id="ui-date-badge-track" style="position:absolute;inset:0;border-radius:24px;background:#ccc;transition:background .2s"></span>
+                            <span class="ui-toggle-thumb" id="ui-date-badge-thumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></span>
+                        </label>
+                    </div>
+                    </div>
+
+                    <!-- 语音提示条编辑 -->
+                    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin-top:16px;margin-bottom:10px">💬 语音提示条</div>
+                    <div style="background:var(--surface);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span style="font-size:12px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0">标题文字</span>
+                            <input id="vts-title" type="text" value="你可以这样说"
+                                style="flex:1;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                                placeholder="你可以这样说">
+                        </div>
+                        <div>
+                            <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px">胶囊提示（可拖拽排序）</div>
+                            <div id="vts-tag-list" style="display:flex;flex-direction:column;gap:6px;min-height:10px"></div>
+                            <button onclick="vtsAddTag()" style="margin-top:8px;display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;width:100%;justify-content:center">
+                                <span class="material-icons-round" style="font-size:15px!important">add</span>新增胶囊
+                            </button>
+                        </div>
+                        <div style="font-size:11px;color:var(--ink-soft)">提示：最多建议 5 个胶囊，过多会超出屏幕宽度</div>
+                    </div>
+
+                    <div style="margin-top:12px;padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
+                        <span class="material-icons-round" style="font-size:13px!important">info</span>
+                        保存后，前台刷新即可生效。隐藏的 Tab 不会丢失数据。
+                    </div>
+
+                </div>
+
+                <!-- ── Debug 模式开关 ── -->
+                <div class="form-group" style="padding:14px 16px;background:rgba(245,158,11,.05);border:1.5px solid rgba(245,158,11,.2);border-radius:14px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                        <div>
+                            <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">
+                                <span class="material-icons-round" style="font-size:16px!important;color:var(--warning)">bug_report</span>
+                                Debug 调试模式
+                            </div>
+                            <div style="font-size:11px;color:var(--ink-soft);margin-top:3px;line-height:1.5">
+                                开启后，前台查询页会显示 🐛 调试按钮，点击可查看完整 RAG 检索日志（相似度、改写词、命中记录等），方便定位回答不准确的问题。
+                            </div>
+                        </div>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+                            <input type="checkbox" id="debug-mode-toggle" style="opacity:0;width:0;height:0"
+                                onchange="onDebugToggleChange()">
+                            <span id="debug-toggle-track" style="
+                                position:absolute;inset:0;border-radius:24px;
+                                background:#ccc;transition:background .2s;
+                            "></span>
+                            <span id="debug-toggle-thumb" style="
+                                position:absolute;top:3px;left:3px;
+                                width:18px;height:18px;border-radius:50%;
+                                background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);
+                                transition:transform .2s;
+                            "></span>
+                        </label>
+                    </div>
+                    <div id="debug-mode-hint" style="display:none;margin-top:10px;padding:8px 10px;background:rgba(245,158,11,.1);border-radius:8px;font-size:11px;color:#92400e;flex-direction:column;gap:8px">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span class="material-icons-round" style="font-size:13px!important;color:var(--warning)">info</span>
+                            Debug 模式已开启，保存后前台将显示 🐛 调试按钮。上线前请记得关闭。
+                        </div>
+                        <div style="padding:8px 10px;background:rgba(0,0,0,.05);border-radius:6px;line-height:1.7">
+                            <strong>⚠️ 首次使用前</strong>，需先在
+                            <a href="https://app.supabase.com" target="_blank" style="color:var(--accent)">Supabase SQL Editor</a>
+                            执行以下语句：<br>
+                            <code id="debug-sql" onclick="copySql()" title="点击复制"
+                                style="display:block;margin-top:5px;padding:6px 8px;background:#fff8;border-radius:4px;font-family:monospace;font-size:11px;word-break:break-all;cursor:pointer;border:1px solid rgba(0,0,0,.1)">
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;<br>
+                                ALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;<br>
+                                ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS asr_hotwords jsonb DEFAULT NULL;
+                            </code>
+                            <span style="font-size:10px;color:#b45309;margin-top:3px;display:block">👆 点击代码可复制</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">electrical_services</span>API 连接状态</div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border-radius:10px">
+                        <div style="font-size:13px;font-weight:600">DOUBAO_APP_ID</div>
+                        <div id="doubao-key-app-id" style="font-size:12px;color:var(--ink-soft)">检测中…</div>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border-radius:10px">
+                        <div style="font-size:13px;font-weight:600">DOUBAO_ACCESS_KEY</div>
+                        <div id="doubao-key-access" style="font-size:12px;color:var(--ink-soft)">检测中…</div>
+                    </div>
+                </div>
+                <div style="font-size:11px;color:var(--ink-soft);padding:10px 12px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;display:flex;gap:8px;align-items:flex-start">
+                    <span class="material-icons-round" style="font-size:14px!important;color:var(--warning);flex-shrink:0;margin-top:1px">warning</span>
+                    <span>密钥须在 Supabase Dashboard → Settings → Edge Functions → Secrets 中配置，名称分别为 <strong>DOUBAO_APP_ID</strong> 和 <strong>DOUBAO_ACCESS_KEY</strong>，配置后此页面无法读取具体值（仅显示是否已设置）。</span>
+                </div>
+                <button class="btn-ghost" id="doubao-test-btn" onclick="doubaoTestConnection()">
+                    <span class="material-icons-round" style="font-size:16px!important">bolt</span>
+                    测试 Edge Function 连通性
+                </button>
+                <div id="doubao-test-result" style="font-size:12px;min-height:16px;color:var(--ink-soft)"></div>
+            </div>
+        </div>
+
+        <div id="doubao-save-status" style="font-size:12px;color:var(--ink-soft);min-height:16px;margin-bottom:20px"></div>
+    </div>
+
+    <!-- ═══════════ Tab-高级功能 ═══════════ -->
+    <div class="tab-panel" id="tab-advanced">
+        <div class="section-header">
+            <div>
+                <div class="section-title">⚙️ 高级功能</div>
+                <div class="section-sub">ASR 热词、替换词及其他高级配置</div>
+            </div>
+            <button class="btn-primary" id="advanced-save-btn" onclick="saveDoubaoConfig()">
+                <span class="material-icons-round">save</span>保存配置
+            </button>
+        </div>
+
+        <!-- ASR 热词 & 替换词 -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">record_voice_over</span>ASR 热词 &amp; 替换词</div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;color:var(--ink-soft);line-height:1.6;padding:10px 12px;background:rgba(91,79,255,.06);border-radius:10px">
+                    <strong>热词</strong>：让Voiq ASR 更容易识别员工姓名（需开启二遍识别，会启用 enable_asr_twopass）。<br>
+                    <strong>替换词</strong>：识别后自动纠正错字，支持正则。格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词</code> → <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">正确词</code>，每行一条。
+                </div>
+                <!-- 热词列表 -->
+                <div>
+                    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+                        <span style="font-weight:600">热词列表</span>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="asrHwImportEmployees(this)" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(0,196,140,.4);background:rgba(0,196,140,.07);color:var(--success);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">group</span>导入员工名
+                            </button>
+                            <button onclick="asrHwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                            </button>
+                        </div>
+                    </div>
+                    <div id="asr-hw-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:10px;width:100%;overflow:hidden"></div>
+                    <div id="asr-hw-import-tip" style="display:none;margin-top:6px;font-size:11px;color:var(--success)"></div>
+                </div>
+                <!-- 替换词 -->
+                <div>
+                    <div style="font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+                        <span>替换词列表</span>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="asrCwToggleBatch(this)" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">content_paste</span>批量导入
+                            </button>
+                            <button onclick="asrCwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 批量导入面板 -->
+                    <div id="asr-cw-batch-panel" style="display:none;margin-bottom:10px;padding:10px 12px;background:rgba(91,79,255,.04);border:1.5px solid rgba(91,79,255,.2);border-radius:10px">
+                        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;line-height:1.6">
+                            每行一条，格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词→正确词</code> 或 <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词 正确词</code>（空格分隔也可）
+                        </div>
+                        <textarea id="asr-cw-batch-input" rows="5" placeholder="张靓颖→张量平&#10;黄涵漫→黄韩漫&#10;李在鸣 李在明" style="width:100%;box-sizing:border-box;border:1.5px solid var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;font-family:monospace;outline:none;resize:vertical;color:var(--ink);background:#fff"></textarea>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                            <button onclick="asrCwImportBatch()" style="display:flex;align-items:center;gap:4px;padding:5px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">check</span>确认导入
+                            </button>
+                            <span id="asr-cw-batch-tip" style="font-size:11px;color:var(--success)"></span>
+                        </div>
+                    </div>
+                    <!-- 表头 -->
+                    <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center;padding:0 2px;margin-bottom:4px">
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">错误词（ASR识别出的）</span>
+                        <span></span>
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">正确词（替换成）</span>
+                        <span></span>
+                    </div>
+                    <div id="asr-cw-list" style="display:flex;flex-direction:column;gap:7px;min-height:10px"></div>
+                    <!-- 隐藏textarea保持原有读写兼容 -->
+                    <textarea id="asr-cw-textarea" style="display:none"></textarea>
+                </div>
+                <div style="padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
+                    <span class="material-icons-round" style="font-size:13px!important">info</span>
+                    保存后，前台刷新即可生效。
+                </div>
+            </div>
+        </div>
+
+        <!-- Widget 聊天助理配置 -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">chat_bubble</span>Widget 聊天助理配置</div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:18px">
+                <div style="font-size:11px;color:var(--ink-soft);line-height:1.7;padding:10px 12px;background:rgba(91,79,255,.06);border-radius:10px">
+                    控制右下角悬浮实时对话助理（Widget）的对话记忆与上下文行为。<br>
+                    <strong>多轮记忆</strong>：开启后每次打开 Widget 都会延续同一段对话历史（最近20轮），模型能追问"他上周呢"而不会忘记说的是谁。<br>
+                    <strong>初始上下文</strong>：可以预先注入若干轮对话，让 Widget 启动时就带有背景知识。
+                </div>
+
+                <!-- 多轮记忆开关 -->
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                    <div>
+                        <div style="font-size:13px;font-weight:700;color:var(--ink)">多轮对话记忆（dialog_id）</div>
+                        <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">开启后 dialog_id 存入 localStorage，下次打开自动续接最近20轮</div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0">
+                        <div style="position:relative;width:40px;height:22px">
+                            <input type="checkbox" id="widget-memory-toggle" onchange="syncWidgetToggleUI('widget-memory')" style="opacity:0;position:absolute;width:0;height:0">
+                            <div id="widget-memory-track" style="position:absolute;inset:0;border-radius:11px;background:#ccc;transition:background .2s"></div>
+                            <div id="widget-memory-thumb" style="position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .2s"></div>
+                        </div>
+                        <span id="widget-memory-label" style="font-size:12px;color:var(--ink-soft)">关闭</span>
+                    </label>
+                </div>
+
+                <!-- 初始上下文 -->
+                <div>
+                    <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+                        <span>初始上下文（dialog_context）</span>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="widgetCtxAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增一轮
+                            </button>
+                            <button onclick="widgetCtxClear()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(220,38,38,.3);background:rgba(220,38,38,.05);color:var(--danger);font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">delete_sweep</span>清空
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;line-height:1.6;padding:8px 10px;background:rgba(0,0,0,.03);border-radius:8px">
+                        每行一个"用户问/助理答"的完整对，顺序必须是 <strong>user → assistant → user → assistant…</strong>，总数必须为偶数。<br>
+                        Widget 打开时这些内容会作为初始背景注入模型，使用 <strong>ConversationCreate（eid 510）</strong>注入。
+                    </div>
+                    <!-- 表头 -->
+                    <div style="display:grid;grid-template-columns:80px 1fr auto;gap:6px;align-items:center;padding:0 2px;margin-bottom:6px">
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">角色</span>
+                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">内容</span>
+                        <span></span>
+                    </div>
+                    <div id="widget-ctx-list" style="display:flex;flex-direction:column;gap:7px;min-height:10px"></div>
+                    <div id="widget-ctx-tip" style="margin-top:8px;font-size:11px;color:var(--danger);display:none">⚠️ 上下文必须成对（偶数条），且必须以 user 开始、assistant 结束</div>
+                </div>
+
+                <!-- 清除已存 dialog_id -->
+                <div style="padding:10px 12px;background:rgba(245,158,11,.06);border:1.5px solid rgba(245,158,11,.2);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                    <div>
+                        <div style="font-size:12px;font-weight:700;color:var(--warn)">重置对话历史</div>
+                        <div style="font-size:11px;color:var(--ink-soft);margin-top:2px">点击后前台下次打开 Widget 将从全新对话开始（清除 localStorage 中的 dialog_id）</div>
+                    </div>
+                    <button onclick="widgetResetDialogId()" style="display:flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;border:1.5px solid rgba(245,158,11,.4);background:rgba(245,158,11,.08);color:var(--warn);font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">
+                        <span class="material-icons-round" style="font-size:15px!important">restart_alt</span>清除 dialog_id
+                    </button>
+                </div>
+
+                <!-- ── VAD 停顿判断时长 ── -->
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="font-size:12px;font-weight:600;color:var(--ink)">停顿判断时长</div>
+                    <div style="font-size:11px;color:var(--ink-soft);line-height:1.6">
+                        判断用户停止说话的等待时间，默认 1500ms。说话快可调短到 800ms，网络差可调长到 2000ms。留空使用服务端默认值。
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <input id="end-smooth-window-ms" type="number" min="500" max="50000" step="100"
+                            placeholder="默认 1500"
+                            style="width:140px;padding:7px 10px;border-radius:8px;border:1.5px solid #e0e0e0;font-size:13px;outline:none" />
+                        <span style="font-size:12px;color:var(--ink-soft)">ms（范围 500 ～ 50000）</span>
+                    </div>
+                </div>
+
+                <div style="padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
+                    <span class="material-icons-round" style="font-size:13px!important">info</span>
+                    保存后，前台刷新即可生效。新字段需先执行 SQL（点顶部「复制SQL」）。
+                </div>
+            </div>
+        </div>
+
+        <div id="advanced-save-status" style="font-size:12px;color:var(--ink-soft);min-height:16px;margin-bottom:20px"></div>
+    </div>
+
+    <!-- ═══════════ Tab2: 员工管理 ═══════════ -->
+    <div class="tab-panel" id="tab-employees">
+        <div class="section-header">
+            <div>
+                <div class="section-title">👥 员工管理</div>
+                <div class="section-sub">管理员工账号，启用/禁用员工</div>
+            </div>
+            <button class="btn-primary" onclick="openEmployeeModal()">
+                <span class="material-icons-round">person_add</span>添加员工
+            </button>
+        </div>
+        <div class="emp-list" id="employee-tbody">
+            <div class="empty-state"><span class="material-icons-round">people_outline</span><p>暂无员工，点击上方按钮添加</p></div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Tab3: 表单字段 ═══════════ -->
+    <div class="tab-panel" id="tab-fields">
+        <div class="section-header">
+            <div>
+                <div class="section-title">📋 表单字段</div>
+                <div class="section-sub">配置员工汇报表单的字段，支持拖拽排序</div>
+            </div>
+            <button class="btn-primary" onclick="openFieldModal()">
+                <span class="material-icons-round">add_circle</span>添加字段
+            </button>
+        </div>
+        <div class="field-list" id="field-tbody">
+            <div class="empty-state"><span class="material-icons-round">dynamic_form</span><p>暂无字段，点击上方按钮添加</p></div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Tab4: Prompt管理 ═══════════ -->
+    <div class="tab-panel" id="tab-prompts">
+        <div class="section-header">
+            <div>
+                <div class="section-title">✏️ Prompt 管理</div>
+                <div class="section-sub">管理 report（汇报整理）和 query（查询检索）场景的 Prompt</div>
+            </div>
+        </div>
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">description</span>Report Prompt（汇报整理）</div>
+                <button class="btn-sm btn-sm-accent" onclick="savePrompt('report')">
+                    <span class="material-icons-round">save</span>保存
+                </button>
+            </div>
+            <div class="card-body">
+                <div style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;padding:10px 12px;background:var(--accent-light);border-radius:10px;display:flex;gap:8px;align-items:flex-start">
+                    <span class="material-icons-round" style="font-size:15px!important;color:var(--accent);flex-shrink:0;margin-top:1px">info</span>
+                    <span>员工提交汇报时，千问会根据此 Prompt 将语音/文字整理为结构化字段内容。可用变量：<code style="background:rgba(91,79,255,.1);padding:1px 5px;border-radius:4px">{{FIELDS}}</code>（字段列表）、<code style="background:rgba(91,79,255,.1);padding:1px 5px;border-radius:4px">{{RAW_TEXT}}</code>（原始文本）</span>
+                </div>
+                <textarea id="prompt-report" rows="10"
+                    style="width:100%;padding:14px 16px;border:1.5px solid var(--border);border-radius:12px;font-size:12.5px;font-family:'Alibaba PuHuiTi 3','PingFang SC',monospace;line-height:1.75;resize:vertical;outline:none;color:var(--ink);background:var(--surface);transition:border-color .15s"
+                    onfocus="this.style.borderColor='var(--accent)'"
+                    onblur="this.style.borderColor='var(--border)'"
+                    oninput="updatePromptCharCount('report')"
+                    placeholder="你是汇报整理助手。根据以下字段定义，将员工的原始汇报文本整理为结构化JSON。
+
+字段定义：
+{{FIELDS}}
+
+员工原始汇报：
+{{RAW_TEXT}}
+
+请输出JSON，key为字段标识，value为整理后的内容。"></textarea>
+                <div style="font-size:11px;color:var(--ink-soft);margin-top:6px" id="prompt-report-charcount">0 字</div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="material-icons-round">search</span>Query Prompt（查询检索）</div>
+                <button class="btn-sm btn-sm-accent" onclick="savePrompt('query')">
+                    <span class="material-icons-round">save</span>保存
+                </button>
+            </div>
+            <div class="card-body">
+                <div style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;padding:10px 12px;background:var(--accent-light);border-radius:10px;display:flex;gap:8px;align-items:flex-start">
+                    <span class="material-icons-round" style="font-size:15px!important;color:var(--accent);flex-shrink:0;margin-top:1px">info</span>
+                    <span>老板提问时，千问会根据此 Prompt 从问题中提取检索条件。可用变量：<code style="background:rgba(91,79,255,.1);padding:1px 5px;border-radius:4px">{{QUESTION}}</code>（用户问题）</span>
+                </div>
+                <textarea id="prompt-query" rows="10"
+                    style="width:100%;padding:14px 16px;border:1.5px solid var(--border);border-radius:12px;font-size:12.5px;font-family:'Alibaba PuHuiTi 3','PingFang SC',monospace;line-height:1.75;resize:vertical;outline:none;color:var(--ink);background:var(--surface);transition:border-color .15s"
+                    onfocus="this.style.borderColor='var(--accent)'"
+                    onblur="this.style.borderColor='var(--border)'"
+                    oninput="updatePromptCharCount('query')"
+                    placeholder="你是查询条件提取助手。从老板的问题中提取检索条件。
+
+用户问题：
+{{QUESTION}}
+
+请输出JSON格式的检索条件，可能包含：employee_name（员工姓名）、date_from（开始日期）、date_to（结束日期）、keywords（关键词列表）。"></textarea>
+                <div style="font-size:11px;color:var(--ink-soft);margin-top:6px" id="prompt-query-charcount">0 字</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Tab5: 汇报记录 ═══════════ -->
+    <div class="tab-panel" id="tab-records">
+        <div class="section-header">
+            <div>
+                <div class="section-title">📝 汇报记录</div>
+                <div class="section-sub">查看所有员工的汇报记录</div>
+            </div>
+        </div>
+        <div class="filter-bar">
+            <div class="filter-row">
+                <select class="form-select" id="record-filter-employee" onchange="loadRecords()">
+                    <option value="">全部员工</option>
+                </select>
+            </div>
+            <div class="filter-row">
+                <input type="date" class="form-input" id="record-filter-date-from" onchange="loadRecords()">
+                <span class="filter-sep">至</span>
+                <input type="date" class="form-input" id="record-filter-date-to" onchange="loadRecords()">
+                <button class="btn-sm btn-sm-ghost" onclick="clearRecordFilter()" style="flex-shrink:0">
+                    <span class="material-icons-round">filter_alt_off</span>清除
+                </button>
+            </div>
+        </div>
+        <div class="record-list" id="record-tbody">
+            <div class="empty-state"><span class="material-icons-round">assignment</span><p>暂无汇报记录</p></div>
+        </div>
+    </div>
+
+    <!-- ═══════════ Tab6: 对话记录 ═══════════ -->
+    <div class="tab-panel" id="tab-conversations">
+        <div class="section-header">
+            <div>
+                <div class="section-title">💬 对话记录</div>
+                <div class="section-sub" id="conv-date-label">今日对话记录</div>
+            </div>
+            <button class="btn-ghost" style="width:auto;padding:8px 14px" onclick="loadConversations()">
+                <span class="material-icons-round">refresh</span> 刷新
+            </button>
+        </div>
+        <div id="conversation-tbody">
+            <div class="empty-state"><span class="material-icons-round">chat_bubble_outline</span><p>暂无对话记录</p></div>
+        </div>
+    </div>
+
+</main>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast">
+    <span class="material-icons-round" id="toast-icon">check_circle</span>
+    <span id="toast-msg"></span>
+</div>
+
+<!-- ── Employee Modal ── -->
+<div class="modal-overlay" id="employee-modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <span class="material-icons-round">person_add</span>
+                <span id="employee-modal-title">添加员工</span>
+            </div>
+            <button class="modal-close" onclick="closeEmployeeModal()">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+            <input type="hidden" id="emp-edit-id">
+            <div class="form-group">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-input" id="emp-name" placeholder="请输入员工姓名" oninput="autoFillNickname()">
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="display:flex;align-items:center;gap:6px">
+                    昵称
+                    <span style="font-size:11px;font-weight:400;color:var(--ink-soft)">显示在首页圆圈中，默认取姓名最后一字</span>
+                </label>
+                <input type="text" class="form-input" id="emp-nickname" placeholder="单个汉字，如：明" maxlength="4">
+            </div>
+            <div class="form-group">
+                <label class="form-label">PIN 码</label>
+                <input type="text" class="form-input" id="emp-pin" placeholder="4-6位数字PIN码" maxlength="6">
+            </div>
+            <div class="form-group">
+                <label class="form-label">部门</label>
+                <input type="text" class="form-input" id="emp-department" placeholder="请输入部门名称">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeEmployeeModal()" style="width:auto">取消</button>
+            <button class="btn-primary" onclick="saveEmployee()" id="emp-save-btn">
+                <span class="material-icons-round">check</span>保存
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Field Modal ── -->
+<div class="modal-overlay" id="field-modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <span class="material-icons-round">add_circle</span>
+                <span id="field-modal-title">添加字段</span>
+            </div>
+            <button class="modal-close" onclick="closeFieldModal()">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+            <input type="hidden" id="field-edit-id">
+            <div class="form-group">
+                <label class="form-label">字段标识 (name)</label>
+                <input type="text" class="form-input" id="field-name" placeholder="英文标识，如 work_content">
+            </div>
+            <div class="form-group">
+                <label class="form-label">显示名称 (label)</label>
+                <input type="text" class="form-input" id="field-label" placeholder="中文名称，如 工作内容">
+            </div>
+            <div class="form-group">
+                <label class="form-label">字段类型</label>
+                <select class="form-select" id="field-type" onchange="toggleFieldOptions()">
+                    <option value="text">单行文本</option>
+                    <option value="textarea">多行文本</option>
+                    <option value="number">数字</option>
+                    <option value="date">日期</option>
+                    <option value="select">下拉选择</option>
+                </select>
+            </div>
+            <div class="form-group" id="field-options-group" style="display:none">
+                <label class="form-label">选项（每行一个）</label>
+                <textarea class="form-input" id="field-options" rows="3" placeholder="选项1&#10;选项2&#10;选项3" style="resize:vertical"></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+                    <input type="checkbox" id="field-required" style="accent-color:var(--accent);width:15px;height:15px">
+                    必填字段
+                </label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeFieldModal()" style="width:auto">取消</button>
+            <button class="btn-primary" onclick="saveField()" id="field-save-btn">
+                <span class="material-icons-round">check</span>保存
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Record Detail Modal ── -->
+<div class="modal-overlay" id="record-detail-modal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <span class="material-icons-round">assignment</span>
+                <span>汇报详情</span>
+            </div>
+            <button class="modal-close" onclick="closeRecordDetailModal()">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="modal-body" id="record-detail-body" style="display:flex;flex-direction:column;gap:12px">
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ── CONFIG ── */
+    const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
+
+    const DOUBAO_DEFAULT_PROMPT = `你是Voiq智能工作汇报系统的助理，亲切专业。老板会通过语音询问员工汇报情况。
+
+【你的任务】
+1. 根据提供的员工工作记录，简短口语化地回答老板的问题
+2. 如果有多条相关记录，归纳总结关键信息
+3. 如果记录中没有相关信息，如实说明
+
+【注意】保持口语化、亲切、简短，每次回复不超过5句话。`;
+
+    let sbClient = null;
+    let toastTimer = null;
+    let _dragSrcRow = null;
+
+    /* ── INIT ── */
+    window.addEventListener('DOMContentLoaded', async () => {
+        try {
+            sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            setStatus('connected', '已连接');
+            await loadDoubaoPage();
+        } catch(e) {
+            setStatus('error', '连接失败');
+            showToast('Supabase 连接失败: ' + e.message, 'error');
+        }
+    });
+
+    function setStatus(state, text) {
+        // sync mobile status bar
+        const smDot = document.getElementById('status-dot-sm');
+        const smTxt = document.getElementById('status-text-sm');
+        if (smDot) { smDot.className = 'status-dot-sm ' + state; }
+        if (smTxt) { smTxt.textContent = text; }
+        document.getElementById('status-dot').className = 'status-dot ' + state;
+        document.getElementById('status-text').textContent = text;
+    }
+
+    function showToast(msg, type = 'success') {
+        const toast  = document.getElementById('toast');
+        const msgEl  = document.getElementById('toast-msg');
+        const iconEl = document.getElementById('toast-icon');
+        toast.className = 'toast ' + type;
+        msgEl.textContent = msg;
+        iconEl.textContent = type === 'error' ? 'error' : 'check_circle';
+        toast.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    /* ── 进入页面 ── */
+    async function loadDoubaoPage() {
+        await loadDoubaoConfig();
+        doubaoCheckSecrets();
+    }
+
+    /* ── 加载配置 ── */
+    async function loadDoubaoConfig() {
+        try {
+            const { data, error } = await sbClient
+                .from('model_configs')
+                .select('*')
+                .limit(1)
+                .single();
+
+            if (error || !data) { fillDoubaoDefaults(); return; }
+
+            const cfg = data;
+            const ver = cfg.model_version || 'O2.0';
+            const radO2 = document.getElementById('doubao-ver-O2');
+            const radO  = document.getElementById('doubao-ver-O');
+            if (radO2) radO2.checked = (ver === 'O2.0');
+            if (radO)  radO.checked  = (ver === 'O');
+            doubaoVerChange();
+
+            const spk = document.getElementById('doubao-speaker');
+            if (spk && cfg.speaker) spk.value = cfg.speaker;
+
+            const greet = document.getElementById('doubao-greeting');
+            if (greet) greet.value = cfg.greeting || '您好，请问有什么可以帮您？';
+
+            // 加载 debug_mode
+            const dbgToggle = document.getElementById('debug-mode-toggle');
+            if (dbgToggle) {
+                dbgToggle.checked = !!(cfg.debug_mode);
+                syncDebugToggleUI(dbgToggle.checked);
+            }
+
+            // 加载 UI 显示控制（默认全部隐藏=false）
+            const uiMap = {
+                'ui-tab-rag':      cfg.ui_tab_rag      ?? false,
+                'ui-tab-log':      cfg.ui_tab_log      ?? false,
+                'ui-tab-debug':    cfg.ui_tab_debug    ?? false,
+                'ui-flow-strip':   cfg.ui_flow_strip   ?? false,
+                'ui-rag-card':     cfg.ui_rag_card     ?? false,
+                'ui-layout-planet':cfg.ui_layout_planet ?? false,
+                'ui-date-badge':   cfg.ui_date_badge   ?? true,
+            };
+            for (const [id, val] of Object.entries(uiMap)) {
+                const el = document.getElementById(id);
+                if (el) { el.checked = !!val; syncUiToggleUI(id); }
+            }
+
+            // 加载语音提示条
+            const vtips = cfg.voice_tips || { title: '你可以这样说', tags: ['查询今天的工作内容 →', '查看本周的工作汇总 →', '李四的工作日报 →'] };
+            const vtsTitle = document.getElementById('vts-title');
+            if (vtsTitle) vtsTitle.value = vtips.title || '你可以这样说';
+            vtsRenderTags(vtips.tags || []);
+
+            // 加载 ASR 热词 & 替换词
+            const asrHw = cfg.asr_hotwords || { hotwords: [], correct_words: {} };
+            asrHwRenderList(asrHw.hotwords || []);
+            asrCwRenderList(asrHw.correct_words || {});
+
+            // 加载停顿判断时长
+            const eswEl = document.getElementById('end-smooth-window-ms');
+            if (eswEl) eswEl.value = cfg.end_smooth_window_ms || '';
+
+            // 加载 Widget 聊天助理配置
+            const wMemToggle = document.getElementById('widget-memory-toggle');
+            if (wMemToggle) {
+                wMemToggle.checked = !!(cfg.widget_memory_enabled);
+                syncWidgetToggleUI('widget-memory');
+            }
+            widgetCtxRenderList(cfg.widget_dialog_context || []);
+        } catch(_) {
+            fillDoubaoDefaults();
+        }
+    }
+
+    function onDebugToggleChange() {
+        const checked = document.getElementById('debug-mode-toggle').checked;
+        syncDebugToggleUI(checked);
+    }
+    function syncDebugToggleUI(on) {
+        const track = document.getElementById('debug-toggle-track');
+        const thumb = document.getElementById('debug-toggle-thumb');
+        const hint  = document.getElementById('debug-mode-hint');
+        if (track) track.style.background = on ? '#f59e0b' : '#ccc';
+        if (thumb) thumb.style.transform  = on ? 'translateX(20px)' : 'translateX(0)';
+        if (hint)  hint.style.display     = on ? 'flex' : 'none';
+    }
+
+    function syncUiToggleUI(id) {
+        const checkbox = document.getElementById(id);
+        if (!checkbox) return;
+        const on = checkbox.checked;
+        const track = document.getElementById(id + '-track');
+        const thumb = document.getElementById(id + '-thumb');
+        if (track) track.style.background = on ? 'var(--accent)' : '#ccc';
+        if (thumb) thumb.style.transform  = on ? 'translateX(20px)' : 'translateX(0)';
+    }
+
+    function fillDoubaoDefaults() {
+        const radO2 = document.getElementById('doubao-ver-O2');
+        if (radO2) { radO2.checked = true; doubaoVerChange(); }
+        const greet = document.getElementById('doubao-greeting');
+        if (greet) greet.value = '您好，请问有什么可以帮您？';
+        // 默认提示条
+        vtsRenderTags(['查询今天的工作内容 →', '查看本周的工作汇总 →', '李四的工作日报 →']);
+    }
+
+    /* ── 语音提示条胶囊管理 ── */
+    function vtsRenderTags(tags) {
+        const list = document.getElementById('vts-tag-list');
+        if (!list) return;
+        list.innerHTML = '';
+        (tags || []).forEach((t, i) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:6px';
+            row.innerHTML = `
+                <span class="material-icons-round" style="font-size:16px!important;color:#ccc;cursor:grab;flex-shrink:0" title="拖拽排序">drag_indicator</span>
+                <input class="vts-admin-input" type="text" value="${t.replace(/"/g,'&quot;')}"
+                    style="flex:1;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                    placeholder="胶囊文字，如：查询今天工作内容 →">
+                <button onclick="vtsRemoveTag(this)" title="删除"
+                    style="width:28px;height:28px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <span class="material-icons-round" style="font-size:15px!important">close</span>
+                </button>`;
+            list.appendChild(row);
+        });
+    }
+    function vtsAddTag() {
+        const list = document.getElementById('vts-tag-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px';
+        row.innerHTML = `
+            <span class="material-icons-round" style="font-size:16px!important;color:#ccc;cursor:grab;flex-shrink:0" title="拖拽排序">drag_indicator</span>
+            <input class="vts-admin-input" type="text" value=""
+                style="flex:1;border:1.5px solid rgba(91,79,255,.4);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="输入胶囊文字，如：查询今天工作内容 →" autofocus>
+            <button onclick="vtsRemoveTag(this)" title="删除"
+                style="width:28px;height:28px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+        row.querySelector('input')?.focus();
+    }
+    function vtsRemoveTag(btn) {
+        btn.closest('div')?.remove();
+    }
+
+    /* ── ASR 热词列表管理 ── */
+    function asrHwRenderList(words) {
+        const list = document.getElementById('asr-hw-list');
+        if (!list) return;
+        list.innerHTML = '';
+        (words || []).forEach(w => asrHwAddRow(w));
+    }
+    function asrHwAdd() {
+        asrHwAddRow('');
+        const list = document.getElementById('asr-hw-list');
+        list?.lastElementChild?.querySelector('input')?.focus();
+    }
+    function asrHwAddRow(word) {
+        const list = document.getElementById('asr-hw-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden';
+        row.innerHTML = `
+            <input class="asr-hw-input" type="text" value="${(word||'').replace(/"/g,'&quot;')}"
+                style="flex:1;min-width:0;width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="如：黄韩漫">
+            <button onclick="this.closest('div').remove()" title="删除"
+                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+    }
+
+    /* ── 替换词行编辑器 ── */
+    function asrCwRenderList(cwMap) {
+        const list = document.getElementById('asr-cw-list');
+        if (!list) return;
+        list.innerHTML = '';
+        Object.entries(cwMap || {}).forEach(([k, v]) => asrCwAddRow(k, v));
+    }
+    function asrCwAdd() {
+        asrCwAddRow('', '');
+        const list = document.getElementById('asr-cw-list');
+        list?.lastElementChild?.querySelector('.asr-cw-from')?.focus();
+    }
+    function asrCwAddRow(from, to) {
+        const list = document.getElementById('asr-cw-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center';
+        row.innerHTML = `
+            <input class="asr-cw-from" type="text" value="${(from||'').replace(/"/g,'&quot;')}"
+                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="黄汉漫">
+            <span style="font-size:14px;color:var(--ink-soft);font-weight:700;text-align:center;flex-shrink:0">→</span>
+            <input class="asr-cw-to" type="text" value="${(to||'').replace(/"/g,'&quot;')}"
+                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
+                placeholder="黄韩漫">
+            <button onclick="this.closest('div').remove()" title="删除"
+                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+    }
+
+    /* ── 替换词批量导入 ── */
+    function asrCwToggleBatch(btn) {
+        const panel = document.getElementById('asr-cw-batch-panel');
+        if (!panel) return;
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : '';
+        btn.style.background = isOpen ? 'rgba(91,79,255,.05)' : 'rgba(91,79,255,.15)';
+        if (!isOpen) document.getElementById('asr-cw-batch-input')?.focus();
+    }
+    function asrCwImportBatch() {
+        const raw = document.getElementById('asr-cw-batch-input')?.value || '';
+        const tipEl = document.getElementById('asr-cw-batch-tip');
+        const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+        if (!lines.length) { if (tipEl) { tipEl.textContent = '内容为空'; tipEl.style.color = 'var(--danger)'; } return; }
+
+        // 读取已有替换词，去重用
+        const existing = new Set();
+        document.querySelectorAll('#asr-cw-list > div').forEach(row => {
+            const from = row.querySelector('.asr-cw-from')?.value.trim();
+            if (from) existing.add(from);
+        });
+
+        let added = 0, skipped = 0, invalid = 0;
+        lines.forEach(line => {
+            // 支持 → / -> / 空格 三种分隔
+            let from, to;
+            const arrowMatch = line.match(/^(.+?)(?:→|->)(.+)$/);
+            if (arrowMatch) {
+                from = arrowMatch[1].trim();
+                to   = arrowMatch[2].trim();
+            } else {
+                const spaceMatch = line.match(/^(\S+)\s+(\S+)$/);
+                if (spaceMatch) { from = spaceMatch[1]; to = spaceMatch[2]; }
+            }
+            if (!from || !to) { invalid++; return; }
+            if (existing.has(from)) { skipped++; return; }
+            asrCwAddRow(from, to);
+            existing.add(from);
+            added++;
+        });
+
+        if (tipEl) {
+            const parts = [];
+            if (added)   parts.push(`✅ 导入 ${added} 条`);
+            if (skipped) parts.push(`跳过 ${skipped} 条重复`);
+            if (invalid) parts.push(`⚠️ ${invalid} 条格式有误`);
+            tipEl.textContent = parts.join('，');
+            tipEl.style.color = added ? 'var(--success)' : 'var(--danger)';
+            setTimeout(() => { if (tipEl) tipEl.textContent = ''; }, 4000);
+        }
+        if (added) {
+            document.getElementById('asr-cw-batch-input').value = '';
+        }
+    }
+
+    /* ── 一键导入员工名为热词（自动去重，保留已有手动词） ── */
+    async function asrHwImportEmployees(btn) {
+        const tipEl = document.getElementById('asr-hw-import-tip');
+        const origHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:13px!important;animation:spin 1s linear infinite">refresh</span>导入中…';
+        if (tipEl) { tipEl.style.display = 'none'; tipEl.textContent = ''; }
+
+        try {
+            const { data, error } = await sbClient
+                .from('employees')
+                .select('name')
+                .eq('enabled', true)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+
+            const names = (data || []).map(e => e.name.trim()).filter(Boolean);
+            if (!names.length) { showToast('没有启用的员工', 'error'); return; }
+
+            // 读取当前已有热词，去重合并
+            const existingEls = document.querySelectorAll('#asr-hw-list .asr-hw-input');
+            const existing = new Set(Array.from(existingEls).map(el => el.value.trim()).filter(Boolean));
+
+            let added = 0;
+            names.forEach(name => {
+                if (!existing.has(name)) {
+                    asrHwAddRow(name);
+                    existing.add(name);
+                    added++;
+                }
+            });
+
+            if (tipEl) {
+                tipEl.style.display = 'block';
+                tipEl.textContent = added > 0
+                    ? `✅ 已导入 ${added} 个员工名（跳过 ${names.length - added} 个已存在）`
+                    : `ℹ️ ${names.length} 个员工名已全部存在，无需重复导入`;
+                setTimeout(() => { tipEl.style.display = 'none'; }, 4000);
+            }
+        } catch(e) {
+            showToast('导入失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHTML;
+        }
+    }
+
+    /* ── 保存配置 ── */
+    async function saveDoubaoConfig() {
+        const saveBtn  = document.getElementById('doubao-save-btn') || document.getElementById('advanced-save-btn');
+        const statusEl = document.getElementById('doubao-save-status') || document.getElementById('advanced-save-status');
+
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="material-icons-round" style="font-size:15px!important;animation:spin 1s linear infinite">refresh</span>保存中…'; }
+        if (statusEl) { statusEl.textContent = '保存中…'; statusEl.style.color = 'var(--ink-soft)'; }
+
+        try {
+            const ver       = document.querySelector('input[name="doubao-model-ver"]:checked')?.value || 'O2.0';
+            const spk       = document.getElementById('doubao-speaker')?.value || 'zh_female_vv_jupiter_bigtts';
+            const greeting  = document.getElementById('doubao-greeting')?.value?.trim() || '您好，请问有什么可以帮您？';
+            const debugMode = !!(document.getElementById('debug-mode-toggle')?.checked);
+            const uiTabRag    = !!(document.getElementById('ui-tab-rag')?.checked);
+            const uiTabLog    = !!(document.getElementById('ui-tab-log')?.checked);
+            const uiTabDebug  = !!(document.getElementById('ui-tab-debug')?.checked);
+            const uiFlowStrip = !!(document.getElementById('ui-flow-strip')?.checked);
+            const uiRagCard   = !!(document.getElementById('ui-rag-card')?.checked);
+            const uiLayoutPlanet = !!(document.getElementById('ui-layout-planet')?.checked);
+            const uiDateBadge = !!(document.getElementById('ui-date-badge')?.checked);
+
+            // 读取语音提示条
+            const vtsTitleVal = document.getElementById('vts-title')?.value?.trim() || '你可以这样说';
+            const vtsTagEls = document.querySelectorAll('#vts-tag-list .vts-admin-input');
+            const vtsTagsVal = Array.from(vtsTagEls).map(el => el.value.trim()).filter(Boolean);
+            const voiceTips = { title: vtsTitleVal, tags: vtsTagsVal };
+
+            // 读取 ASR 热词 & 替换词
+            const hwEls = document.querySelectorAll('#asr-hw-list .asr-hw-input');
+            const hwWords = Array.from(hwEls).map(el => el.value.trim()).filter(Boolean);
+            const cwMap = {};
+            document.querySelectorAll('#asr-cw-list > div').forEach(row => {
+                const from = row.querySelector('.asr-cw-from')?.value.trim();
+                const to   = row.querySelector('.asr-cw-to')?.value.trim();
+                if (from && to) cwMap[from] = to;
+            });
+            const asrHotwords = { hotwords: hwWords, correct_words: cwMap };
+
+            // 读取 Widget 聊天助理配置
+            const widgetMemoryEnabled = !!(document.getElementById('widget-memory-toggle')?.checked);
+            if (!widgetCtxValidate()) {
+                showToast('初始上下文格式有误，请检查（需成对且 user 开头）', 'error');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<span class="material-icons-round">save</span>保存配置'; }
+                if (statusEl) { statusEl.textContent = ''; }
+                return;
+            }
+            const widgetDialogContext = widgetCtxGetList();
+
+            // 读取停顿判断时长
+            const eswVal = parseInt(document.getElementById('end-smooth-window-ms')?.value || '0', 10);
+            const endSmoothWindowMs = (eswVal >= 500 && eswVal <= 50000) ? eswVal : null;
+
+            const uiPayload = {
+                model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
+                ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
+                ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
+                ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
+                voice_tips: voiceTips,
+                asr_hotwords: asrHotwords,
+                widget_memory_enabled: widgetMemoryEnabled,
+                widget_dialog_context: widgetDialogContext,
+                end_smooth_window_ms: endSmoothWindowMs,
+                updated_at: new Date().toISOString()
+            };
+
+            const { data: existing } = await sbClient.from('model_configs').select('id').limit(1).single();
+
+            if (existing) {
+                const { error } = await sbClient
+                    .from('model_configs')
+                    .update(uiPayload)
+                    .eq('id', existing.id);
+                if (error) throw error;
+            } else {
+                const { error } = await sbClient
+                    .from('model_configs')
+                    .insert({ model_version: ver, speaker: spk, greeting, debug_mode: debugMode,
+                              ui_tab_rag: uiTabRag, ui_tab_log: uiTabLog, ui_tab_debug: uiTabDebug,
+                              ui_flow_strip: uiFlowStrip, ui_rag_card: uiRagCard,
+                              ui_layout_planet: uiLayoutPlanet, ui_date_badge: uiDateBadge,
+                              voice_tips: voiceTips, asr_hotwords: asrHotwords,
+                              widget_memory_enabled: widgetMemoryEnabled,
+                              widget_dialog_context: widgetDialogContext });
+                if (error) throw error;
+            }
+
+            if (statusEl) { statusEl.textContent = '✅ 已保存，前台刷新后生效'; statusEl.style.color = 'var(--success)'; }
+            showToast('配置已保存', 'success');
+            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+        } catch(err) {
+            const isColMissing = err.message && (err.message.includes('debug_mode') || err.message.includes('ui_tab'));
+            if (statusEl) {
+                statusEl.innerHTML = isColMissing
+                    ? '❌ 缺少新字段，请在 Supabase SQL Editor 执行初始化语句（点击「复制SQL」按钮）'
+                    : '❌ 保存失败: ' + err.message;
+                statusEl.style.color = 'var(--danger)';
+            }
+            showToast('保存失败: ' + err.message, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<span class="material-icons-round">save</span>保存配置'; }
+        }
+    }
+
+    /* ── 模型版本切换 ── */
+    function doubaoVerChange() {
+        ['doubao-ver-O2-label','doubao-ver-O-label'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const radio = el.querySelector('input[type=radio]');
+            el.style.borderColor = radio?.checked ? 'var(--accent)' : 'var(--border)';
+            el.style.background  = radio?.checked ? 'var(--accent-light)' : '';
+        });
+    }
+
+    function copySql() {
+        var sql = `ALTER TABLE model_configs ADD COLUMN IF NOT EXISTS debug_mode boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_rag boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_log boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_tab_debug boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_flow_strip boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_rag_card boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_layout_planet boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS ui_date_badge boolean DEFAULT true;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS voice_tips jsonb DEFAULT NULL;\nALTER TABLE employees ADD COLUMN IF NOT EXISTS nickname text;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS asr_hotwords jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_memory_enabled boolean DEFAULT false;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_dialog_context jsonb DEFAULT NULL;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS widget_reset_ts bigint DEFAULT 0;\nALTER TABLE model_configs ADD COLUMN IF NOT EXISTS end_smooth_window_ms integer DEFAULT NULL;`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(sql).then(function() { showToast('SQL已复制，粘贴到Supabase执行', 'success'); });
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = sql; ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); showToast('SQL已复制', 'success'); } catch(e) {}
+            document.body.removeChild(ta);
+        }
+    }
+
+    /* ── Widget 上下文管理 ── */
+    function syncWidgetToggleUI(prefix) {
+        const chk   = document.getElementById(prefix + '-toggle');
+        const track = document.getElementById(prefix + '-track');
+        const thumb = document.getElementById(prefix + '-thumb');
+        const label = document.getElementById(prefix + '-label');
+        const on    = chk?.checked;
+        if (track) track.style.background = on ? 'var(--accent)' : '#ccc';
+        if (thumb) thumb.style.transform  = on ? 'translateX(18px)' : 'translateX(0)';
+        if (label) label.textContent       = on ? '开启' : '关闭';
+    }
+
+    function widgetCtxAdd() {
+        const list = document.getElementById('widget-ctx-list');
+        if (!list) return;
+        // 推断下一个角色
+        const rows = list.querySelectorAll('.widget-ctx-row');
+        const lastRole = rows.length ? rows[rows.length - 1].querySelector('.widget-ctx-role')?.value : null;
+        const nextRole = (!lastRole || lastRole === 'assistant') ? 'user' : 'assistant';
+        widgetCtxAddRow(nextRole, '');
+        list.lastElementChild?.querySelector('textarea')?.focus();
+    }
+    function widgetCtxAddRow(role, text) {
+        const list = document.getElementById('widget-ctx-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.className = 'widget-ctx-row';
+        row.style.cssText = 'display:grid;grid-template-columns:80px 1fr auto;gap:6px;align-items:start';
+        const roleColor = role === 'user' ? 'rgba(14,168,122,.15)' : 'rgba(91,79,255,.12)';
+        const roleLabel = role === 'user' ? '👤 用户' : '🤖 助理';
+        row.innerHTML = `
+            <select class="widget-ctx-role" onchange="widgetCtxRoleChange(this)" style="height:34px;border:1.5px solid var(--surface2);border-radius:8px;padding:0 8px;font-size:12px;font-weight:600;outline:none;background:${roleColor};color:var(--ink);cursor:pointer">
+                <option value="user" ${role==='user'?'selected':''}>👤 用户</option>
+                <option value="assistant" ${role==='assistant'?'selected':''}>🤖 助理</option>
+            </select>
+            <textarea class="widget-ctx-text" rows="2" placeholder="${role==='user'?'用户说的话':'助理的回复'}" style="border:1.5px solid var(--surface2);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink);resize:vertical;font-family:inherit;line-height:1.5">${(text||'').replace(/</g,'&lt;')}</textarea>
+            <button onclick="this.closest('.widget-ctx-row').remove();widgetCtxValidate()" title="删除" style="width:28px;height:28px;margin-top:3px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <span class="material-icons-round" style="font-size:15px!important">close</span>
+            </button>`;
+        list.appendChild(row);
+        widgetCtxValidate();
+    }
+    function widgetCtxRoleChange(sel) {
+        const bg = sel.value === 'user' ? 'rgba(14,168,122,.15)' : 'rgba(91,79,255,.12)';
+        sel.style.background = bg;
+        const ta = sel.closest('.widget-ctx-row')?.querySelector('textarea');
+        if (ta) ta.placeholder = sel.value === 'user' ? '用户说的话' : '助理的回复';
+        widgetCtxValidate();
+    }
+    function widgetCtxClear() {
+        const list = document.getElementById('widget-ctx-list');
+        if (list) list.innerHTML = '';
+        widgetCtxValidate();
+    }
+    function widgetCtxValidate() {
+        const rows = document.querySelectorAll('.widget-ctx-row');
+        const tipEl = document.getElementById('widget-ctx-tip');
+        if (!tipEl) return true;
+        const roles = Array.from(rows).map(r => r.querySelector('.widget-ctx-role')?.value);
+        const isEven = roles.length % 2 === 0;
+        const isOrdered = roles.every((r, i) => i % 2 === 0 ? r === 'user' : r === 'assistant');
+        const valid = roles.length === 0 || (isEven && isOrdered);
+        tipEl.style.display = valid ? 'none' : '';
+        return valid;
+    }
+    function widgetCtxRenderList(items) {
+        const list = document.getElementById('widget-ctx-list');
+        if (!list) return;
+        list.innerHTML = '';
+        (items || []).forEach(item => widgetCtxAddRow(item.role, item.text));
+    }
+    function widgetCtxGetList() {
+        const rows = document.querySelectorAll('.widget-ctx-row');
+        return Array.from(rows).map(r => ({
+            role: r.querySelector('.widget-ctx-role')?.value || 'user',
+            text: r.querySelector('.widget-ctx-text')?.value?.trim() || ''
+        })).filter(item => item.text);
+    }
+    function widgetResetDialogId() {
+        // 写入一个特殊标记让前台清除 dialog_id（通过配置字段 widget_reset_dialog_id）
+        // 简单方案：保存一个当前时间戳，前台比较时间戳若变化则清除本地 dialog_id
+        const ts = Date.now();
+        sbClient.from('model_configs').select('id').limit(1).single().then(({ data }) => {
+            if (!data) { showToast('尚未保存过配置，请先保存', 'error'); return; }
+            sbClient.from('model_configs').update({ widget_reset_ts: ts, updated_at: new Date().toISOString() }).eq('id', data.id)
+                .then(({ error }) => {
+                    if (error) { showToast('重置失败: ' + error.message, 'error'); }
+                    else { showToast('✅ 已发出重置指令，前台下次刷新后生效', 'success'); }
+                });
+        });
+    }
+
+    /* ── 检测 Secrets ── */
+    async function doubaoCheckSecrets() {
+        const appIdEl  = document.getElementById('doubao-key-app-id');
+        const accessEl = document.getElementById('doubao-key-access');
+        if (!appIdEl || !accessEl) return;
+        try {
+            const res = await fetch(SUPABASE_URL + '/functions/v1/report-handler', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+                body: JSON.stringify({ __ping__: true }),
+            });
+            const data = await res.json();
+            if (data.pong || data.success || res.ok) {
+                appIdEl.innerHTML  = '<span style="color:var(--success);font-weight:700">✅ 已配置</span>';
+                accessEl.innerHTML = '<span style="color:var(--success);font-weight:700">✅ 已配置</span>';
+            } else {
+                appIdEl.innerHTML  = '<span style="color:var(--danger);font-weight:700">❌ 未配置</span>';
+                accessEl.innerHTML = '<span style="color:var(--danger);font-weight:700">❌ 未配置</span>';
+            }
+        } catch(_) {
+            appIdEl.innerHTML  = '<span style="color:var(--ink-soft)">— Edge Function 未部署</span>';
+            accessEl.innerHTML = '<span style="color:var(--ink-soft)">— Edge Function 未部署</span>';
+        }
+    }
+
+    /* ── 测试连通性 ── */
+    async function doubaoTestConnection() {
+        const btn    = document.getElementById('doubao-test-btn');
+        const result = document.getElementById('doubao-test-result');
+        if (!btn || !result) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:16px!important;animation:spin 1s linear infinite">refresh</span>测试中…';
+        result.textContent = '';
+
+        try {
+            const start = Date.now();
+            const res = await fetch(SUPABASE_URL + '/functions/v1/report-handler', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+                body: JSON.stringify({ __ping__: true }),
+            });
+            const ms   = Date.now() - start;
+            const data = await res.json();
+
+            if (data.pong || data.success || res.ok) {
+                result.innerHTML = `<span style="color:var(--success)">✅ Edge Function 响应正常（${ms}ms）</span>`;
+                document.getElementById('doubao-key-app-id').innerHTML  = '<span style="color:var(--success);font-weight:700">✅ 已配置</span>';
+                document.getElementById('doubao-key-access').innerHTML  = '<span style="color:var(--success);font-weight:700">✅ 已配置</span>';
+            } else {
+                result.innerHTML = `<span style="color:var(--danger)">❌ ${data.error || '未知错误'}（${ms}ms）</span>`;
+            }
+        } catch(e) {
+            result.innerHTML = `<span style="color:var(--danger)">❌ 请求失败：${e.message}（Edge Function 可能未部署）</span>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-icons-round" style="font-size:16px!important">bolt</span>测试 Edge Function 连通性';
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab Switching                                                 */
+    /* ══════════════════════════════════════════════════════════════ */
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+
+        if (tabId === 'tab-employees') loadEmployees();
+        if (tabId === 'tab-fields') loadFields();
+        if (tabId === 'tab-prompts') loadPrompts();
+        if (tabId === 'tab-records') { loadEmployeeFilter(); loadRecords(); }
+        if (tabId === 'tab-conversations') loadConversations();
+    }
+
+    function esc(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab2: 员工管理                                                */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function loadEmployees() {
+        const tbody = document.getElementById('employee-tbody');
+        if (!sbClient || !tbody) return;
+        try {
+            const { data, error } = await sbClient
+                .from('employees')
+                .select('*')
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<div class="empty-state"><span class="material-icons-round">people_outline</span><p>暂无员工，点击上方按钮添加</p></div>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(emp => `
+                <div class="emp-card">
+                    <div class="emp-avatar">${esc(emp.name).charAt(0)}</div>
+                    <div class="emp-info">
+                        <div class="emp-name">${esc(emp.name)}
+                            <span class="badge ${emp.enabled ? 'badge-success' : 'badge-danger'}" style="margin-left:6px;font-size:10px">${emp.enabled ? '启用' : '禁用'}</span>
+                        </div>
+                        <div class="emp-meta">
+                            <span class="emp-pin">PIN: ${esc(emp.pin)}</span>
+                            ${emp.department ? `<span>${esc(emp.department)}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="emp-actions">
+                        <button class="btn-sm ${emp.enabled ? 'btn-sm-warning' : 'btn-sm-success'}" onclick="toggleEmployee('${emp.id}', ${!emp.enabled})" title="${emp.enabled ? '禁用' : '启用'}">
+                            <span class="material-icons-round">${emp.enabled ? 'visibility_off' : 'visibility'}</span>
+                        </button>
+                        <button class="btn-sm btn-sm-accent" onclick="editEmployee('${emp.id}')" title="编辑">
+                            <span class="material-icons-round">edit</span>
+                        </button>
+                        <button class="btn-sm btn-sm-danger" onclick="deleteEmployee('${emp.id}', '${esc(emp.name)}')" title="删除">
+                            <span class="material-icons-round">delete</span>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } catch(e) {
+            tbody.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function openEmployeeModal(id) {
+        document.getElementById('emp-edit-id').value = '';
+        document.getElementById('emp-name').value = '';
+        document.getElementById('emp-nickname').value = '';
+        document.getElementById('emp-pin').value = '';
+        document.getElementById('emp-department').value = '';
+        document.getElementById('employee-modal-title').textContent = id ? '编辑员工' : '添加员工';
+        document.getElementById('employee-modal').classList.add('show');
+    }
+
+    function autoFillNickname() {
+        const nameEl = document.getElementById('emp-name');
+        const nickEl = document.getElementById('emp-nickname');
+        if (!nameEl || !nickEl) return;
+        const name = nameEl.value.trim();
+        // Only auto-fill if user hasn't manually changed it
+        if (!nickEl.dataset.userEdited) {
+            nickEl.value = name.length > 0 ? name.slice(-1) : '';
+        }
+    }
+
+    // Mark nickname as manually edited when user types in it
+    document.addEventListener('DOMContentLoaded', function() {
+        const nickEl = document.getElementById('emp-nickname');
+        if (nickEl) {
+            nickEl.addEventListener('input', function() {
+                nickEl.dataset.userEdited = '1';
+            });
+        }
+    });
+
+    function closeEmployeeModal() {
+        document.getElementById('employee-modal').classList.remove('show');
+    }
+
+    async function editEmployee(id) {
+        try {
+            const { data, error } = await sbClient.from('employees').select('*').eq('id', id).single();
+            if (error) throw error;
+            document.getElementById('emp-edit-id').value = data.id;
+            document.getElementById('emp-name').value = data.name || '';
+            const nickEl = document.getElementById('emp-nickname');
+            if (nickEl) {
+                // If nickname stored, use it; otherwise derive from name
+                nickEl.value = data.nickname || (data.name ? data.name.slice(-1) : '');
+                nickEl.dataset.userEdited = data.nickname ? '1' : '';
+            }
+            document.getElementById('emp-pin').value = data.pin || '';
+            document.getElementById('emp-department').value = data.department || '';
+            document.getElementById('employee-modal-title').textContent = '编辑员工';
+            document.getElementById('employee-modal').classList.add('show');
+        } catch(e) {
+            showToast('加载员工信息失败: ' + e.message, 'error');
+        }
+    }
+
+    async function saveEmployee() {
+        const id = document.getElementById('emp-edit-id').value;
+        const name = document.getElementById('emp-name').value.trim();
+        const pin = document.getElementById('emp-pin').value.trim();
+        const department = document.getElementById('emp-department').value.trim();
+        const nickEl = document.getElementById('emp-nickname');
+        // Derive nickname: use field value if set, otherwise last character of name
+        const nickname = (nickEl && nickEl.value.trim()) ? nickEl.value.trim() : (name ? name.slice(-1) : '');
+
+        if (!name) { showToast('请输入员工姓名', 'error'); return; }
+        if (!pin) { showToast('请输入PIN码', 'error'); return; }
+
+        const btn = document.getElementById('emp-save-btn');
+        btn.disabled = true;
+
+        try {
+            const payload = { name, pin, department, nickname };
+            let error;
+            if (id) {
+                ({ error } = await sbClient.from('employees').update(payload).eq('id', id));
+            } else {
+                payload.enabled = true;
+                ({ error } = await sbClient.from('employees').insert(payload));
+            }
+            if (error) throw error;
+
+            showToast(id ? '员工已更新' : '员工已添加', 'success');
+            closeEmployeeModal();
+            loadEmployees();
+        } catch(e) {
+            showToast('保存失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function toggleEmployee(id, enabled) {
+        try {
+            const { error } = await sbClient.from('employees').update({ enabled }).eq('id', id);
+            if (error) throw error;
+            showToast(enabled ? '已启用' : '已禁用', 'success');
+            loadEmployees();
+        } catch(e) {
+            showToast('操作失败: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteEmployee(id, name) {
+        if (!confirm(`确定删除员工「${name}」吗？此操作不可撤销。`)) return;
+        try {
+            const { error } = await sbClient.from('employees').delete().eq('id', id);
+            if (error) throw error;
+            showToast('已删除', 'success');
+            loadEmployees();
+        } catch(e) {
+            showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab3: 表单字段                                                */
+    /* ══════════════════════════════════════════════════════════════ */
+    const FIELD_TYPE_LABELS = { text: '单行文本', textarea: '多行文本', number: '数字', date: '日期', select: '下拉选择' };
+
+    async function loadFields() {
+        const tbody = document.getElementById('field-tbody');
+        if (!sbClient || !tbody) return;
+        try {
+            const { data, error } = await sbClient
+                .from('form_fields')
+                .select('*')
+                .order('sort_order', { ascending: true });
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<div class="empty-state"><span class="material-icons-round">dynamic_form</span><p>暂无字段，点击上方按钮添加</p></div>';
+                return;
+            }
+
+            tbody.innerHTML = data.map((f, idx) => `
+                <div class="field-card drag-row" draggable="true" data-id="${f.id}" data-sort="${f.sort_order || idx}"
+                    ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
+                    <div class="drag-handle"><span class="material-icons-round">drag_indicator</span></div>
+                    <div class="field-card-info">
+                        <div class="field-card-top">
+                            <span class="field-card-name">${esc(f.label)}</span>
+                            <span class="field-card-id">${esc(f.name)}</span>
+                            <span class="badge badge-accent" style="font-size:10px">${FIELD_TYPE_LABELS[f.field_type] || f.field_type}</span>
+                            ${f.required ? '<span class="badge badge-warning" style="font-size:10px">必填</span>' : ''}
+                            <span class="badge ${f.enabled ? 'badge-success' : 'badge-danger'}" style="font-size:10px">${f.enabled ? '启用' : '禁用'}</span>
+                        </div>
+                    </div>
+                    <div class="field-card-actions">
+                        <button class="btn-sm ${f.enabled ? 'btn-sm-warning' : 'btn-sm-success'}" onclick="toggleField('${f.id}', ${!f.enabled})" title="${f.enabled ? '禁用' : '启用'}">
+                            <span class="material-icons-round">${f.enabled ? 'visibility_off' : 'visibility'}</span>
+                        </button>
+                        <button class="btn-sm btn-sm-accent" onclick="editField('${f.id}')" title="编辑">
+                            <span class="material-icons-round">edit</span>
+                        </button>
+                        <button class="btn-sm btn-sm-danger" onclick="deleteField('${f.id}', '${esc(f.label)}')" title="删除">
+                            <span class="material-icons-round">delete</span>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } catch(e) {
+            tbody.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function openFieldModal() {
+        document.getElementById('field-edit-id').value = '';
+        document.getElementById('field-name').value = '';
+        document.getElementById('field-label').value = '';
+        document.getElementById('field-type').value = 'text';
+        document.getElementById('field-options').value = '';
+        document.getElementById('field-required').checked = false;
+        document.getElementById('field-modal-title').textContent = '添加字段';
+        document.getElementById('field-options-group').style.display = 'none';
+        document.getElementById('field-modal').classList.add('show');
+    }
+
+    function closeFieldModal() {
+        document.getElementById('field-modal').classList.remove('show');
+    }
+
+    function toggleFieldOptions() {
+        const type = document.getElementById('field-type').value;
+        document.getElementById('field-options-group').style.display = type === 'select' ? 'flex' : 'none';
+    }
+
+    async function editField(id) {
+        try {
+            const { data, error } = await sbClient.from('form_fields').select('*').eq('id', id).single();
+            if (error) throw error;
+            document.getElementById('field-edit-id').value = data.id;
+            document.getElementById('field-name').value = data.name || '';
+            document.getElementById('field-label').value = data.label || '';
+            document.getElementById('field-type').value = data.field_type || 'text';
+            document.getElementById('field-options').value = (data.options || []).join('\n');
+            document.getElementById('field-required').checked = !!data.required;
+            document.getElementById('field-modal-title').textContent = '编辑字段';
+            toggleFieldOptions();
+            document.getElementById('field-modal').classList.add('show');
+        } catch(e) {
+            showToast('加载字段信息失败: ' + e.message, 'error');
+        }
+    }
+
+    async function saveField() {
+        const id = document.getElementById('field-edit-id').value;
+        const name = document.getElementById('field-name').value.trim();
+        const label = document.getElementById('field-label').value.trim();
+        const field_type = document.getElementById('field-type').value;
+        const optionsText = document.getElementById('field-options').value.trim();
+        const required = document.getElementById('field-required').checked;
+
+        if (!name) { showToast('请输入字段标识', 'error'); return; }
+        if (!label) { showToast('请输入显示名称', 'error'); return; }
+
+        const options = field_type === 'select' && optionsText ? optionsText.split('\n').map(s => s.trim()).filter(Boolean) : [];
+
+        const btn = document.getElementById('field-save-btn');
+        btn.disabled = true;
+
+        try {
+            const payload = { name, label, field_type, required, options };
+            let error;
+
+            if (id) {
+                ({ error } = await sbClient.from('form_fields').update(payload).eq('id', id));
+            } else {
+                const { data: maxData } = await sbClient.from('form_fields').select('sort_order').order('sort_order', { ascending: false }).limit(1);
+                payload.sort_order = (maxData && maxData.length > 0 ? (maxData[0].sort_order || 0) : 0) + 1;
+                payload.enabled = true;
+                ({ error } = await sbClient.from('form_fields').insert(payload));
+            }
+            if (error) throw error;
+
+            showToast(id ? '字段已更新' : '字段已添加', 'success');
+            closeFieldModal();
+            loadFields();
+        } catch(e) {
+            showToast('保存失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function toggleField(id, enabled) {
+        try {
+            const { error } = await sbClient.from('form_fields').update({ enabled }).eq('id', id);
+            if (error) throw error;
+            showToast(enabled ? '已启用' : '已禁用', 'success');
+            loadFields();
+        } catch(e) {
+            showToast('操作失败: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteField(id, label) {
+        if (!confirm(`确定删除字段「${label}」吗？`)) return;
+        try {
+            const { error } = await sbClient.from('form_fields').delete().eq('id', id);
+            if (error) throw error;
+            showToast('已删除', 'success');
+            loadFields();
+        } catch(e) {
+            showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    function onDragStart(e) {
+        _dragSrcRow = e.target.closest('.drag-row');
+        if (_dragSrcRow) _dragSrcRow.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const row = e.target.closest('.drag-row');
+        if (row && row !== _dragSrcRow) row.classList.add('drag-over');
+    }
+
+    function onDragLeave(e) {
+        const row = e.target.closest('.drag-row');
+        if (row) row.classList.remove('drag-over');
+    }
+
+    async function onDrop(e) {
+        e.preventDefault();
+        const targetRow = e.target.closest('.drag-row');
+        if (!targetRow || !_dragSrcRow || targetRow === _dragSrcRow) return;
+        targetRow.classList.remove('drag-over');
+
+        const srcId = _dragSrcRow.dataset.id;
+        const targetId = targetRow.dataset.id;
+        const srcSort = parseInt(_dragSrcRow.dataset.sort);
+        const targetSort = parseInt(targetRow.dataset.sort);
+
+        try {
+            await sbClient.from('form_fields').update({ sort_order: -1 }).eq('id', srcId);
+            await sbClient.from('form_fields').update({ sort_order: srcSort }).eq('id', targetId);
+            await sbClient.from('form_fields').update({ sort_order: targetSort }).eq('id', srcId);
+            showToast('排序已更新', 'success');
+            loadFields();
+        } catch(err) {
+            showToast('排序失败: ' + err.message, 'error');
+        }
+    }
+
+    function onDragEnd(e) {
+        if (_dragSrcRow) _dragSrcRow.classList.remove('dragging');
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        _dragSrcRow = null;
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab4: Prompt管理                                              */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function loadPrompts() {
+        try {
+            const { data, error } = await sbClient.from('ai_prompts').select('*');
+            if (error) throw error;
+
+            const reportPrompt = data?.find(p => p.scene === 'report');
+            const queryPrompt = data?.find(p => p.scene === 'query');
+
+            const reportEl = document.getElementById('prompt-report');
+            const queryEl = document.getElementById('prompt-query');
+
+            if (reportEl) {
+                reportEl.value = reportPrompt?.content || '';
+                updatePromptCharCount('report');
+            }
+            if (queryEl) {
+                queryEl.value = queryPrompt?.content || '';
+                updatePromptCharCount('query');
+            }
+        } catch(e) {
+            showToast('加载Prompt失败: ' + e.message, 'error');
+        }
+    }
+
+    function updatePromptCharCount(scene) {
+        const el = document.getElementById(`prompt-${scene}`);
+        const countEl = document.getElementById(`prompt-${scene}-charcount`);
+        if (el && countEl) countEl.textContent = el.value.length + ' 字';
+    }
+
+    async function savePrompt(scene) {
+        const el = document.getElementById(`prompt-${scene}`);
+        if (!el) return;
+        const content = el.value.trim();
+        if (!content) { showToast('Prompt内容不能为空', 'error'); return; }
+
+        try {
+            const { data: existing } = await sbClient.from('ai_prompts').select('id').eq('scene', scene);
+            let error;
+            if (existing && existing.length > 0) {
+                ({ error } = await sbClient.from('ai_prompts').update({ content, updated_at: new Date().toISOString() }).eq('scene', scene));
+            } else {
+                ({ error } = await sbClient.from('ai_prompts').insert({ scene, content }));
+            }
+            if (error) throw error;
+            showToast(`${scene === 'report' ? 'Report' : 'Query'} Prompt 已保存`, 'success');
+        } catch(e) {
+            showToast('保存失败: ' + e.message, 'error');
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab5: 汇报记录                                                */
+    /* ══════════════════════════════════════════════════════════════ */
+    async function loadEmployeeFilter() {
+        const sel = document.getElementById('record-filter-employee');
+        if (!sel || !sbClient) return;
+        try {
+            const { data, error } = await sbClient.from('employees').select('id, name').order('name');
+            if (error) throw error;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">全部员工</option>' + (data || []).map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+            sel.value = current;
+        } catch(_) {}
+    }
+
+    async function loadRecords() {
+        const tbody = document.getElementById('record-tbody');
+        if (!sbClient || !tbody) return;
+
+        const empId = document.getElementById('record-filter-employee')?.value;
+        const dateFrom = document.getElementById('record-filter-date-from')?.value;
+        const dateTo = document.getElementById('record-filter-date-to')?.value;
+
+        try {
+            let query = sbClient.from('work_records').select('*, employees(name)').order('created_at', { ascending: false }).limit(100);
+            if (empId) query = query.eq('employee_id', empId);
+            if (dateFrom) query = query.gte('record_date', dateFrom);
+            if (dateTo) query = query.lte('record_date', dateTo + 'T23:59:59');
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<div class="empty-state"><span class="material-icons-round">assignment</span><p>暂无汇报记录</p></div>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(r => {
+                const name = r.employees?.name || '-';
+                const initial = name.charAt(0);
+                const dateStr = r.record_date || '-';
+                const timeStr = r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-';
+                const rawText = r.raw_text || '-';
+                return `
+                <div class="record-card">
+                    <div class="record-avatar">${esc(initial)}</div>
+                    <div class="record-info">
+                        <div class="record-top">
+                            <span class="record-name">${esc(name)}</span>
+                            <span class="record-date">${esc(dateStr)}</span>
+                        </div>
+                        <div class="record-text">${esc(rawText)}</div>
+                        <div class="record-meta">提交于 ${esc(timeStr)}</div>
+                    </div>
+                    <div class="record-actions">
+                        <button class="btn-sm btn-sm-accent" onclick="viewRecord('${r.id}')">
+                            <span class="material-icons-round">visibility</span>
+                        </button>
+                        <button class="btn-sm btn-sm-danger" onclick="deleteRecord('${r.id}')">
+                            <span class="material-icons-round">delete</span>
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            tbody.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function clearRecordFilter() {
+        document.getElementById('record-filter-employee').value = '';
+        document.getElementById('record-filter-date-from').value = '';
+        document.getElementById('record-filter-date-to').value = '';
+        loadRecords();
+    }
+
+    async function viewRecord(id) {
+        try {
+            const { data, error } = await sbClient.from('work_records').select('*, employees(name)').eq('id', id).single();
+            if (error) throw error;
+
+            const body = document.getElementById('record-detail-body');
+            let html = `
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div style="font-weight:700;font-size:15px">${esc(data.employees?.name || '-')}</div>
+                    <div style="font-size:12px;color:var(--ink-soft)">${esc(data.record_date || '-')} · ${data.created_at ? new Date(data.created_at).toLocaleString('zh-CN') : ''}</div>
+                </div>
+            `;
+
+            if (data.raw_text) {
+                html += `
+                    <div class="form-group">
+                        <label class="form-label">原始文本</label>
+                        <div style="padding:10px 14px;background:var(--surface);border-radius:10px;font-size:13px;line-height:1.6;white-space:pre-wrap">${esc(data.raw_text)}</div>
+                    </div>
+                `;
+            }
+
+            if (data.formatted_text) {
+                let formatted;
+                try { formatted = typeof data.formatted_text === 'string' ? JSON.parse(data.formatted_text) : data.formatted_text; } catch(_) { formatted = null; }
+
+                if (formatted && typeof formatted === 'object') {
+                    html += '<div class="form-group"><label class="form-label">整理结果</label>';
+                    for (const [key, val] of Object.entries(formatted)) {
+                        html += `<div style="padding:8px 14px;background:var(--accent-light);border-radius:8px;margin-bottom:6px">
+                            <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:2px">${esc(key)}</div>
+                            <div style="font-size:13px;line-height:1.5">${esc(typeof val === 'string' ? val : JSON.stringify(val))}</div>
+                        </div>`;
+                    }
+                    html += '</div>';
+                }
+            }
+
+            body.innerHTML = html;
+            document.getElementById('record-detail-modal').classList.add('show');
+        } catch(e) {
+            showToast('加载详情失败: ' + e.message, 'error');
+        }
+    }
+
+    function closeRecordDetailModal() {
+        document.getElementById('record-detail-modal').classList.remove('show');
+    }
+
+    async function deleteRecord(id) {
+        if (!confirm('确定删除此汇报记录吗？')) return;
+        try {
+            const { error } = await sbClient.from('work_records').delete().eq('id', id);
+            if (error) throw error;
+            showToast('已删除', 'success');
+            loadRecords();
+        } catch(e) {
+            showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  Tab6: 对话记录                                                */
+    /* ══════════════════════════════════════════════════════════════ */
+    // ── 对话记录左滑删除 ──────────────────────────────────────
+    (function(){
+        let _touchStartX = 0, _touchEl = null, _openEl = null;
+        document.addEventListener('touchstart', e => {
+            const card = e.target.closest('.conv-swipe-card');
+            if(!card) { if(_openEl){ _closeSwipe(_openEl); _openEl=null; } return; }
+            _touchStartX = e.touches[0].clientX;
+            _touchEl = card;
+        }, {passive:true});
+        document.addEventListener('touchend', e => {
+            if(!_touchEl) return;
+            const dx = e.changedTouches[0].clientX - _touchStartX;
+            if(dx < -52) {
+                if(_openEl && _openEl !== _touchEl) _closeSwipe(_openEl);
+                _openSwipe(_touchEl); _openEl = _touchEl;
+            } else if(dx > 20) {
+                _closeSwipe(_touchEl); if(_openEl===_touchEl) _openEl=null;
+            }
+            _touchEl = null;
+        }, {passive:true});
+        function _openSwipe(card){ card.querySelector('.conv-inner').style.transform='translateX(-72px)'; card.querySelector('.conv-del-btn').style.opacity='1'; }
+        function _closeSwipe(card){ card.querySelector('.conv-inner').style.transform=''; card.querySelector('.conv-del-btn').style.opacity='0'; }
+    })();
+
+    async function deleteConversation(id, cardEl) {
+        try {
+            const { error } = await sbClient.from('query_logs').delete().eq('id', id);
+            if(error) throw error;
+            cardEl.style.transition='max-height .3s ease,opacity .3s ease,margin .3s ease';
+            cardEl.style.maxHeight = cardEl.offsetHeight+'px';
+            cardEl.style.overflow='hidden';
+            requestAnimationFrame(()=>{ cardEl.style.maxHeight='0'; cardEl.style.opacity='0'; cardEl.style.marginBottom='0'; });
+            setTimeout(()=>cardEl.remove(), 320);
+        } catch(e) { showToast('删除失败: '+e.message,'error'); }
+    }
+
+    async function loadConversations() {
+        const container = document.getElementById('conversation-tbody');
+        if (!sbClient || !container) return;
+        container.innerHTML = '<div class="empty-state"><span class="material-icons-round" style="animation:spin 1s linear infinite">refresh</span><p>加载中…</p></div>';
+        try {
+            const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+            const todayEnd   = new Date(); todayEnd.setHours(23,59,59,999);
+            const dateLabel  = todayStart.toLocaleDateString('zh-CN',{year:'numeric',month:'numeric',day:'numeric'});
+            const labelEl = document.getElementById('conv-date-label');
+            if(labelEl) labelEl.textContent = dateLabel + ' 的对话记录';
+
+            const { data, error } = await sbClient
+                .from('query_logs')
+                .select('id,created_at,question,user_message,ai_response,rag_content')
+                .eq('source', 'keepalive')
+                .gte('created_at', todayStart.toISOString())
+                .lte('created_at', todayEnd.toISOString())
+                .order('created_at', { ascending: false })
+                .limit(200);
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="empty-state"><span class="material-icons-round">chat_bubble_outline</span><p>今日暂无对话记录</p></div>';
+                return;
+            }
+
+            container.innerHTML = data.map(c => {
+                const q  = esc(c.question || c.user_message || '-');
+                const a  = esc(c.ai_response || c.rag_content || '');
+                const dt = c.created_at ? new Date(c.created_at) : null;
+                const ts = dt ? dt.toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).replace(/\//g,'/') : '-';
+                return `<div class="conv-swipe-card" style="position:relative;overflow:hidden;margin-bottom:10px;border-radius:var(--r-md);">
+                    <div class="conv-del-btn" onclick="deleteConversation('${c.id}',this.closest('.conv-swipe-card'))" style="
+                        position:absolute;right:0;top:0;bottom:0;width:72px;
+                        background:var(--danger);display:flex;align-items:center;justify-content:center;
+                        cursor:pointer;opacity:0;transition:opacity .2s;border-radius:0 var(--r-md) var(--r-md) 0;
+                    ">
+                        <span class="material-icons-round" style="color:#fff;font-size:22px!important">delete</span>
+                    </div>
+                    <div class="conv-inner" style="
+                        background:var(--white);box-shadow:var(--shadow-sm);
+                        padding:12px 16px;display:flex;flex-direction:column;gap:6px;
+                        transition:transform .25s ease;position:relative;
+                    ">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <div style="font-size:13px;font-weight:700;color:var(--ink);flex:1">${q}</div>
+                            <div style="font-size:10px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0;line-height:1.4;text-align:right">${ts}</div>
+                        </div>
+                        ${a ? `<div style="font-size:12px;color:var(--ink-soft);line-height:1.6;border-left:3px solid var(--accent);padding-left:10px;opacity:.85">${a}</div>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) {
+            container.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+</script>
+</body>
+</html>
