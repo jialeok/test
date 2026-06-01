@@ -1804,10 +1804,6 @@ function applyRAGUI(result, skipStop=false){
 
 let _ragFlushed = false; // 防止 451/459 重复触发
 
-// ★ 对话记录：累积本轮用户问题和AI回复，359时写库
-let _logQuestion = '';
-let _logAiReply  = '';
-
 // ★ 修复竞态核心：等待 lookupRAG Promise 完成后再决定播什么
 // 无论 451 还是 459 先触发，都等查询结果回来，绝不提前播兜底
 function flushPendingRAG(){
@@ -2079,19 +2075,6 @@ const onMsg=evt=>{
       // 播报结束后延迟隐藏字幕框，回到空闲状态
       clearTimeout(window._subHideTimer);
       window._subHideTimer = setTimeout(()=>setSub('',false), 800);
-      // ★ 对话记录：写入 query_logs（排除开场白，且必须有用户问题）
-      if(!_isGreeting && _logQuestion){
-        const _q=_logQuestion, _a=_logAiReply||null;
-        _logQuestion=''; _logAiReply='';
-        sbClient.from('query_logs').insert({
-          question: _q,
-          ai_response: _a,
-          matched_count: pendingRAG ? 1 : 0
-        }).then(({error})=>{
-          if(error) dbgLog('⚠️ 写入query_logs失败: '+error.message);
-          else dbgLog('✅ 对话已写库 Q='+_q.substring(0,20));
-        });
-      }
       if(_isGreeting){
         _isGreeting = false;
         setStatus('按住🎤说话…');
@@ -2133,9 +2116,6 @@ const onMsg=evt=>{
         const finals=(j.results||[]).filter(r=>!r.is_interim);
         dbgLog('🎙 451 finals条数='+finals.length+' texts='+finals.map(r=>r.text).join('|'));
         if(finals.length){
-          // ★ 对话记录：锁定本轮用户问题
-          _logQuestion = finals.map(r=>r.text).join('');
-          _logAiReply  = ''; // 重置上轮AI回复
           // 拿到最终识别结果，异步查 Supabase
           // ★ 修复竞态：把Promise存起来，flushPendingRAG会等它完成
           pendingRAGPromise = lookupRAG(t).then(result=>{
@@ -2164,8 +2144,6 @@ const onMsg=evt=>{
       }
       // 注意：若451已经把waitingForFinalASR置false，这里不会重复触发
     } else if(eid===550||eid===559){
-      // ★ 对话记录：累积AI回复文本
-      if(eid===550 && j.content) _logAiReply += j.content;
       // ★ Chip流程由553→515→500接管，不重复发515以免干扰500 TTS生成
       // ★ _pendingPTTFallback=true时LLM正在说等待语，不压制，让它说完
       if(!_chipTTSActive && !_pendingPTTFallback){
