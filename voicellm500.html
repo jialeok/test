@@ -1526,9 +1526,16 @@ const playNext=()=>{
       }
       if(sinceLastChunk >= 2000){
         _pendingRefresh = false;
-        activeMode = 'idle'; // ★ 队列真正播完，回到idle（不在359里设，防止352提前被丢）
-        dbgLog('🏁 playNext: 队列播完且距最后入队'+sinceLastChunk+'ms≥2s，activeMode→idle，执行_refreshSession');
-        _refreshSession();
+        // ★ chip流程结束后不做静默刷新，保持上下文
+        if(activeMode === 'chip' || _chipTTSActive){
+          activeMode = 'idle';
+          dbgLog('🏁 playNext: chip队列播完，仅设idle，不刷新会话');
+          setStatus('按住🎤说话…');
+        } else {
+          activeMode = 'idle'; // ★ 队列真正播完，回到idle（不在359里设，防止352提前被丢）
+          dbgLog('🏁 playNext: 队列播完且距最后入队'+sinceLastChunk+'ms≥2s，activeMode→idle，执行_refreshSession');
+          _refreshSession();
+        }
       } else {
         // 还没超过2秒，等剩余时间后再检查
         setTimeout(()=>playNext(), 2000 - sinceLastChunk + 50);
@@ -2048,9 +2055,18 @@ const onMsg=evt=>{
         setStatus('按住🎤说话…');
       } else if(_chipTTSActive){
         _chipTTSActive = false;
-        activeMode = 'idle'; // ★ chip流程结束，回到idle
-        dbgLog('🏁 359 TTSEnded (chip流程结束)，activeMode→idle，跳过会话刷新，保持上下文');
-        setStatus('按住🎤说话…');
+        dbgLog('🏁 359 TTSEnded (chip流程结束)，等本地队列播完再→idle，保持上下文');
+        // ★ 不立刻设idle，等本地音频队列真正播完，防止截断后半段音频
+        const _waitChipDone = ()=>{
+          if(playing || queue.length){
+            setTimeout(_waitChipDone, 100);
+          } else {
+            activeMode = 'idle';
+            dbgLog('🏁 chip队列播完 → activeMode→idle');
+            setStatus('按住🎤说话…');
+          }
+        };
+        _waitChipDone();
       } else {
         // ★ 延迟500ms再设_pendingRefresh，确保359之后迟到的352帧都已入队
         // 否则队列短暂为空时误判播完，提前触发静默刷新截断音频
@@ -3559,7 +3575,20 @@ const DW = (() => {
   // 麦克风
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
-    setStatus('正在聆听…');setListening(true);_ringActive=true;
+    // ★ 打断：停本地播音、清字幕、重置ptt/chip状态、发515告知服务端停止生成
+    stopAudio();
+    setSub('');
+    state = 'listening';
+    if(typeof activeMode !== 'undefined') activeMode = 'idle';
+    if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
+    if(typeof _chipToken !== 'undefined') _chipToken++;
+    setListening(true);
+    setWave(true, true);
+    _ringActive = true;
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(encode(515, JSON.stringify({}), sid));
+    }
+    setStatus('正在聆听…');
     try{
       micStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       // ★ 不强制 sampleRate:16000，让浏览器用设备原生采样率，再手动重采样到16k
