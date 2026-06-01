@@ -1899,8 +1899,7 @@ function applyRAGUI(result, skipStop=false){
   showRagCard('意图识别：查 '+rec.name+' · '+rec.date);
   setStatus('检索到日报，准备播报…');
   litFlow(2);
-  // KB_GROUPS 已在 lookupRAG 里更新并渲染，这里只做高亮匹配
-  renderKB(rec.name+rec.date);
+  // KB_GROUPS 已在 lookupRAG 里更新并渲染，这里只做高亮匹配（不触发异步renderKB）
   setTimeout(()=>{
     litFlow(3);
     showRagCard('✅ 知识库已就绪，正在发送TTS…');
