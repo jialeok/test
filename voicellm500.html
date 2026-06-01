@@ -1859,7 +1859,6 @@ async function lookupRAG(input){
         const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name, date:recDate, items:[{section:'工作内容', content:rawContent}]});
-        renderKB(emp.name+recDate);
         return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
       }
       return null;
@@ -1868,7 +1867,7 @@ async function lookupRAG(input){
     const ttsText=emp.name+'，'+recDate+'的工作日报。'+parts.join('。')+'。';
     dbgLog('✅ 播报文本(前80字): '+ttsText.substring(0,80));
 
-    // 5. 更新 KB_GROUPS 并立刻渲染（不依赖 applyRAGUI 的 setTimeout）
+    // 立刻更新 KB_GROUPS（不调用异步renderKB，避免干扰语音流程）
     KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
     KB_GROUPS.push({
       name:emp.name, date:recDate,
@@ -1876,11 +1875,9 @@ async function lookupRAG(input){
         {section:'做了什么',  content:done},
         {section:'遇到的问题',content:problem},
         {section:'明日计划',  content:plan},
-      ].filter(it=>it.content) // 过滤掉空字段
+      ].filter(it=>it.content)
     });
-    // 立刻渲染知识库tab（不等 applyRAGUI 的 setTimeout）
-    renderKB(emp.name+recDate);
-    dbgLog('✅ KB_GROUPS 已更新并渲染，key='+emp.name+recDate);
+    dbgLog('✅ KB_GROUPS 已更新，key='+emp.name+recDate);
 
     return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
   }catch(e){
@@ -2822,7 +2819,6 @@ async function lookupRAGDirect(query){
         const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name,date:recDate,items:[{section:'工作内容',content:rawContent}]});
-        renderKB(emp.name+recDate);
         return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
       }
       return null;
@@ -2832,7 +2828,6 @@ async function lookupRAGDirect(query){
     KB_GROUPS.push({name:emp.name,date:recDate,items:[
       {section:'做了什么',content:done},{section:'遇到的问题',content:problem},{section:'明日计划',content:plan}
     ].filter(it=>it.content)});
-    renderKB(emp.name+recDate);
     dbgLog('✅ lookupRAGDirect 播报文本: '+ttsText.substring(0,80));
     return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
   }catch(e){
