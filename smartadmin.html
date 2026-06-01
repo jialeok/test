@@ -1081,9 +1081,14 @@
                 <div class="section-title">💬 对话记录</div>
                 <div class="section-sub" id="conv-date-label">今日对话记录</div>
             </div>
-            <button class="btn-ghost" style="width:auto;padding:8px 14px" onclick="loadConversations()">
-                <span class="material-icons-round">refresh</span> 刷新
-            </button>
+            <div style="display:flex;gap:8px">
+                <button class="btn-ghost" style="width:auto;padding:8px 14px" onclick="loadConversations()">
+                    <span class="material-icons-round">refresh</span> 刷新
+                </button>
+                <button class="btn-ghost" style="width:auto;padding:8px 14px;color:var(--danger);border-color:rgba(255,77,109,0.3)" onclick="clearAllQueryLogs()">
+                    <span class="material-icons-round">delete_sweep</span> 清空今日
+                </button>
+            </div>
         </div>
         <div id="conversation-tbody">
             <div class="empty-state"><span class="material-icons-round">chat_bubble_outline</span><p>暂无对话记录</p></div>
@@ -2458,6 +2463,21 @@
         function _openSwipe(card){ card.querySelector('.conv-inner').style.transform='translateX(-72px)'; card.querySelector('.conv-del-btn').style.opacity='1'; }
         function _closeSwipe(card){ card.querySelector('.conv-inner').style.transform=''; card.querySelector('.conv-del-btn').style.opacity='0'; }
     })();
+
+    async function clearAllQueryLogs() {
+        if(!confirm('确定清空今日全部查询记录？此操作不可恢复。')) return;
+        try {
+            const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+            const todayEnd   = new Date(); todayEnd.setHours(23,59,59,999);
+            const { error } = await sbClient.from('query_logs')
+                .delete()
+                .gte('created_at', todayStart.toISOString())
+                .lte('created_at', todayEnd.toISOString());
+            if(error) throw error;
+            showToast('今日记录已全部清空', 'success');
+            loadConversations();
+        } catch(e) { showToast('清空失败: '+e.message, 'error'); }
+    }
 
     async function deleteConversation(id, cardEl) {
         try {
