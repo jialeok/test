@@ -3836,12 +3836,18 @@ const DW = (() => {
         if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
+          // ★ 过滤等待话术：AI只说了"正在为您查询"类的占位回复时不写库，避免与ptt结果重复
+          const _waitPhrases=['正在为您查询','稍等','查询中','请稍等'];
+          const _isWaitOnly = _a && _waitPhrases.some(p=>_a.includes(p)) && (_a||'').length < 30;
+          if(_isWaitOnly){ dwLog('[359] 跳过写库（等待话术）A='+(_a||'')); }
+          else {
           dwLog('[359] 准备写库 Q='+_q+' A='+(_a||'(空)'));
           const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
           if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
             if(error) dwLog('[359] ❌写库失败: '+error.message);
             else dwLog('[359] ✅写库成功 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
           });
+          } // end else (not wait phrase)
         }
       }else if(eid===450){stopAudio();
       }else if(eid===451){
