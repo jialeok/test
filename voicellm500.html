@@ -1395,6 +1395,8 @@ function setSub(t,active){
   const tips=$('voiceTipsStrip');
   if(tips) tips.classList.toggle('hidden', show);
 }
+// ★ 暴露给 Widget 跨作用域调用
+window._mainSetSub = setSub;
 function setWave(on,green){
   document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); });
 }
@@ -1563,6 +1565,8 @@ const stopAudio=()=>{
   }
   queue=[];chunks=[];playing=false;
 };
+// ★ 暴露给 Widget 跨作用域调用
+window._mainStopAudio = stopAudio;
 
 // ══ 意图匹配 + RAG 检索（同步）═══════════════════════════
 const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
@@ -3575,13 +3579,17 @@ const DW = (() => {
   // 麦克风
   const _startMic=async()=>{
     $('dw-tapbtn').style.display='none';
-    // ★ 打断：停本地播音、清字幕、重置ptt/chip状态、发515告知服务端停止生成
-    stopAudio();
-    setSub('');
-    state = 'listening';
+    // ★ 打断主页面（ptt/chip）音频和字幕，两套作用域需分别调用
+    if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
+    if(typeof window._mainSetSub === 'function') window._mainSetSub('', false);
+    // ★ 重置主页面 ptt/chip 状态，防止飞行中352帧继续入队
     if(typeof activeMode !== 'undefined') activeMode = 'idle';
     if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
     if(typeof _chipToken !== 'undefined') _chipToken++;
+    // ★ 停Widget自己的音频、清Widget字幕
+    stopAudio();
+    setSub('');
+    state = 'listening';
     setListening(true);
     setWave(true, true);
     _ringActive = true;
