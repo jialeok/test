@@ -7,7 +7,20 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260531-9 -->
+<!-- v=20260601-1 -->
+<script>
+// ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
+(function(){
+  var VER = '20260601-1'; // ← 与上方注释保持一致，每次部署改这里
+  var stored = localStorage.getItem('_voiq_ver');
+  if(stored && stored !== VER){
+    localStorage.setItem('_voiq_ver', VER);
+    location.reload(true); // 强制从服务器重新加载
+  } else {
+    localStorage.setItem('_voiq_ver', VER);
+  }
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 </script>
 <style>
