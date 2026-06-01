@@ -1398,10 +1398,19 @@ function setSub(t,active){
 window._mainSetSub = setSub;
 // ★ 强制隐藏字幕板（setSub只清文字，这里直接隐藏DOM）
 window._mainHideSub = () => {
+  // 隐藏主字幕框
   const el = document.getElementById('subtitle');
   if(el){ el.classList.remove('active'); el.style.display='none'; el.textContent=''; }
   const tips = document.getElementById('voiceTipsStrip');
   if(tips) tips.classList.remove('hidden');
+  // 隐藏字幕状态条（chip查询详情板里的"实时字幕播报"条）
+  const captionBtn = document.getElementById('captionEntryBtn');
+  if(captionBtn) captionBtn.style.display = 'none';
+  // 关闭字幕覆盖层
+  const captionOv = document.getElementById('captionOverlay');
+  if(captionOv) captionOv.classList.remove('show');
+  // 停止字幕波形动画
+  if(typeof _setEntryWave === 'function') _setEntryWave(false);
 };
 function setWave(on,green){
   document.querySelectorAll('.dw-bar').forEach(b=>{ b.classList.toggle('active',on); b.classList.toggle('green',!!green); });
