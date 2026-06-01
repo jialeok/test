@@ -1464,7 +1464,7 @@ function renderQueryLogs(){
   const end   = new Date(todayStr + 'T23:59:59').toISOString();
   sbClient.from('query_logs')
     .select('id,question,ai_response,rag_content,matched_count,created_at')
-    .eq('source', 'chip')
+    .in('source', ['chip', 'ptt'])
     .gte('created_at', start)
     .lte('created_at', end)
     .order('created_at', {ascending: false})
@@ -1886,7 +1886,8 @@ function applyRAGUI(result, skipStop=false){
     const dayLabel = _friendlyDate(rec.date);
     openDetailBoard(rec.name, rec.date, dayLabel, true /* voiceMode: skip chipQuery */);
     // 写 query_logs（纯异步.then，不影响语音流程）
-    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'keepalive'}).then(()=>{}).catch(()=>{});
+    const _src = activeMode === 'ptt' ? 'ptt' : 'keepalive';
+    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:_src}).then(()=>{}).catch(()=>{});
   }
 }
 
