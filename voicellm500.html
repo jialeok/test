@@ -1403,9 +1403,13 @@ window._mainHideSub = () => {
   if(el){ el.classList.remove('active'); el.style.display='none'; el.textContent=''; }
   const tips = document.getElementById('voiceTipsStrip');
   if(tips) tips.classList.remove('hidden');
-  // 隐藏字幕状态条（chip查询详情板里的"实时字幕播报"条）
+  // 关闭详情板，恢复首页气泡列表
+  if(typeof closeDetailBoard === 'function') closeDetailBoard();
+  // 隐藏字幕状态条
   const captionBtn = document.getElementById('captionEntryBtn');
   if(captionBtn) captionBtn.style.display = 'none';
+  const captionFloatBtn = document.getElementById('captionEntryFloatBtn');
+  if(captionFloatBtn) captionFloatBtn.style.display = 'none';
   // 关闭字幕覆盖层
   const captionOv = document.getElementById('captionOverlay');
   if(captionOv) captionOv.classList.remove('show');
