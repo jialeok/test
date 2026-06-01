@@ -880,6 +880,17 @@
       <pre id="dbg-diagnose-result" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:#374151;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto">等待诊断…</pre>
     </div>
 
+    <!-- DW 聊天助理调试日志 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:#8b5cf6;margin-bottom:8px;letter-spacing:.1em">💬 聊天助理(DW)事件日志</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">记录keepalive模式的350/451/550/359事件，用于排查AI回复写库问题</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <button onclick="document.getElementById('dbg-dw-log').textContent=''" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">🗑️ 清空</button>
+        <button onclick="dbgCopy('dbg-dw-log',this)" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">📋 复制</button>
+      </div>
+      <pre id="dbg-dw-log" style="font-family:var(--mono);font-size:11px;color:#374151;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto">等待DW事件…</pre>
+    </div>
+
   </div>
 </div>
 
@@ -3691,6 +3702,14 @@ const DW = (() => {
   // ★ 对话记录：累积本轮用户问题和AI回复，359时写库
   let _dwLogQuestion = '';
   let _dwLogAiReply  = '';
+  // ★ 调试面板日志函数
+  const dwLog = msg => {
+    const el = document.getElementById('dbg-dw-log');
+    if(!el) return;
+    const ts = new Date().toISOString().slice(11,23);
+    if(el.textContent === '等待DW事件…') el.textContent = '';
+    el.textContent = ts + ' ' + msg + '\n' + el.textContent;
+  };
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
     const{msgType,eid,payload}=parseFrame(evt.data);
@@ -3726,7 +3745,9 @@ const DW = (() => {
         // ★ 510已移除：初始上下文已在StartSession的dialog_context里一次性设好
         state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
       }else if(eid===350){
-        const t=j.text||'';if(t){setSub(t);_dwLogAiReply+=t;}  // ★ 累积AI回复
+        const t=j.text||'';
+        dwLog('[350] text="'+t+'" payload='+JSON.stringify(j).substring(0,150));
+        if(t){setSub(t);_dwLogAiReply+=t;}
         state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
       }else if(eid===359){
@@ -3735,10 +3756,11 @@ const DW = (() => {
         if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
+          dwLog('[359] 准备写库 Q='+_q+' A='+(_a||'(空)'));
           const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
           if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0}).then(({error})=>{
-            if(error) console.warn('[DW] 写入query_logs失败:',error.message);
-            else console.log('[DW] 对话已写库 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
+            if(error) dwLog('[359] ❌写库失败: '+error.message);
+            else dwLog('[359] ✅写库成功 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
           });
         }
       }else if(eid===450){stopAudio();
@@ -3748,8 +3770,11 @@ const DW = (() => {
           setStatus('我听到：'+t);setSub(t);
           // ★ 对话记录：取最终识别结果（非interim）作为用户问题
           const finals=(j.results||[]).filter(r=>!r.is_interim);
-          if(finals.length) _dwLogQuestion=finals.map(r=>r.text).join('');
+          if(finals.length){ _dwLogQuestion=finals.map(r=>r.text).join(''); dwLog('[451] 用户问题锁定: '+_dwLogQuestion); }
         }
+      }else if(eid===550){
+        // ★ keepalive模式550 ChatResponse，累积AI回复
+        if(j.content){_dwLogAiReply+=j.content;dwLog('[550] content='+j.content.substring(0,50));}
       }else if(eid===153||eid===599){setStatus('连接出错，请重试');}
     }
     if(msgType===11&&payload)chunks.push(payload);
