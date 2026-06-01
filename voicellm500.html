@@ -424,28 +424,11 @@
   .rag-card:empty{display:none!important}
   .rag-card{flex-shrink:0}
 
-  /* ── 对话卡（keepalive）── */
-  .kb-chat-card{
-    background:#fff;border:1px solid var(--border);border-radius:14px;
-    padding:14px;margin-bottom:0;
-    box-shadow:0 1px 4px rgba(0,0,0,.05);
-    border-left:3px solid var(--accent3);
-  }
-  .kb-chat-tag{
-    font-size:10px;font-weight:700;letter-spacing:.08em;
-    color:var(--accent3);background:rgba(139,92,246,.08);
-    border:1px solid rgba(139,92,246,.18);
-    padding:2px 8px;border-radius:20px;
-  }
-  .kb-chat-q{
-    font-size:14px;font-weight:600;color:var(--text);
-    margin-bottom:6px;line-height:1.5;
-  }
-  .kb-chat-a{
-    font-size:13px;color:var(--muted);line-height:1.6;
-    padding:8px 10px;background:#f8fafc;border-radius:8px;
-    border:1px solid var(--border);
-  }
+  /* ── 查询日志对话卡 ── */
+  .ql-chat-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;border-left:3px solid var(--accent3);box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .ql-chat-tag{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent3);background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.18);padding:2px 8px;border-radius:20px}
+  .ql-chat-q{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;line-height:1.5}
+  .ql-chat-a{font-size:13px;color:var(--muted);line-height:1.6;padding:8px 10px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)}
 
   /* ── 星球浮动模板 ── */
   .hints.planet-mode{
@@ -1345,7 +1328,7 @@ const contentEls = document.querySelectorAll('.tab-content');
 function switchTab(i){
   tabEls.forEach((t,j)=>t.classList.toggle('active',i===j));
   contentEls.forEach((c,j)=>c.classList.toggle('active',i===j));
-  if(i===1){ renderKB(); }
+  if(i===1){ renderQueryLogs(); }
   if(i===4){ dbgLoadEmployees(); dbgLoadRecords(); }
 }
 
@@ -1456,96 +1439,86 @@ function setWave(on,green){
 }
 function showRagCard(t){ if(!window._uiRagCardEnabled) return; const c=$('ragCard'); if(t){c.textContent='⚡ '+t;c.classList.add('show');}else{c.classList.remove('show');} }
 
-// ══ 知识库渲染（从 query_logs 读当天数据）═══════════════
-async function renderKB(){
-  const list=$('kbList');
-  if(!list) return;
-  list.innerHTML='<div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:12px;font-family:var(--mono)">加载中…</div>';
-
-  try{
-    // 当天时间范围（本地时间转UTC）
-    const todayStr = getDateStr(0); // YYYY-MM-DD 本地
-    const startLocal = new Date(todayStr + 'T00:00:00');
-    const endLocal   = new Date(todayStr + 'T23:59:59');
-
-    const {data, error} = await sbClient
-      .from('query_logs')
-      .select('id, question, ai_response, rag_content, matched_count, created_at')
-      .gte('created_at', startLocal.toISOString())
-      .lte('created_at', endLocal.toISOString())
-      .order('created_at', {ascending: false});
-
-    if(error){ list.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">加载失败</div>'; return; }
-    if(!data||data.length===0){
-      list.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:2.2"><div style="font-size:32px;opacity:.35;margin-bottom:10px">📋</div>今日暂无查询记录<br>使用语音或点击员工标签开始查询</div>';
-      return;
-    }
-
-    list.innerHTML = '';
-    data.forEach(row => {
-      const isRAG = (row.matched_count > 0) || (row.rag_content && row.rag_content.trim());
-      const timeStr = row.created_at ? new Date(row.created_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : '';
-
-      if(isRAG){
-        // ── RAG日报卡（chip / ptt）──
-        const ragText = row.rag_content || row.ai_response || '';
-        // 解析姓名（rag_content 第一个"，"前 或 question 里提取）
-        let empName = '';
-        const nameMatch = ragText.match(/^([^，,]+)[，,]/);
-        if(nameMatch) empName = nameMatch[1].replace('，','').trim();
-        if(!empName){
-          const qNameM = (row.question||'').match(/查(.{1,4})的?日报/);
-          if(qNameM) empName = qNameM[1];
-        }
-        // 解析日期
-        let dateStr = '';
-        const dateMatch = ragText.match(/(\d{4}-\d{2}-\d{2})/);
-        if(dateMatch) dateStr = dateMatch[1];
-        // 解析三段内容
-        const doneM    = ragText.match(/今日完成[：:]\s*([^。]+)/);
-        const probM    = ragText.match(/遇到[的]?问题[：:]\s*([^。]+)/);
-        const planM    = ragText.match(/明日计划[：:]\s*([^。]+)/);
-
-        const div = document.createElement('div');
-        div.className = 'kb-item';
-        let fieldsHtml = '';
-        if(doneM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent)">做了什么</div><div class="kb-content">${doneM[1]}</div></div>`;
-        if(probM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--warn)">遇到的问题</div><div class="kb-content">${probM[1]}</div></div>`;
-        if(planM)  fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent2)">明日计划</div><div class="kb-content">${planM[1]}</div></div>`;
-        if(!fieldsHtml && ragText) fieldsHtml = `<div class="kb-row"><div class="kb-content" style="color:var(--muted)">${ragText.substring(0,120)}</div></div>`;
-
-        div.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <div class="kb-name">${empName||'日报查询'}</div>
-            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${timeStr} ✓ 已检索</span>
-          </div>
-          ${dateStr?`<div class="kb-date">${dateStr}</div>`:''}
-          ${fieldsHtml}`;
-        list.appendChild(div);
-
-      } else {
-        // ── 对话卡（keepalive）──
-        const div = document.createElement('div');
-        div.className = 'kb-chat-card';
-        const q = row.question || '';
-        const a = row.ai_response || '';
-        div.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span class="kb-chat-tag">💬 对话</span>
-            <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${timeStr}</span>
-          </div>
-          <div class="kb-chat-q">${q}</div>
-          ${a?`<div class="kb-chat-a">${a}</div>`:''}`;
-        list.appendChild(div);
-      }
-    });
-
-  }catch(e){
-    dbgLog('⚠️ renderKB 异常: '+e.message);
-    list.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:12px">加载异常</div>';
-  }
+// ══ 知识库渲染 ════════════════════════════════════════════
+function renderKB(matchedKey){
+  const list=$('kbList'); list.innerHTML='';
+  KB_GROUPS.forEach(rec=>{
+    const key=rec.name+rec.date;
+    const div=document.createElement('div');
+    div.className='kb-item'+(matchedKey===key?' matched':'');
+    let html=`<div class="kb-name">${rec.name}</div><div class="kb-date">${rec.date}</div>`;
+    rec.items.forEach(it=>{ html+=`<div class="kb-row"><div class="kb-section">${it.section}</div><div class="kb-content">${it.content}</div></div>`; });
+    div.innerHTML=html; list.appendChild(div);
+  });
 }
-renderKB();
+renderKB(null);
+
+// ══ 查询内容Tab：从 query_logs 读当天记录渲染 ══════════════
+// 完全独立函数，不干扰任何语音逻辑
+function renderQueryLogs(){
+  const list = $('kbList');
+  if(!list) return;
+  list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;font-family:var(--mono)">加载中…</div>';
+  const todayStr = getDateStr(0);
+  const start = new Date(todayStr + 'T00:00:00').toISOString();
+  const end   = new Date(todayStr + 'T23:59:59').toISOString();
+  sbClient.from('query_logs')
+    .select('id,question,ai_response,rag_content,matched_count,created_at')
+    .gte('created_at', start)
+    .lte('created_at', end)
+    .order('created_at', {ascending: false})
+    .then(({data, error}) => {
+      if(error || !data){
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">加载失败</div>';
+        return;
+      }
+      if(data.length === 0){
+        list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:2.2"><div style="font-size:32px;opacity:.35;margin-bottom:10px">📋</div>今日暂无查询记录</div>';
+        return;
+      }
+      list.innerHTML = '';
+      data.forEach(row => {
+        const isRAG = row.matched_count > 0;
+        const timeStr = row.created_at ? new Date(row.created_at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : '';
+        const div = document.createElement('div');
+        if(isRAG){
+          // RAG日报卡
+          const ragText = row.rag_content || row.ai_response || '';
+          const nameM = (row.question||'').match(/查(.{1,4})的?工作日报/);
+          const empName = nameM ? nameM[1] : '';
+          const dateM = ragText.match(/(\d{4}-\d{2}-\d{2})/);
+          const dateStr = dateM ? dateM[1] : '';
+          const doneM  = ragText.match(/今日完成[：:]\s*([^。]+)/);
+          const probM  = ragText.match(/遇到[的]?问题[：:]\s*([^。]+)/);
+          const planM  = ragText.match(/明日计划[：:]\s*([^。]+)/);
+          let fieldsHtml = '';
+          if(doneM) fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent)">做了什么</div><div class="kb-content">${doneM[1]}</div></div>`;
+          if(probM) fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--warn)">遇到的问题</div><div class="kb-content">${probM[1]}</div></div>`;
+          if(planM) fieldsHtml += `<div class="kb-row"><div class="kb-section" style="color:var(--accent2)">明日计划</div><div class="kb-content">${planM[1]}</div></div>`;
+          if(!fieldsHtml && ragText) fieldsHtml = `<div class="kb-row"><div class="kb-content" style="color:var(--muted);font-size:12px">${ragText.substring(0,120)}</div></div>`;
+          div.className = 'kb-item';
+          div.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div class="kb-name">${empName||'日报查询'}</div>
+              <span style="font-size:10px;color:var(--accent);font-family:var(--mono)">${timeStr} ✓ 已检索</span>
+            </div>
+            ${dateStr ? `<div class="kb-date">${dateStr}</div>` : ''}
+            ${fieldsHtml}`;
+        } else {
+          // 对话卡
+          div.className = 'ql-chat-card';
+          div.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span class="ql-chat-tag">💬 对话</span>
+              <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${timeStr}</span>
+            </div>
+            <div class="ql-chat-q">${row.question||''}</div>
+            ${row.ai_response ? `<div class="ql-chat-a">${row.ai_response}</div>` : ''}`;
+        }
+        list.appendChild(div);
+      });
+    });
+}
 
 // ══ RAG详情渲染（500版本）════════════════════════════════
 function renderDetail500(query,rec,text){
@@ -1859,6 +1832,7 @@ async function lookupRAG(input){
         const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name, date:recDate, items:[{section:'工作内容', content:rawContent}]});
+        renderKB(emp.name+recDate);
         return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
       }
       return null;
@@ -1867,7 +1841,7 @@ async function lookupRAG(input){
     const ttsText=emp.name+'，'+recDate+'的工作日报。'+parts.join('。')+'。';
     dbgLog('✅ 播报文本(前80字): '+ttsText.substring(0,80));
 
-    // 立刻更新 KB_GROUPS（不调用异步renderKB，避免干扰语音流程）
+    // 5. 更新 KB_GROUPS 并立刻渲染（不依赖 applyRAGUI 的 setTimeout）
     KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
     KB_GROUPS.push({
       name:emp.name, date:recDate,
@@ -1875,9 +1849,11 @@ async function lookupRAG(input){
         {section:'做了什么',  content:done},
         {section:'遇到的问题',content:problem},
         {section:'明日计划',  content:plan},
-      ].filter(it=>it.content)
+      ].filter(it=>it.content) // 过滤掉空字段
     });
-    dbgLog('✅ KB_GROUPS 已更新，key='+emp.name+recDate);
+    // 立刻渲染知识库tab（不等 applyRAGUI 的 setTimeout）
+    renderKB(emp.name+recDate);
+    dbgLog('✅ KB_GROUPS 已更新并渲染，key='+emp.name+recDate);
 
     return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
   }catch(e){
@@ -1896,7 +1872,8 @@ function applyRAGUI(result, skipStop=false){
   showRagCard('意图识别：查 '+rec.name+' · '+rec.date);
   setStatus('检索到日报，准备播报…');
   litFlow(2);
-  // KB_GROUPS 已在 lookupRAG 里更新并渲染，这里只做高亮匹配（不触发异步renderKB）
+  // KB_GROUPS 已在 lookupRAG 里更新并渲染，这里只做高亮匹配
+  renderKB(rec.name+rec.date);
   setTimeout(()=>{
     litFlow(3);
     showRagCard('✅ 知识库已就绪，正在发送TTS…');
@@ -1907,13 +1884,8 @@ function applyRAGUI(result, skipStop=false){
   if(!skipStop){
     const dayLabel = _friendlyDate(rec.date);
     openDetailBoard(rec.name, rec.date, dayLabel, true /* voiceMode: skip chipQuery */);
-    // ★ ptt路径：写 query_logs（chip路径已在chipQuery里写）
-    sbClient.from('query_logs').insert({
-      question: '查'+rec.name+'的工作日报',
-      ai_response: result.text,
-      rag_content: result.text,
-      matched_count: 1
-    }).catch(()=>{});
+    // 写 query_logs（纯异步.then，不影响语音流程）
+    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1}).then(()=>{}).catch(()=>{});
   }
 }
 
@@ -2651,13 +2623,8 @@ async function chipQuery(name, dateStr, dayLabel){
   if(result){
     applyRAGUI(result, true);
     litFlow(3);
-    // ★ 写 query_logs（chip RAG成功，在外层安全写，不污染lookupRAGDirect）
-    sbClient.from('query_logs').insert({
-      question: '查'+name+'的工作日报',
-      ai_response: result.text,
-      rag_content: result.text,
-      matched_count: 1
-    }).catch(()=>{});
+    // 写 query_logs（纯异步.then，不影响语音流程）
+    sbClient.from('query_logs').insert({question:'查'+name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1}).then(()=>{}).catch(()=>{});
   }
 
   // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
@@ -2819,6 +2786,7 @@ async function lookupRAGDirect(query){
         const ttsText=emp.name+'，'+recDate+'的工作日报。'+rawContent.substring(0,200);
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name,date:recDate,items:[{section:'工作内容',content:rawContent}]});
+        renderKB(emp.name+recDate);
         return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
       }
       return null;
@@ -2828,6 +2796,7 @@ async function lookupRAGDirect(query){
     KB_GROUPS.push({name:emp.name,date:recDate,items:[
       {section:'做了什么',content:done},{section:'遇到的问题',content:problem},{section:'明日计划',content:plan}
     ].filter(it=>it.content)});
+    renderKB(emp.name+recDate);
     dbgLog('✅ lookupRAGDirect 播报文本: '+ttsText.substring(0,80));
     return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
   }catch(e){
