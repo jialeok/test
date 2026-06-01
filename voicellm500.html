@@ -3688,8 +3688,9 @@ const DW = (() => {
 
   // 消息处理
   const sanitize=s=>s.replace(/[\r\n\t]/g,' ').replace(/\\/g,'、').replace(/["]/g,'').replace(/\s{2,}/g,' ').trim().substring(0,500);
-  // ★ 对话记录：累积本轮用户问题，359时写库
+  // ★ 对话记录：累积本轮用户问题和AI回复，359时写库
   let _dwLogQuestion = '';
+  let _dwLogAiReply  = '';
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
     const{msgType,eid,payload}=parseFrame(evt.data);
@@ -3724,17 +3725,20 @@ const DW = (() => {
         }
         // ★ 510已移除：初始上下文已在StartSession的dialog_context里一次性设好
         state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
-      }else if(eid===350){const t=j.text||'';if(t)setSub(t);state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
+      }else if(eid===350){
+        const t=j.text||'';if(t){setSub(t);_dwLogAiReply+=t;}  // ★ 累积AI回复
+        state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
       }else if(eid===359){
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
-        // ★ 对话记录：本轮播报结束，把用户问题写入 query_logs
+        // ★ 对话记录：本轮播报结束，把问答写入 query_logs
         if(_dwLogQuestion){
-          const _q=_dwLogQuestion; _dwLogQuestion='';
+          const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
+          _dwLogQuestion=''; _dwLogAiReply='';
           const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
-          if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:null,matched_count:0}).then(({error})=>{
+          if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0}).then(({error})=>{
             if(error) console.warn('[DW] 写入query_logs失败:',error.message);
-            else console.log('[DW] 对话已写库 Q='+_q.substring(0,20));
+            else console.log('[DW] 对话已写库 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
           });
         }
       }else if(eid===450){stopAudio();
