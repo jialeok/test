@@ -1860,8 +1860,6 @@ async function lookupRAG(input){
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name, date:recDate, items:[{section:'工作内容', content:rawContent}]});
         renderKB(emp.name+recDate);
-        // ★ 写 query_logs（RAG成功）
-        sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
         return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
       }
       return null;
@@ -1883,8 +1881,6 @@ async function lookupRAG(input){
     // 立刻渲染知识库tab（不等 applyRAGUI 的 setTimeout）
     renderKB(emp.name+recDate);
     dbgLog('✅ KB_GROUPS 已更新并渲染，key='+emp.name+recDate);
-    // ★ 写 query_logs（RAG成功）
-    sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
 
     return{query:{...query,date:recDate}, rec:{name:emp.name,date:recDate}, text:ttsText};
   }catch(e){
@@ -1915,6 +1911,13 @@ function applyRAGUI(result, skipStop=false){
   if(!skipStop){
     const dayLabel = _friendlyDate(rec.date);
     openDetailBoard(rec.name, rec.date, dayLabel, true /* voiceMode: skip chipQuery */);
+    // ★ ptt路径：写 query_logs（chip路径已在chipQuery里写）
+    sbClient.from('query_logs').insert({
+      question: '查'+rec.name+'的工作日报',
+      ai_response: result.text,
+      rag_content: result.text,
+      matched_count: 1
+    }).catch(()=>{});
   }
 }
 
@@ -2652,6 +2655,13 @@ async function chipQuery(name, dateStr, dayLabel){
   if(result){
     applyRAGUI(result, true);
     litFlow(3);
+    // ★ 写 query_logs（chip RAG成功，在外层安全写，不污染lookupRAGDirect）
+    sbClient.from('query_logs').insert({
+      question: '查'+name+'的工作日报',
+      ai_response: result.text,
+      rag_content: result.text,
+      matched_count: 1
+    }).catch(()=>{});
   }
 
   // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
@@ -2814,8 +2824,6 @@ async function lookupRAGDirect(query){
         KB_GROUPS=KB_GROUPS.filter(r=>!(r.name===emp.name&&r.date===recDate));
         KB_GROUPS.push({name:emp.name,date:recDate,items:[{section:'工作内容',content:rawContent}]});
         renderKB(emp.name+recDate);
-        // ★ 写 query_logs（RAG成功）
-        sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
         return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
       }
       return null;
@@ -2827,8 +2835,6 @@ async function lookupRAGDirect(query){
     ].filter(it=>it.content)});
     renderKB(emp.name+recDate);
     dbgLog('✅ lookupRAGDirect 播报文本: '+ttsText.substring(0,80));
-    // ★ 写 query_logs（RAG成功）
-    sbClient.from('query_logs').insert({question:'查'+emp.name+'的工作日报',ai_response:ttsText,rag_content:ttsText,matched_count:1}).catch(()=>{});
     return{query:{...query,date:recDate},rec:{name:emp.name,date:recDate},text:ttsText};
   }catch(e){
     dbgLog('⚠️ lookupRAGDirect 异常: '+e.message);
