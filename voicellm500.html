@@ -1464,7 +1464,7 @@ function renderQueryLogs(){
   const end   = new Date(todayStr + 'T23:59:59').toISOString();
   sbClient.from('query_logs')
     .select('id,question,ai_response,rag_content,matched_count,created_at')
-    .in('source', ['chip', 'ptt'])
+    .in('source', ['chip', 'ptt', 'keepalive'])
     .gte('created_at', start)
     .lte('created_at', end)
     .order('created_at', {ascending: false})
