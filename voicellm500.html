@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260601-1 -->
+<!-- v=20260603-1 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260601-1'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-1'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -917,7 +917,7 @@
     <!-- DW 聊天助理调试日志 -->
     <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
       <div style="font-family:var(--mono);font-size:10px;color:#8b5cf6;margin-bottom:8px;letter-spacing:.1em">💬 聊天助理(DW)事件日志</div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">RAG步骤: [RAG-0]ASREnded → [RAG-1]意图识别 → [RAG-2]515掐断 → [RAG-3]500安抚 → [RAG-4]查库 → [RAG-5]359播完 → [RAG-6]502发送</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">RAG步骤: [RAG-0]ASREnded → [RAG-1]意图识别 → [RAG-2]515掐断 → [RAG-4]查库缓存 → [RAG-5]359到达 → [RAG-6]502发送（查完+359双条件）</div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <button onclick="document.getElementById('dbg-dw-log').textContent=''" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">🗑️ 清空</button>
         <button onclick="dbgCopy('dbg-dw-log',this)" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">📋 复制</button>
@@ -3926,12 +3926,13 @@ const DW = (() => {
   let _dwLogQuestion = '';
   let _dwLogAiReply  = '';
   // ★ ChatRAGText(502) 路径变量：freechat中检测到overview意图时触发
-  let _dwPendingRAG   = false;   // 是否在等待RAG结果（LLM播完后发502）
+  let _dwPendingRAG   = false;   // 是否在等待RAG结果
   let _dwRAGPromise   = null;    // lookupOverview 的 Promise
   let _dwRAGQuestion  = '';      // 触发RAG的用户问题文本
-  let _dwRAGResult    = null;    // lookupOverview 返回的文本结果
+  let _dwRAGResult    = null;    // lookupOverview 返回的文本结果（查完后缓存，359时发送）
   let _dwRAGEmpName   = '';      // 单人查询时的员工姓名
-  let _dwRAGTimer     = null;    // 超时兜底定时器（15秒后还收不到359就强制发502）
+  let _dwRAGTimer     = null;    // 超时兜底定时器
+  let _dwRAG359Arrived = false;  // ★ 359是否已先于RAG结果到达（双条件触发502用）
   // ★ 调试面板日志函数
   const dwLog = msg => {
     const el = document.getElementById('dbg-dw-log');
@@ -4059,9 +4060,34 @@ const DW = (() => {
       }else if(eid===351){flushAudio();
       }else if(eid===359){
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
-        // ★ RAG 502已在451/Supabase完成回调中发送，此处不再处理
-        // 正常写库（非RAG路径或RAG已处理）
-        if(_dwLogQuestion && !_dwPendingRAG){
+
+        // ★ RAG双条件触发：359到达时检查RAG结果是否已就绪
+        if(_dwPendingRAG){
+          _dwRAG359Arrived = true; // 标记359已到
+          if(_dwRAGResult){
+            // ✅ RAG结果已先到，现在可以安全发502
+            dwLog('[RAG-5] 359到达，RAG结果已就绪 → 立刻发502');
+            if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
+            _dwPendingRAG = false;
+            const _resultToSend = _dwRAGResult;
+            const _qSave = _dwRAGQuestion;
+            _dwRAGResult = null; _dwRAGPromise = null; _dwRAGQuestion = ''; _dwRAG359Arrived = false;
+            sendChatRAG_dw(_resultToSend, '(keepalive-359触发)');
+            dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+_resultToSend.length);
+            const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
+            if(_sb) _sb.from('query_logs').insert({question:_qSave,ai_response:'',source:'keepalive_rag'}).then(({error})=>{
+              if(error) dwLog('[RAG-6] ❌写库失败: '+error.message);
+              else dwLog('[RAG-6] ✅写库成功 Q='+_qSave.substring(0,20)+' source=keepalive_rag');
+            });
+          } else {
+            // RAG查询还未完成，设标记，由RAG Promise的.then()在完成时发502
+            dwLog('[RAG-5] 359到达，RAG查询仍在进行中 → 等待查询完成后发502');
+          }
+          return; // RAG路径：跳过普通写库
+        }
+
+        // ★ 非RAG路径：正常写库
+        if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
           const _waitPhrases=['正在为您查询','稍等','查询中','请稍等'];
@@ -4099,30 +4125,38 @@ const DW = (() => {
               _dwRAGResult   = null;
               _dwRAGPromise  = lookupOverview(7, intent.name);
               dwLog('[RAG-4] lookupOverview(7'+(intent.name?' 员工='+intent.name:'')+') 后台查询已启动');
-              // ★ 查询完成后立刻发502（不等待任何359）
+              // ★ 修复：查完只缓存结果，等359到达后再发502（双条件触发）
               const _qSave = _dwLogQuestion;
+              _dwRAG359Arrived = false; // 重置359标记
               _dwRAGPromise.then(result => {
-                _dwRAGResult = result;
-                if(result && _dwPendingRAG){
-                  dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符→立刻发502');
+                if(!result){
+                  dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
+                  _dwPendingRAG = false; _dwRAGQuestion = ''; _dwRAG359Arrived = false;
+                  return;
+                }
+                dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符');
+                if(_dwRAG359Arrived){
+                  // ✅ 359已先到，现在可以立刻发502
+                  dwLog('[RAG-4] 359已到 → 立刻发502');
                   if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
                   _dwPendingRAG = false;
-                  sendChatRAG_dw(result, '(keepalive-overview)');
+                  _dwRAG359Arrived = false;
+                  sendChatRAG_dw(result, '(keepalive-rag查完-459已到)');
                   dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+result.length);
-                  // 写库
                   const _sb = typeof sbClient !== 'undefined' ? sbClient : (typeof window.supabase !== 'undefined' ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
                   if(_sb) _sb.from('query_logs').insert({ question: _qSave, ai_response: '', source: 'keepalive_rag' }).then(({ error }) => {
                     if(error) dwLog('[RAG-6] ❌写库失败: ' + error.message);
                     else dwLog('[RAG-6] ✅ 写库成功 Q=' + _qSave.substring(0, 20) + ' source=keepalive_rag');
                   });
                   _dwRAGResult = null; _dwRAGPromise = null; _dwRAGQuestion = '';
-                } else if(!result){
-                  dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
-                  _dwPendingRAG = false; _dwRAGQuestion = '';
+                } else {
+                  // 359还没到，先缓存结果，等359处理器来取
+                  dwLog('[RAG-4] 359未到 → 缓存结果，等359触发502');
+                  _dwRAGResult = result;
                 }
               }).catch(e => {
                 dwLog('[RAG-4] ❌ 查询异常: '+e.message);
-                _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = '';
+                _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = ''; _dwRAG359Arrived = false;
               });
             }
           }
@@ -4145,13 +4179,21 @@ const DW = (() => {
             _dwRAGPromise  = lookupOverview(7, intent.name);
             dwLog('[RAG-4] lookupOverview(7'+(intent.name?' 员工='+intent.name:'')+') 后台查询已启动');
             const _qSave = question;
+            _dwRAG359Arrived = false; // 重置359标记
             _dwRAGPromise.then(result => {
-              _dwRAGResult = result;
-              if(result && _dwPendingRAG){
-                dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符→立刻发502');
+              if(!result){
+                dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
+                _dwPendingRAG = false; _dwRAGQuestion = ''; _dwRAG359Arrived = false;
+                return;
+              }
+              dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符');
+              if(_dwRAG359Arrived){
+                // ✅ 359已先到，现在可以立刻发502
+                dwLog('[RAG-4] 359已到 → 立刻发502');
                 if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
                 _dwPendingRAG = false;
-                sendChatRAG_dw(result, '(keepalive-overview)');
+                _dwRAG359Arrived = false;
+                sendChatRAG_dw(result, '(keepalive-rag查完-359已到)');
                 dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+result.length);
                 const _sb = typeof sbClient !== 'undefined' ? sbClient : (typeof window.supabase !== 'undefined' ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
                 if(_sb) _sb.from('query_logs').insert({ question: _qSave, ai_response: '', source: 'keepalive_rag' }).then(({ error }) => {
@@ -4159,24 +4201,25 @@ const DW = (() => {
                   else dwLog('[RAG-6] ✅ 写库成功 Q=' + _qSave.substring(0, 20) + ' source=keepalive_rag');
                 });
                 _dwRAGResult = null; _dwRAGPromise = null; _dwRAGQuestion = '';
-              } else if(!result){
-                dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
-                _dwPendingRAG = false; _dwRAGQuestion = '';
+              } else {
+                // 359还没到，先缓存结果，等359处理器来取
+                dwLog('[RAG-4] 359未到 → 缓存结果，等359触发502');
+                _dwRAGResult = result;
               }
             }).catch(e => {
               dwLog('[RAG-4] ❌ 查询异常: '+e.message);
-              _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = '';
+              _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = ''; _dwRAG359Arrived = false;
             });
           } else {
             dwLog('[RAG-1] 451已触发，跳过 → 等待Supabase完成发502');
           }
-          // 超时兜底：10秒后还没发502就强制发（Supabase挂了的情况）
+          // 超时兜底：10秒后若502还未发出则放弃（Supabase挂了 或 359迟迟不到）
           if(_dwRAGTimer) clearTimeout(_dwRAGTimer);
           _dwRAGTimer = setTimeout(() => {
             if(!_dwPendingRAG) return;
-            dwLog('[RAG-TIMEOUT] ⏰ 10秒未收到数据，放弃');
+            dwLog('[RAG-TIMEOUT] ⏰ 10秒未发出502，放弃（Supabase超时或359未到）');
             _dwPendingRAG = false; _dwRAGQuestion = '';
-            _dwRAGResult = null; _dwRAGPromise = null;
+            _dwRAGResult = null; _dwRAGPromise = null; _dwRAG359Arrived = false;
           }, 10000);
         }
       }else if(eid===550){
