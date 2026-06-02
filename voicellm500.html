@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-14 -->
+<!-- v=20260603-15 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-14'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-15'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3974,20 +3974,17 @@ const DW = (() => {
             dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
           };
           if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
-          // ★ 注入员工报告数据作为dialog_context（仅全新会话，续话服务端已有历史）
-          // 构造一个QA对：user问→assistant回答（答案就是原始报告数据）
-          // LLM启动时已有完整数据，用户询问时走正常闲聊路径，无需502/RAG
-          if(!_pendingDialogId && _dwCtxData){
+          // ★ 注入员工报告数据作为dialog_context（每次会话都注入，含续话）
+          // dialog_id负责对话历史记忆，dialog_context负责知识注入，两者独立互不影响
+          if(_dwCtxData){
             const baseTs = Date.now() - 2000;
             startPayload.dialog.dialog_context = [
               { role:'user',      text:'这周所有员工的工作情况怎么样？', timestamp: baseTs },
               { role:'assistant', text:_dwCtxData,                        timestamp: baseTs + 1000 }
             ];
-            dwLog('[ctx] ✅ dialog_context注入 字符数='+_dwCtxData.length);
-          } else if(!_pendingDialogId && !_dwCtxData){
-            dwLog('[ctx] ⚠️ 无报告数据，不注入dialog_context（降级为纯闲聊）');
+            dwLog('[ctx] ✅ dialog_context注入 字符数='+_dwCtxData.length+(_pendingDialogId?' (续话)':''));
           } else {
-            dwLog('[ctx] ℹ️ 续话模式(dialog_id='+_pendingDialogId.substring(0,8)+'…)，不注入dialog_context');
+            dwLog('[ctx] ⚠️ 无报告数据，不注入dialog_context（降级为纯闲聊）');
           }
           ws.send(encode(100,JSON.stringify(startPayload),sid));
           dwLog('[ctx] StartSession已发送');
@@ -4059,24 +4056,17 @@ const DW = (() => {
     sid=uuid();seq=2;chunks=[];
     _pendingDialogId = (window._dwMemoryEnabled && localStorage.getItem('dw_dialog_id')) || '';
     // ★ 并行：建WS + 查Supabase员工报告数据（互不阻塞）
-    // ConnectionStarted(50)收到后等_dwCtxReady再发StartSession
+    // 无论是否续话都注入dialog_context：dialog_id负责对话历史，dialog_context负责知识注入，两者独立
     _dwCtxData = null; _dwCtxReady = false;
-    if(!_pendingDialogId){
-      // 全新会话才预查，续话(有dialog_id)服务端已有历史
-      dwLog('[ctx] 开始预查报告数据…');
-      _dwCtxPromise = lookupOverview(7).then(result => {
-        _dwCtxData = result || null;
-        _dwCtxReady = true;
-        dwLog('[ctx] 预查完成 字符数='+(result?result.length:0));
-      }).catch(e => {
-        _dwCtxData = null; _dwCtxReady = true;
-        dwLog('[ctx] ❌ 预查失败: '+e.message+'，降级无上下文');
-      });
-    } else {
-      // 续话不查库，直接就绪
-      _dwCtxReady = true; _dwCtxPromise = Promise.resolve();
-      dwLog('[ctx] 续话模式，跳过预查');
-    }
+    dwLog('[ctx] 开始预查报告数据…');
+    _dwCtxPromise = lookupOverview(7).then(result => {
+      _dwCtxData = result || null;
+      _dwCtxReady = true;
+      dwLog('[ctx] 预查完成 字符数='+(result?result.length:0));
+    }).catch(e => {
+      _dwCtxData = null; _dwCtxReady = true;
+      dwLog('[ctx] ❌ 预查失败: '+e.message+'，降级无上下文');
+    });
     const u=new URL(DW_WS_URL);u.searchParams.set('session_id','dw_'+Date.now());
     ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
     ws.onopen=()=>{ws.send(encode(1,'{}',null));};
