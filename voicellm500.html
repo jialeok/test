@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-5 -->
+<!-- v=20260603-6 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-5'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-6'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3762,121 +3762,6 @@ const DW = (() => {
   })();
   const _ringLoop=()=>{_drawRing(_ringActive);_ringAnimId=requestAnimationFrame(_ringLoop);};
 
-  // 拖动吸附
-  // ── 调试 Toast（手机端可见，3秒自动消失）──
-  const _dwToast = (msg) => {
-    let t = document.getElementById('_dw_toast');
-    if(!t){ t=document.createElement('div'); t.id='_dw_toast';
-      t.style.cssText='position:fixed;bottom:180px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.82);color:#0f0;font-size:12px;font-family:monospace;padding:6px 14px;border-radius:8px;max-width:90vw;word-break:break-all;pointer-events:none;white-space:pre-wrap';
-      document.body.appendChild(t);
-    }
-    t.textContent = msg; t.style.display='block';
-    clearTimeout(t._tid); t._tid=setTimeout(()=>t.style.display='none', 4000);
-  };
-
-  (()=>{
-    const btn=$('dw-btn');
-    if(!btn){ _dwToast('❌ dw-btn未找到'); return; }
-    let startX=0, startY=0, origLeft=0, origBottom=0, moved=false, touching=false;
-
-    // ── 公共：执行打开逻辑 ──
-    const _doOpen = () => {
-      _dwToast('▶ _doOpen called');
-      try {
-        if(window._activeVoiceMode === 'ptt') window._activeVoiceMode = null;
-        if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
-        if(typeof window._mainHideSub === 'function') window._mainHideSub();
-        if(typeof activeMode !== 'undefined') activeMode = 'idle';
-        if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
-        if(typeof _chipToken !== 'undefined') _chipToken++;
-        const _mws = window._mainGetWs && window._mainGetWs();
-        const _msid = window._mainGetSid && window._mainGetSid();
-        if(_mws && _mws.readyState === WebSocket.OPEN && window._mainEncode){
-          _mws.send(window._mainEncode(515, JSON.stringify({}), _msid));
-        }
-        DW.open();
-        _dwToast('✅ DW.open() OK');
-      } catch(err) {
-        _dwToast('❌ _doOpen error: ' + err.message);
-      }
-    };
-
-    // ── touch 事件：直接绑在 btn 上，不走 document ──
-    btn.addEventListener('touchstart', e => {
-      _dwToast('touchstart target=' + e.target.tagName);
-      moved = false; touching = true;
-      const t = e.touches[0];
-      startX = t.clientX; startY = t.clientY;
-      const rect = btn.getBoundingClientRect();
-      origLeft = rect.left; origBottom = window.innerHeight - rect.bottom;
-      btn.style.transition = 'none';
-      e.preventDefault(); // 阻止scroll和click合成，必须passive:false
-    }, {passive: false});
-
-    btn.addEventListener('touchmove', e => {
-      if(!touching) return;
-      const t = e.touches[0], dx = t.clientX - startX, dy = t.clientY - startY;
-      if(Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
-      if(!moved) return;
-      btn.style.left = Math.max(0, Math.min(window.innerWidth-60, origLeft+dx)) + 'px';
-      btn.style.right = 'auto';
-      btn.style.bottom = Math.max(80, Math.min(window.innerHeight-60, origBottom-dy)) + 'px';
-      e.preventDefault();
-    }, {passive: false});
-
-    btn.addEventListener('touchend', e => {
-      _dwToast('touchend moved=' + moved);
-      if(!touching){ return; }
-      touching = false;
-      btn.style.transition = 'left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
-      const rect = btn.getBoundingClientRect();
-      if(rect.left+30 < window.innerWidth/2){ btn.style.left='16px'; btn.style.right='auto'; }
-      else { btn.style.right='16px'; btn.style.left='auto'; }
-      if(!moved){
-        e.preventDefault(); // 防止触发多余的mouseup/click
-        _doOpen();
-      }
-      moved = false;
-    }, {passive: false});
-
-    btn.addEventListener('touchcancel', () => { touching=false; moved=false; });
-
-    // ── mouse 端兜底（PC调试用）──
-    btn.addEventListener('click', e => {
-      _dwToast('click event');
-      _doOpen();
-    });
-
-    $('dw-modal').addEventListener('click',e=>{if(e.target===$('dw-modal'))DW.close();});
-
-    // document级别的mousemove/mouseup（只用于PC拖动）
-    let _mDrag=false;
-    btn.addEventListener('mousedown', e => {
-      _mDrag=true; moved=false;
-      startX=e.clientX; startY=e.clientY;
-      const rect=btn.getBoundingClientRect();
-      origLeft=rect.left; origBottom=window.innerHeight-rect.bottom;
-      btn.style.transition='none';
-    });
-    document.addEventListener('mousemove', e => {
-      if(!_mDrag) return;
-      const dx=e.clientX-startX, dy=e.clientY-startY;
-      if(Math.abs(dx)>6||Math.abs(dy)>6) moved=true;
-      if(!moved) return;
-      btn.style.left=Math.max(0,Math.min(window.innerWidth-60,origLeft+dx))+'px';
-      btn.style.right='auto';
-      btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,origBottom-dy))+'px';
-    });
-    document.addEventListener('mouseup', e => {
-      if(!_mDrag) return;
-      _mDrag=false;
-      btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
-      const rect=btn.getBoundingClientRect();
-      if(rect.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
-      else{btn.style.right='16px';btn.style.left='auto';}
-      // click事件会自然触发，不在这里调_doOpen
-    });
-  })();
 
   // 协议
   const uuid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
@@ -4353,6 +4238,104 @@ const DW = (() => {
   _ringLoop();
   return{open,close,_startMic};
 })();
+
+// ══ 悬浮按钮初始化（在 DW 定义之后，DW.open() 才可调用）══
+(()=>{
+  const _dwToast = msg => {
+    let t = document.getElementById('_dw_toast');
+    if(!t){ t=document.createElement('div'); t.id='_dw_toast';
+      t.style.cssText='position:fixed;bottom:180px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,.82);color:#0f0;font-size:12px;font-family:monospace;padding:6px 14px;border-radius:8px;max-width:90vw;word-break:break-all;pointer-events:none;white-space:pre-wrap';
+      document.body.appendChild(t);
+    }
+    t.textContent=msg; t.style.display='block';
+    clearTimeout(t._tid); t._tid=setTimeout(()=>t.style.display='none',4000);
+  };
+
+  const btn = document.getElementById('dw-btn');
+  if(!btn){ return; }
+
+  const _doOpen = () => {
+    _dwToast('▶ opening...');
+    try {
+      if(window._activeVoiceMode==='ptt') window._activeVoiceMode=null;
+      if(typeof window._mainStopAudio==='function') window._mainStopAudio();
+      if(typeof window._mainHideSub==='function') window._mainHideSub();
+      if(typeof activeMode!=='undefined') activeMode='idle';
+      if(typeof _chipTTSActive!=='undefined') _chipTTSActive=false;
+      if(typeof _chipToken!=='undefined') _chipToken++;
+      const _mws=window._mainGetWs&&window._mainGetWs();
+      const _msid=window._mainGetSid&&window._mainGetSid();
+      if(_mws&&_mws.readyState===WebSocket.OPEN&&window._mainEncode)
+        _mws.send(window._mainEncode(515,JSON.stringify({}),_msid));
+      DW.open();
+      _dwToast('✅ OK');
+    } catch(err){ _dwToast('❌ '+err.message); }
+  };
+
+  let sx=0,sy=0,oL=0,oB=0,moved=false,touching=false;
+
+  btn.addEventListener('touchstart',e=>{
+    _dwToast('touch!');
+    moved=false;touching=true;
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY;
+    const r=btn.getBoundingClientRect(); oL=r.left; oB=window.innerHeight-r.bottom;
+    btn.style.transition='none'; e.preventDefault();
+  },{passive:false});
+
+  btn.addEventListener('touchmove',e=>{
+    if(!touching)return;
+    const t=e.touches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+    if(Math.abs(dx)>6||Math.abs(dy)>6)moved=true;
+    if(!moved)return;
+    btn.style.left=Math.max(0,Math.min(window.innerWidth-60,oL+dx))+'px';
+    btn.style.right='auto';
+    btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,oB-dy))+'px';
+    e.preventDefault();
+  },{passive:false});
+
+  btn.addEventListener('touchend',e=>{
+    _dwToast('end moved='+moved);
+    if(!touching)return; touching=false;
+    btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
+    const r=btn.getBoundingClientRect();
+    if(r.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
+    else{btn.style.right='16px';btn.style.left='auto';}
+    if(!moved){e.preventDefault();_doOpen();}
+    moved=false;
+  },{passive:false});
+
+  btn.addEventListener('touchcancel',()=>{touching=false;moved=false;});
+
+  // PC鼠标
+  let mDrag=false;
+  btn.addEventListener('mousedown',e=>{
+    mDrag=true;moved=false;sx=e.clientX;sy=e.clientY;
+    const r=btn.getBoundingClientRect();oL=r.left;oB=window.innerHeight-r.bottom;
+    btn.style.transition='none';
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!mDrag)return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(Math.abs(dx)>6||Math.abs(dy)>6)moved=true;
+    if(!moved)return;
+    btn.style.left=Math.max(0,Math.min(window.innerWidth-60,oL+dx))+'px';
+    btn.style.right='auto';
+    btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,oB-dy))+'px';
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!mDrag)return;mDrag=false;
+    btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
+    const r=btn.getBoundingClientRect();
+    if(r.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
+    else{btn.style.right='16px';btn.style.left='auto';}
+  });
+  btn.addEventListener('click',()=>{if(!moved)_doOpen();});
+
+  document.getElementById('dw-modal').addEventListener('click',e=>{
+    if(e.target===document.getElementById('dw-modal'))DW.close();
+  });
+})();
+
 
 // 互斥：包裹 pttStart / pttEnd
 (function(){
