@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-6 -->
+<!-- v=20260603-7 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-6'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-7'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -4352,6 +4352,48 @@ const DW = (() => {
 })();
 </script>
 <!-- ══ 豆包聊天助理组件 结束 ══ -->
+
+
+<script>
+// ══ 启动诊断：页面加载后自动显示按钮状态 ══
+window.addEventListener('load', function(){
+  setTimeout(function(){
+    var btn = document.getElementById('dw-btn');
+    var out = [];
+    if(!btn){ out.push('❌ dw-btn 不存在'); }
+    else {
+      var r = btn.getBoundingClientRect();
+      var cs = window.getComputedStyle(btn);
+      out.push('dw-btn found');
+      out.push('rect: top='+Math.round(r.top)+' left='+Math.round(r.left)+' w='+Math.round(r.width)+' h='+Math.round(r.height));
+      out.push('display='+cs.display+' visibility='+cs.visibility+' opacity='+cs.opacity);
+      out.push('z-index='+cs.zIndex+' pointer-events='+cs.pointerEvents);
+      out.push('position='+cs.position);
+      // 检查中心点是否被遮挡
+      var cx = r.left + r.width/2;
+      var cy = r.top + r.height/2;
+      var topEl = document.elementFromPoint(cx, cy);
+      out.push('elementFromPoint(center)= '+(topEl ? topEl.tagName+'#'+topEl.id+'.'+topEl.className.toString().substring(0,30) : 'null'));
+      // 检查父链是否有overflow:hidden裁剪
+      var el = btn.parentElement;
+      while(el && el !== document.body){
+        var ecs = window.getComputedStyle(el);
+        if(ecs.overflow !== 'visible' || ecs.overflowX !== 'visible' || ecs.overflowY !== 'visible'){
+          out.push('parent overflow: '+el.tagName+'#'+el.id+' overflow='+ecs.overflow+'/'+ecs.overflowX+'/'+ecs.overflowY);
+        }
+        el = el.parentElement;
+      }
+    }
+    // 显示
+    var div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;z-index:999999;background:rgba(0,0,0,.92);color:#0f0;font-size:11px;font-family:monospace;padding:10px;border-radius:8px;white-space:pre-wrap;word-break:break-all;line-height:1.6;max-height:60vh;overflow-y:auto';
+    div.textContent = out.join('\n');
+    document.body.appendChild(div);
+    // 5秒后消失
+    setTimeout(function(){ div.remove(); }, 8000);
+  }, 1500);
+});
+</script>
 
 </body>
 </html>
