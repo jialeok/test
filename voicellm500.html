@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-15 -->
+<!-- v=20260603-16 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-15'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-16'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -941,7 +941,11 @@ window._speakerStr = SPEAKER;     // 默认 vv 音色
 // ══ Supabase 配置 ═════════════════════════════════════════
 const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
-const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { createClient: _sbCreateClient } = window.supabase || {};
+if (!_sbCreateClient) {
+  console.error('[Supabase] CDN未加载，window.supabase 不可用');
+}
+const sbClient = _sbCreateClient ? _sbCreateClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // ══ 日期工具 ══════════════════════════════════════════════
 function getDateStr(offsetDays=0){
@@ -3883,6 +3887,11 @@ const DW = (() => {
   let _dwCtxData    = null;   // 预查到的报告文本，null=未就绪，''=查到但空
   let _dwCtxReady   = false;  // 数据是否就绪（无论成功失败）
   let _dwCtxPromise = null;   // 查库Promise引用
+  // ★ 510动态注入：ASREnded后台查库，TTSEnded后发510追加进上下文
+  let _dw510Promise = null;   // 当轮查库Promise
+  let _dw510Data    = null;   // 当轮查库结果
+  let _dw510Ready   = false;  // 当轮查库是否完成
+  let _dw510Question= '';     // 触发查询的问题（用于判断时间范围/人名）
   // ★ 调试面板日志函数
   const dwLog = msg => {
     const el = document.getElementById('dbg-dw-log');
@@ -3949,6 +3958,37 @@ const DW = (() => {
     }
   };
 
+  // ★ 从用户问题解析查询参数：时间范围(days) + 人名(empName)
+  const parseQueryParams = (text) => {
+    if(!text) return { days: 7, empName: '' };
+    let days = 7;
+    // 时间范围识别
+    if(text.match(/本月|这个月|这月/)) days = 30;
+    else if(text.match(/上月|上个月/)) days = 60;
+    else if(text.match(/本周|这周|这个星期|最近一周/)) days = 7;
+    else if(text.match(/上周|上个星期/)) days = 14;
+    else if(text.match(/最近.*[两2]周/)) days = 14;
+    else if(text.match(/最近.*[三3]天/)) days = 3;
+    else if(text.match(/今天|今日/)) days = 1;
+    else if(text.match(/昨天|昨日/)) days = 2;
+    // 人名识别
+    const names = (typeof employeeNames !== 'undefined') ? employeeNames : [];
+    let empName = '';
+    for(const n of names){ if(n && text.includes(n)){ empName = n; break; } }
+    return { days, empName };
+  };
+
+  // ★ 发送 510 ConversationCreate，把查询结果追加进上下文（不带时间戳=追加末尾，不冲突dialog_id历史）
+  const send510Context = (ragText, question) => {
+    if(!ws || ws.readyState !== WebSocket.OPEN || !ragText) return;
+    const payload = { items: [
+      { role: 'user',      text: question || '请提供员工工作数据' },
+      { role: 'assistant', text: ragText }
+    ]};
+    dwLog('[510] ConversationCreate 注入 字符数='+ragText.length);
+    ws.send(encode(510, JSON.stringify(payload), sid));
+  };
+
   // ★ DW路径专用：发送 ChatTTSText(500)
   const sendChatTTS_dw = (ttsText, note) => {
     if(!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -3968,24 +4008,18 @@ const DW = (() => {
         setStatus('连接成功，初始化中…');
         // ★ 等预加载数据就绪后再发StartSession（与WS握手并行查库）
         const _doStartSession = () => {
+          // ★ system_role 注入员工名单，LLM知道公司有哪些人
+          const _empList = (typeof employeeNames !== 'undefined' && employeeNames.length)
+            ? '公司员工名单：' + employeeNames.join('、') + '。'
+            : '';
+          const _sysRole = sanitize(DW_SYS_PROMPT) + (_empList ? ' ' + _empList : '');
           const startPayload = {
             tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
             asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-            dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+            dialog:{bot_name:'助理',system_role:_sysRole,speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
           };
           if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
-          // ★ 注入员工报告数据作为dialog_context（每次会话都注入，含续话）
-          // dialog_id负责对话历史记忆，dialog_context负责知识注入，两者独立互不影响
-          if(_dwCtxData){
-            const baseTs = Date.now() - 2000;
-            startPayload.dialog.dialog_context = [
-              { role:'user',      text:'这周所有员工的工作情况怎么样？', timestamp: baseTs },
-              { role:'assistant', text:_dwCtxData,                        timestamp: baseTs + 1000 }
-            ];
-            dwLog('[ctx] ✅ dialog_context注入 字符数='+_dwCtxData.length+(_pendingDialogId?' (续话)':''));
-          } else {
-            dwLog('[ctx] ⚠️ 无报告数据，不注入dialog_context（降级为纯闲聊）');
-          }
+          // dialog_context 已改为 510 动态注入方案（TTSEnded后追加），此处不再注入
           ws.send(encode(100,JSON.stringify(startPayload),sid));
           dwLog('[ctx] StartSession已发送');
         };
@@ -4013,11 +4047,30 @@ const DW = (() => {
       }else if(eid===359){
         dwLog('[359] TTSEnded → flushAudio chunks='+chunks.length+' queue='+queue.length);
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
+        // ★ TTSEnded后发510：等查库完成再追加上下文
+        if(_dw510Promise){
+          const _snapQ = _dw510Question;
+          const _doInject = () => {
+            if(_dw510Data){
+              send510Context(_dw510Data, _snapQ);
+            } else {
+              dwLog('[510] 无数据，跳过注入');
+            }
+            _dw510Promise = null; _dw510Data = null; _dw510Ready = false; _dw510Question = '';
+          };
+          if(_dw510Ready){
+            _doInject();
+          } else {
+            dwLog('[510] 等待查库完成…');
+            _dw510Promise.finally(_doInject);
+          }
+        }
+        // 写库
         if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
           dwLog('[359] 写库 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
-          const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
+          const _sb=typeof sbClient!=='undefined'&&sbClient?sbClient:((window.supabase&&window.supabase.createClient)?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
           if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
             if(error) dwLog('[359] ❌写库失败: '+error.message);
             else dwLog('[359] ✅写库成功');
@@ -4036,6 +4089,23 @@ const DW = (() => {
         }
       }else if(eid===459){
         dwLog('[459] ASREnded question="'+_dwLogQuestion+'"');
+        // ★ ASREnded后台立刻查库（与LLM回答并行），TTSEnded时发510注入结果
+        if(_dwLogQuestion){
+          const _q = _dwLogQuestion;
+          const { days, empName } = parseQueryParams(_q);
+          dwLog('[510] 后台查询启动 days='+days+(empName?' 员工='+empName:''));
+          _dw510Question = _q;
+          _dw510Data = null;
+          _dw510Ready = false;
+          _dw510Promise = lookupOverview(days, empName).then(result => {
+            _dw510Data = result;
+            _dw510Ready = true;
+            dwLog('[510] 查询完成 字符数='+(result?result.length:0));
+          }).catch(e => {
+            _dw510Data = null; _dw510Ready = true;
+            dwLog('[510] ❌ 查询失败: '+e.message);
+          });
+        }
       }else if(eid===550){
         if(j.content){_dwLogAiReply+=j.content;}
       }else if(eid===153||eid===599){setStatus('连接出错，请重试');}
@@ -4055,18 +4125,9 @@ const DW = (() => {
     $('dw-tapbtn').style.display='none';
     sid=uuid();seq=2;chunks=[];
     _pendingDialogId = (window._dwMemoryEnabled && localStorage.getItem('dw_dialog_id')) || '';
-    // ★ 并行：建WS + 查Supabase员工报告数据（互不阻塞）
-    // 无论是否续话都注入dialog_context：dialog_id负责对话历史，dialog_context负责知识注入，两者独立
-    _dwCtxData = null; _dwCtxReady = false;
-    dwLog('[ctx] 开始预查报告数据…');
-    _dwCtxPromise = lookupOverview(7).then(result => {
-      _dwCtxData = result || null;
-      _dwCtxReady = true;
-      dwLog('[ctx] 预查完成 字符数='+(result?result.length:0));
-    }).catch(e => {
-      _dwCtxData = null; _dwCtxReady = true;
-      dwLog('[ctx] ❌ 预查失败: '+e.message+'，降级无上下文');
-    });
+    // ★ 重置510动态注入状态
+    _dw510Promise = null; _dw510Data = null; _dw510Ready = false; _dw510Question = '';
+    _dwCtxData = null; _dwCtxReady = true; _dwCtxPromise = Promise.resolve();
     const u=new URL(DW_WS_URL);u.searchParams.set('session_id','dw_'+Date.now());
     ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
     ws.onopen=()=>{ws.send(encode(1,'{}',null));};
