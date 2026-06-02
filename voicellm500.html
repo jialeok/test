@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-3 -->
+<!-- v=20260603-4 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-3'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-4'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3786,26 +3786,8 @@ const DW = (() => {
       btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,origBottom-dy))+'px';
       e.preventDefault();
     };
-    const onEnd=e=>{
-      if(!dragging)return;
-      const wasMoved=moved;
-      dragging=false;moved=false;
-      btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
-      const rect=btn.getBoundingClientRect();
-      if(rect.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
-      else{btn.style.right='16px';btn.style.left='auto';}
-      // ★ 点击逻辑移到 click 事件处理，onEnd 只负责拖动吸附
-    };
-    btn.addEventListener('mousedown',onStart,{passive:false});
-    btn.addEventListener('touchstart',onStart,{passive:false});
-    document.addEventListener('mousemove',onMove,{passive:false});
-    document.addEventListener('touchmove',onMove,{passive:false});
-    document.addEventListener('mouseup',onEnd);
-    document.addEventListener('touchend',onEnd);
-    document.addEventListener('touchcancel',onEnd);
-    // ★ 兜底：click事件直接触发（解决dragging判断失效/刷新后第一次点击无效）
-    btn.addEventListener('click', e => {
-      if(moved) return; // 拖动后松开不触发
+    // ★ 触发DW.open的公共逻辑（touch和mouse共用）
+    const _doOpen = () => {
       if(window._activeVoiceMode === 'ptt') window._activeVoiceMode = null;
       if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
       if(typeof window._mainHideSub === 'function') window._mainHideSub();
@@ -3818,6 +3800,34 @@ const DW = (() => {
         _mws.send(window._mainEncode(515, JSON.stringify({}), _msid));
       }
       DW.open();
+    };
+    const onEnd=e=>{
+      if(!dragging)return;
+      const wasMoved=moved;
+      dragging=false;moved=false;
+      btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
+      const rect=btn.getBoundingClientRect();
+      if(rect.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
+      else{btn.style.right='16px';btn.style.left='auto';}
+      // ★ 修复：touchstart用了preventDefault，导致浏览器不派发click
+      // 所以touch端的点击逻辑必须在touchend/onEnd里直接处理，不能依赖click事件
+      if(!wasMoved && e.type && e.type.startsWith('touch')){
+        e.preventDefault(); // 阻止后续的mouseup/click（避免重复触发）
+        _doOpen();
+      }
+    };
+    btn.addEventListener('mousedown',onStart,{passive:false});
+    btn.addEventListener('touchstart',onStart,{passive:false});
+    document.addEventListener('mousemove',onMove,{passive:false});
+    document.addEventListener('touchmove',onMove,{passive:false});
+    document.addEventListener('mouseup',onEnd);
+    document.addEventListener('touchend',onEnd);
+    document.addEventListener('touchcancel',onEnd);
+    // ★ 鼠标端保留click兜底（touch端已在onEnd处理，不会重复）
+    btn.addEventListener('click', e => {
+      // touch端已被onEnd的preventDefault阻断，这里只走鼠标点击
+      if(moved) return;
+      _doOpen();
     });
     $('dw-modal').addEventListener('click',e=>{if(e.target===$('dw-modal'))DW.close();});
   })();
