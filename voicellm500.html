@@ -3922,9 +3922,7 @@ const DW = (() => {
   let _dwRAGPromise   = null;    // lookupOverview 的 Promise
   let _dwRAGQuestion  = '';      // 触发RAG的用户问题文本
   let _dwRAGResult    = null;    // lookupOverview 返回的文本结果
-  let _dwRAGTimer     = null;    // 超时兜底定时器（10秒后还收不到359就强制发502）
-  let _dwRAG515Sent   = false;   // 515是否已在451提前发送
-  let _dwLLMTTSStarted= false;   // 在RAG过程中LLM是否已抢占了TTS槽（收到tts_type=default的350）
+  let _dwRAGTimer     = null;    // 超时兜底定时器（15秒后还收不到359就强制发502）
   // ★ 调试面板日志函数
   const dwLog = msg => {
     const el = document.getElementById('dbg-dw-log');
@@ -4037,21 +4035,14 @@ const DW = (() => {
         const t=j.text||'';
         dwLog('[350] text="'+t+'" payload='+JSON.stringify(j).substring(0,150));
         if(t){setSub(t);_dwLogAiReply+=t;}
-        // ★ RAG路径：检测LLM是否抢占了TTS槽（tts_type不是tts_text就是LLM赢了）
-        if(_dwPendingRAG && j.tts_type !== 'tts_text'){
-          _dwLLMTTSStarted = true;
-          dwLog('[RAG-350] ⚠️ LLM已抢占TTS槽(tts_type='+(j.tts_type||'?')+')，将让LLM讲完后再发502');
-        }
         state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
       }else if(eid===351){flushAudio();
       }else if(eid===359){
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
-        // ★ ChatRAGText: 安抚话术播完，发502喂数据
+        // ★ ChatRAGText: LLM自然播完 → 发502喂RAG数据
         if(_dwPendingRAG){
-          if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; } // 取消超时兜底
-          _dwRAG515Sent = false;
-          _dwLLMTTSStarted = false;
-          dwLog('[RAG-5] 🔔 359 TTSEnded: 安抚话术播完，准备发502');
+          if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
+          dwLog('[RAG-5] 🔔 359 TTSEnded: LLM播完，准备发502');
           _dwPendingRAG = false;
           const _q = _dwRAGQuestion;
           _dwRAGQuestion = '';
@@ -4115,50 +4106,44 @@ const DW = (() => {
           if(finals.length){
             _dwLogQuestion=finals.map(r=>r.text).join('');
             dwLog('[451] 用户问题锁定: '+_dwLogQuestion);
-            // ★ ChatRAGText: 451就提前判断意图并掐断，抢在LLM的350之前
+            // ★ ChatRAGText: 检测overview意图 → 立即后台查Supabase，等LLM讲完再发502
             if(_dwLogQuestion && detectQueryIntent(_dwLogQuestion) === 'overview'){
-              dwLog('[RAG-1] 🎯 451提前识别overview意图，立即掐断LLM');
-              ws.send(encode(515, JSON.stringify({}), sid));
-              dwLog('[RAG-2] 515 ClientInterrupt 已提前发送');
+              dwLog('[RAG-1] 🎯 451检测到overview意图，启动后台查询（不掐断LLM）');
               _dwPendingRAG  = true;
               _dwRAGQuestion = _dwLogQuestion;
-              _dwRAG515Sent  = true;
-              _dwLLMTTSStarted = false; // 重置，等待看LLM是否抢槽
+              _dwRAGResult   = null;
+              _dwRAGPromise  = lookupOverview(7);
+              dwLog('[RAG-4] lookupOverview(7) 后台查询已启动');
+              _dwRAGPromise.then(result => {
+                _dwRAGResult = result;
+                if(result){
+                  dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符，等LLM讲完发502');
+                } else {
+                  dwLog('[RAG-4] ⚠️ 查询无结果');
+                }
+              }).catch(e => {
+                dwLog('[RAG-4] ❌ 查询异常: '+e.message);
+                _dwRAGResult = null;
+              });
             }
           }
         }
       }else if(eid===459){
-        // ★ ChatRAGText: ASREnded 到来时判断是否需要走RAG路径
+        // ★ ChatRAGText: 459兜底（451 finals没触发时在这里补）
         const question = _dwLogQuestion;
         dwLog('[RAG-0] 459 ASREnded question="'+question+'"');
         if(question && detectQueryIntent(question) === 'overview'){
           if(!_dwPendingRAG){
-            // 451没触发（可能 finals 还没来就收到了459），补发
-            dwLog('[RAG-1] 🎯 意图识别: overview → 触发ChatRAGText(502)路径');
-            ws.send(encode(515, JSON.stringify({}), sid));
-            dwLog('[RAG-2] 515 ClientInterrupt 已发送');
+            dwLog('[RAG-1] 🎯 459兜底检测overview意图，启动后台查询');
             _dwPendingRAG  = true;
             _dwRAGQuestion = question;
-            _dwRAG515Sent  = true;
-          } else {
-            dwLog('[RAG-1] 已在451提前触发，跳过515');
-          }
-          // 安抚话术：仅当LLM还没抢TTS槽时才发500
-          if(!_dwLLMTTSStarted){
-            sendChatTTS_dw('好的，稍等我查一下团队情况～', '(overview安抚)');
-            dwLog('[RAG-3] 500 ChatTTSText 安抚话术已发送');
-          } else {
-            dwLog('[RAG-3] ⏭️ LLM已抢占TTS，跳过安抚话术（等LLM讲完再发502）');
-          }
-          // 后台查Supabase（如果451还没启动就现在启动）
-          if(!_dwRAGPromise){
             _dwRAGResult   = null;
             _dwRAGPromise  = lookupOverview(7);
             dwLog('[RAG-4] lookupOverview(7) 后台查询已启动');
             _dwRAGPromise.then(result => {
               _dwRAGResult = result;
               if(result){
-                dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符');
+                dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符，等LLM讲完发502');
               } else {
                 dwLog('[RAG-4] ⚠️ 查询无结果');
               }
@@ -4166,16 +4151,17 @@ const DW = (() => {
               dwLog('[RAG-4] ❌ 查询异常: '+e.message);
               _dwRAGResult = null;
             });
+          } else {
+            dwLog('[RAG-1] 451已触发，跳过 → 等待LLM自然播完后的359');
           }
-          // 超时兜底：10秒后如果还没收到359，强制发502
+          // 超时兜底：15秒后如果还没收到359，强制发502
           if(_dwRAGTimer) clearTimeout(_dwRAGTimer);
           _dwRAGTimer = setTimeout(() => {
-            if(!_dwPendingRAG) return; // 已经在359处理过了
-            dwLog('[RAG-TIMEOUT] ⏰ 10秒未收到359，强制发送502');
+            if(!_dwPendingRAG) return;
+            dwLog('[RAG-TIMEOUT] ⏰ 15秒未收到359，强制发送502');
             _dwPendingRAG = false;
             const _q2 = _dwRAGQuestion; _dwRAGQuestion = '';
             _dwLogQuestion = ''; _dwLogAiReply = '';
-            _dwLLMTTSStarted = false; _dwRAG515Sent = false;
             const ragText = _dwRAGResult;
             _dwRAGResult = null; _dwRAGPromise = null;
             if(ragText){
@@ -4184,7 +4170,7 @@ const DW = (() => {
             } else {
               dwLog('[RAG-6] ⚠️ RAG无结果，超时跳过');
             }
-          }, 10000);
+          }, 15000);
         }
         // 非overview意图：不干预，让LLM正常闲聊
       }else if(eid===550){
