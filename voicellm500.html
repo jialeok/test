@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-12 -->
+<!-- v=20260603-13 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-12'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-13'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3964,6 +3964,11 @@ const DW = (() => {
   const sendChatRAG_dw = (ragText, note) => {
     if(!ws || ws.readyState !== WebSocket.OPEN) return;
     if(!ragText){ dwLog('❌ sendChatRAG_dw: ragText为空，跳过'); return; }
+    // ★ 发502前先flush已有chunks（515掐断后LLM可能已积累了几帧音频）
+    if(chunks.length){
+      dwLog('[502-pre-flush] 发502前flush残留chunks='+chunks.length);
+      flushAudio();
+    }
     const payload = {
       external_rag: JSON.stringify([{ title: '员工工作日报', content: ragText }])
     };
@@ -4010,7 +4015,18 @@ const DW = (() => {
         dwLog('[350] TTSSentenceStart tts_type='+(j.tts_type||'?')+' text="'+t.substring(0,30)+'" q='+j.question_id+' r='+j.reply_id);
         if(t){setSub(t);_dwLogAiReply+=t;}
         state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
-      }else if(eid===351){dwLog('[351] TTSSentenceEnd → flushAudio');flushAudio();
+        // ★ 兜底：350到达后若800ms内没收到351，强制flush（515掐断后服务端可能不再发351）
+        if(window._dw351Timer) clearTimeout(window._dw351Timer);
+        window._dw351Timer = setTimeout(()=>{
+          if(chunks.length){
+            dwLog('[350-兜底] 800ms未收到351，强制flushAudio chunks='+chunks.length);
+            flushAudio();
+          }
+          window._dw351Timer = null;
+        }, 800);
+      }else if(eid===351){
+        if(window._dw351Timer){clearTimeout(window._dw351Timer);window._dw351Timer=null;}
+        dwLog('[351] TTSSentenceEnd → flushAudio');flushAudio();
       }else if(eid===359){
         dwLog('[359] TTSEnded → flushAudio chunks='+chunks.length+' queue='+queue.length);
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
