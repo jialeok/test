@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260601-1 -->
+<!-- v=20260603-11 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260601-1'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-11'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3593,7 +3593,7 @@ function capBackToHome(){
   -webkit-user-select:none;
 ">
   <canvas id="dw-ring-canvas" width="60" height="60" style="position:absolute;inset:0;border-radius:50%;pointer-events:none"></canvas>
-  <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:24px;color:rgba(100,220,255,.9);line-height:1;position:relative;z-index:1;text-shadow:0 0 12px rgba(100,220,255,.7)">mic</span>
+  <span style="font-family:'Material Icons Round','Material Icons',sans-serif;font-size:24px;color:rgba(100,220,255,.9);line-height:1;position:relative;z-index:1;text-shadow:0 0 12px rgba(100,220,255,.7);pointer-events:none">mic</span>
 </button>
 
 <!-- 2. Modal -->
@@ -3762,59 +3762,6 @@ const DW = (() => {
   })();
   const _ringLoop=()=>{_drawRing(_ringActive);_ringAnimId=requestAnimationFrame(_ringLoop);};
 
-  // 拖动吸附
-  (()=>{
-    const btn=$('dw-btn');
-    let dragging=false,startX,startY,origLeft,origBottom,moved=false;
-    const getPos=e=>e.touches?e.touches[0]:e;
-    const onStart=e=>{
-      if(!e.target.closest('#dw-btn'))return;
-      dragging=true;moved=false;
-      const p=getPos(e);startX=p.clientX;startY=p.clientY;
-      const rect=btn.getBoundingClientRect();
-      origLeft=rect.left;origBottom=window.innerHeight-rect.bottom;
-      btn.style.transition='none';e.preventDefault();
-    };
-    const onMove=e=>{
-      if(!dragging)return;
-      const p=getPos(e),dx=p.clientX-startX,dy=p.clientY-startY;
-      if(Math.abs(dx)>4||Math.abs(dy)>4)moved=true;
-      if(!moved)return;
-      btn.style.left=Math.max(0,Math.min(window.innerWidth-60,origLeft+dx))+'px';
-      btn.style.right='auto';
-      btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,origBottom-dy))+'px';
-      e.preventDefault();
-    };
-    const onEnd=()=>{
-      if(!dragging)return;dragging=false;
-      btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
-      const rect=btn.getBoundingClientRect();
-      if(rect.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
-      else{btn.style.right='16px';btn.style.left='auto';}
-      if(!moved){
-        // ★ 点击外部麦克风时先打断主页面音频和字幕
-        if(typeof window._mainStopAudio === 'function') window._mainStopAudio();
-        if(typeof window._mainHideSub === 'function') window._mainHideSub();
-        if(typeof activeMode !== 'undefined') activeMode = 'idle';
-        if(typeof _chipTTSActive !== 'undefined') _chipTTSActive = false;
-        if(typeof _chipToken !== 'undefined') _chipToken++;
-        const _mws = window._mainGetWs && window._mainGetWs();
-        const _msid = window._mainGetSid && window._mainGetSid();
-        if(_mws && _mws.readyState === WebSocket.OPEN && window._mainEncode){
-          _mws.send(window._mainEncode(515, JSON.stringify({}), _msid));
-        }
-        DW.open();
-      }
-    };
-    btn.addEventListener('mousedown',onStart,{passive:false});
-    btn.addEventListener('touchstart',onStart,{passive:false});
-    document.addEventListener('mousemove',onMove,{passive:false});
-    document.addEventListener('touchmove',onMove,{passive:false});
-    document.addEventListener('mouseup',onEnd);
-    document.addEventListener('touchend',onEnd);
-    document.addEventListener('touchcancel',onEnd);
-    $('dw-modal').addEventListener('click',e=>{if(e.target===$('dw-modal'))DW.close();});
-  })();
 
   // 协议
   const uuid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});
@@ -3946,7 +3893,7 @@ const DW = (() => {
   const detectQueryIntent = (text) => {
     if(!text) return { intent: 'chat', name: '' };
     // 大方向/整体类关键词
-    if(text.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部/)) return { intent: 'overview', name: '' };
+    if(text.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部|所有|员工|工作|这周|上周|本周|日报|周报|情况|查一下|查看|了解|汇报|完成|安排|计划|进度/)) return { intent: 'overview', name: '' };
     // 员工姓名匹配：查数据库里的员工名是否出现在问题中
     const names = (typeof employeeNames !== 'undefined') ? employeeNames : [];
     for(const name of names){
@@ -4220,6 +4167,92 @@ const DW = (() => {
   _ringLoop();
   return{open,close,_startMic};
 })();
+
+// ══ 悬浮按钮初始化（DW 定义完成后执行，才能调 DW.open()）══
+(()=>{
+  const btn = document.getElementById('dw-btn');
+  if(!btn) return;
+
+  const _doOpen = () => {
+    try {
+      if(window._activeVoiceMode==='ptt') window._activeVoiceMode=null;
+      if(typeof window._mainStopAudio==='function') window._mainStopAudio();
+      if(typeof window._mainHideSub==='function') window._mainHideSub();
+      if(typeof activeMode!=='undefined') activeMode='idle';
+      if(typeof _chipTTSActive!=='undefined') _chipTTSActive=false;
+      if(typeof _chipToken!=='undefined') _chipToken++;
+      const _mws=window._mainGetWs&&window._mainGetWs();
+      const _msid=window._mainGetSid&&window._mainGetSid();
+      if(_mws&&_mws.readyState===WebSocket.OPEN&&window._mainEncode)
+        _mws.send(window._mainEncode(515,JSON.stringify({}),_msid));
+      DW.open();
+    } catch(e){ console.error('[DW btn]',e); }
+  };
+
+  let sx=0,sy=0,oL=0,oB=0,moved=false,touching=false;
+
+  // touch：直接绑在 btn 上（touchstart 用了 preventDefault 所以 click 不会触发，必须在 touchend 里处理）
+  btn.addEventListener('touchstart',e=>{
+    moved=false; touching=true;
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY;
+    const r=btn.getBoundingClientRect(); oL=r.left; oB=window.innerHeight-r.bottom;
+    btn.style.transition='none';
+    e.preventDefault();
+  },{passive:false});
+
+  btn.addEventListener('touchmove',e=>{
+    if(!touching) return;
+    const t=e.touches[0],dx=t.clientX-sx,dy=t.clientY-sy;
+    if(Math.abs(dx)>6||Math.abs(dy)>6) moved=true;
+    if(!moved) return;
+    btn.style.left=Math.max(0,Math.min(window.innerWidth-60,oL+dx))+'px';
+    btn.style.right='auto';
+    btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,oB-dy))+'px';
+    e.preventDefault();
+  },{passive:false});
+
+  btn.addEventListener('touchend',e=>{
+    if(!touching) return; touching=false;
+    btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
+    const r=btn.getBoundingClientRect();
+    if(r.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
+    else{btn.style.right='16px';btn.style.left='auto';}
+    if(!moved){ e.preventDefault(); _doOpen(); }
+    moved=false;
+  },{passive:false});
+
+  btn.addEventListener('touchcancel',()=>{ touching=false; moved=false; });
+
+  // PC 鼠标
+  let mDrag=false;
+  btn.addEventListener('mousedown',e=>{
+    mDrag=true; moved=false; sx=e.clientX; sy=e.clientY;
+    const r=btn.getBoundingClientRect(); oL=r.left; oB=window.innerHeight-r.bottom;
+    btn.style.transition='none';
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!mDrag) return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(Math.abs(dx)>6||Math.abs(dy)>6) moved=true;
+    if(!moved) return;
+    btn.style.left=Math.max(0,Math.min(window.innerWidth-60,oL+dx))+'px';
+    btn.style.right='auto';
+    btn.style.bottom=Math.max(80,Math.min(window.innerHeight-60,oB-dy))+'px';
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!mDrag) return; mDrag=false;
+    btn.style.transition='left .3s cubic-bezier(.34,1.2,.64,1),right .3s cubic-bezier(.34,1.2,.64,1)';
+    const r=btn.getBoundingClientRect();
+    if(r.left+30<window.innerWidth/2){btn.style.left='16px';btn.style.right='auto';}
+    else{btn.style.right='16px';btn.style.left='auto';}
+  });
+  btn.addEventListener('click',()=>{ if(!moved) _doOpen(); });
+
+  document.getElementById('dw-modal').addEventListener('click',e=>{
+    if(e.target===document.getElementById('dw-modal')) DW.close();
+  });
+})();
+
 
 // 互斥：包裹 pttStart / pttEnd
 (function(){
