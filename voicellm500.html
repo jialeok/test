@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-19 -->
+<!-- v=20260603-20 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-19'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-20'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3882,6 +3882,7 @@ const DW = (() => {
       srcNode.connect(processor);
       processor.onaudioprocess=e=>{
         if(!ws||ws.readyState!==WebSocket.OPEN)return;
+        if(state==='speaking')return; // 播报期间不发音频，防回声触发VAD
         const raw=e.inputBuffer.getChannelData(0);
         // ★ 重采样到16kHz（复用主页面的 resampleTo16k 函数）
         const resampled=resampleTo16k(raw,nativeRate);
