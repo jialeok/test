@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-11 -->
+<!-- v=20260603-12 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-11'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-12'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3800,18 +3800,25 @@ const DW = (() => {
 
   // 音频
   const flushAudio=()=>{
+    dwLog('[flush] chunks='+chunks.length+' queue='+queue.length+' playing='+playing);
     if(!chunks.length)return;
     const tot=chunks.reduce((s,c)=>s+c.byteLength,0),merged=new Uint8Array(tot);let o=0;
     chunks.forEach(c=>{merged.set(new Uint8Array(c),o);o+=c.byteLength;});chunks=[];
-    queue.push(URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'})));playNext();
+    const blobUrl=URL.createObjectURL(new Blob([merged],{type:'audio/ogg; codecs=opus'}));
+    dwLog('[flush] ✅ merged='+tot+'bytes → queue push, url='+blobUrl.substring(0,40));
+    queue.push(blobUrl);playNext();
   };
   const playNext=()=>{
+    dwLog('[playNext] playing='+playing+' queue='+queue.length);
     if(playing||!queue.length)return;playing=true;
     const url=queue.shift(),a=new Audio(url);
-    const done=()=>{URL.revokeObjectURL(url);playing=false;playNext();};
-    a.onended=done;a.onerror=done;a.play().catch(done);
+    dwLog('[playNext] ▶ 开始播放 url='+url.substring(0,40));
+    const done=(reason)=>{dwLog('[playNext] 播放结束 reason='+reason);URL.revokeObjectURL(url);playing=false;playNext();};
+    a.onended=()=>done('ended');
+    a.onerror=(e)=>{dwLog('[playNext] ❌ onerror code='+(a.error&&a.error.code)+' msg='+(a.error&&a.error.message));done('error');};
+    a.play().then(()=>dwLog('[playNext] play()解析成功')).catch(e=>{dwLog('[playNext] ❌ play()rejected: '+e.message);done('catch');});
   };
-  const stopAudio=()=>{queue=[];chunks=[];playing=false;};
+  const stopAudio=()=>{dwLog('[stopAudio] 清空 chunks='+chunks.length+' queue='+queue.length);queue=[];chunks=[];playing=false;};
 
   // 麦克风
   const _startMic=async()=>{
@@ -4000,11 +4007,12 @@ const DW = (() => {
         state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
       }else if(eid===350){
         const t=j.text||'';
-        dwLog('[350] text="'+t+'" payload='+JSON.stringify(j).substring(0,150));
+        dwLog('[350] TTSSentenceStart tts_type='+(j.tts_type||'?')+' text="'+t.substring(0,30)+'" q='+j.question_id+' r='+j.reply_id);
         if(t){setSub(t);_dwLogAiReply+=t;}
         state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
-      }else if(eid===351){flushAudio();
+      }else if(eid===351){dwLog('[351] TTSSentenceEnd → flushAudio');flushAudio();
       }else if(eid===359){
+        dwLog('[359] TTSEnded → flushAudio chunks='+chunks.length+' queue='+queue.length);
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
         // ★ RAG 502已在451/Supabase完成回调中发送，此处不再处理
         // 正常写库（非RAG路径或RAG已处理）
@@ -4131,7 +4139,7 @@ const DW = (() => {
         if(j.content){_dwLogAiReply+=j.content;dwLog('[550] content='+j.content.substring(0,50));}
       }else if(eid===153||eid===599){setStatus('连接出错，请重试');}
     }
-    if(msgType===11&&payload)chunks.push(payload);
+    if(msgType===11&&payload){chunks.push(payload);dwLog('[352] 音频帧 '+payload.byteLength+'bytes chunks累计='+chunks.length);}
   };
 
   // open / close
