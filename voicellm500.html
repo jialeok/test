@@ -7,7 +7,20 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260531-9 -->
+<!-- v=20260601-1 -->
+<script>
+// ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
+(function(){
+  var VER = '20260601-1'; // ← 与上方注释保持一致，每次部署改这里
+  var stored = localStorage.getItem('_voiq_ver');
+  if(stored && stored !== VER){
+    localStorage.setItem('_voiq_ver', VER);
+    location.reload(true); // 强制从服务器重新加载
+  } else {
+    localStorage.setItem('_voiq_ver', VER);
+  }
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
 </script>
 <style>
@@ -1464,6 +1477,7 @@ function renderQueryLogs(){
   const end   = new Date(todayStr + 'T23:59:59').toISOString();
   sbClient.from('query_logs')
     .select('id,question,ai_response,rag_content,matched_count,created_at')
+    .in('source', ['chip', 'ptt', 'keepalive'])
     .gte('created_at', start)
     .lte('created_at', end)
     .order('created_at', {ascending: false})
@@ -1885,7 +1899,9 @@ function applyRAGUI(result, skipStop=false){
     const dayLabel = _friendlyDate(rec.date);
     openDetailBoard(rec.name, rec.date, dayLabel, true /* voiceMode: skip chipQuery */);
     // 写 query_logs（纯异步.then，不影响语音流程）
-    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1}).then(()=>{}).catch(()=>{});
+    sbClient.from('query_logs').insert({question:'查'+rec.name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'ptt'}).then(()=>{}).catch(()=>{});
+    // ★ 已在此处写库，清空累积变量，防止359再次重复写入对话卡
+    _logQuestion=''; _logAiReply='';
   }
 }
 
@@ -2173,7 +2189,8 @@ const onMsg=evt=>{
         sbClient.from('query_logs').insert({
           question: _q,
           ai_response: _a,
-          matched_count: pendingRAG ? 1 : 0
+          matched_count: pendingRAG ? 1 : 0,
+          source: 'ptt'
         }).then(({error})=>{
           if(error) dbgLog('⚠️ 写入query_logs失败: '+error.message);
           else dbgLog('✅ 对话已写库 Q='+_q.substring(0,20));
@@ -2624,7 +2641,7 @@ async function chipQuery(name, dateStr, dayLabel){
     applyRAGUI(result, true);
     litFlow(3);
     // 写 query_logs（纯异步.then，不影响语音流程）
-    sbClient.from('query_logs').insert({question:'查'+name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1}).then(()=>{}).catch(()=>{});
+    sbClient.from('query_logs').insert({question:'查'+name+'的工作日报',ai_response:result.text,rag_content:result.text,matched_count:1,source:'chip'}).then(()=>{}).catch(()=>{});
   }
 
   // ★ 用501建立对话上下文（触发LLM），拿到553后再发500
@@ -3834,12 +3851,18 @@ const DW = (() => {
         if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
+          // ★ 过滤等待话术：AI只说了"正在为您查询"类的占位回复时不写库，避免与ptt结果重复
+          const _waitPhrases=['正在为您查询','稍等','查询中','请稍等'];
+          const _isWaitOnly = _a && _waitPhrases.some(p=>_a.includes(p)) && (_a||'').length < 30;
+          if(_isWaitOnly){ dwLog('[359] 跳过写库（等待话术）A='+(_a||'')); }
+          else {
           dwLog('[359] 准备写库 Q='+_q+' A='+(_a||'(空)'));
           const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
-          if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0}).then(({error})=>{
+          if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
             if(error) dwLog('[359] ❌写库失败: '+error.message);
             else dwLog('[359] ✅写库成功 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
           });
+          } // end else (not wait phrase)
         }
       }else if(eid===450){stopAudio();
       }else if(eid===451){
