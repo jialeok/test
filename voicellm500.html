@@ -21,8 +21,10 @@
   }
 })();
 </script>
-<script src="https://registry.npmmirror.com/@supabase/supabase-js@2/files/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+</script>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
   :root {
     --bg:#f5f7fa;
     --panel:#ffffff;
@@ -35,8 +37,8 @@
     --text:#1a2233;
     --muted:#7a8ba8;
     --code-bg:#f8fafc;
-    --mono:-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',monospace;
-    --sans:-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+    --mono:'Space Grotesk',monospace;
+    --sans:'Space Grotesk',-apple-system,'PingFang SC',sans-serif;
     --glow-g: rgba(14,168,122,.12);
     --glow-b: rgba(46,140,224,.12);
   }
@@ -73,7 +75,7 @@
   }
   .logo-text-wrap{display:flex;flex-direction:column;gap:0px}
   .logo-name{
-    font-family:-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',monospace;font-size:15px;font-weight:800;
+    font-family:'Orbitron',monospace;font-size:15px;font-weight:800;
     background:linear-gradient(90deg,#0ea87a,#2e8ce0);
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;
     letter-spacing:.06em;line-height:1.1;
