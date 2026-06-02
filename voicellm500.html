@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-13 -->
+<!-- v=20260603-14 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-13'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-14'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3879,13 +3879,10 @@ const DW = (() => {
   // ★ 对话记录：累积本轮用户问题和AI回复，359时写库
   let _dwLogQuestion = '';
   let _dwLogAiReply  = '';
-  // ★ ChatRAGText(502) 路径变量：freechat中检测到overview意图时触发
-  let _dwPendingRAG   = false;   // 是否在等待RAG结果（LLM播完后发502）
-  let _dwRAGPromise   = null;    // lookupOverview 的 Promise
-  let _dwRAGQuestion  = '';      // 触发RAG的用户问题文本
-  let _dwRAGResult    = null;    // lookupOverview 返回的文本结果
-  let _dwRAGEmpName   = '';      // 单人查询时的员工姓名
-  let _dwRAGTimer     = null;    // 超时兜底定时器（15秒后还收不到359就强制发502）
+  // ★ dialog_context 预加载：open()时并行查库，ConnectionStarted(50)时注入StartSession
+  let _dwCtxData    = null;   // 预查到的报告文本，null=未就绪，''=查到但空
+  let _dwCtxReady   = false;  // 数据是否就绪（无论成功失败）
+  let _dwCtxPromise = null;   // 查库Promise引用
   // ★ 调试面板日志函数
   const dwLog = msg => {
     const el = document.getElementById('dbg-dw-log');
@@ -3960,21 +3957,7 @@ const DW = (() => {
     ws.send(encode(500, JSON.stringify({start:false, content:'', end:true}), sid));
   };
 
-  // ★ DW路径专用：发送 ChatRAGText(502)
-  const sendChatRAG_dw = (ragText, note) => {
-    if(!ws || ws.readyState !== WebSocket.OPEN) return;
-    if(!ragText){ dwLog('❌ sendChatRAG_dw: ragText为空，跳过'); return; }
-    // ★ 发502前先flush已有chunks（515掐断后LLM可能已积累了几帧音频）
-    if(chunks.length){
-      dwLog('[502-pre-flush] 发502前flush残留chunks='+chunks.length);
-      flushAudio();
-    }
-    const payload = {
-      external_rag: JSON.stringify([{ title: '员工工作日报', content: ragText }])
-    };
-    dwLog('[502] ChatRAGText '+note+' 字符数='+ragText.length);
-    ws.send(encode(502, JSON.stringify(payload), sid));
-  };
+  // sendChatRAG_dw 已移除（改用dialog_context预加载方案）
 
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
@@ -3983,176 +3966,81 @@ const DW = (() => {
       let j={};try{j=JSON.parse(new TextDecoder().decode(payload));}catch(_){}
       if(eid===50){
         setStatus('连接成功，初始化中…');
-        // StartSession：带入 dialog_id（若有）实现多轮记忆
-        const startPayload = {
-          tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
-          asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-          dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+        // ★ 等预加载数据就绪后再发StartSession（与WS握手并行查库）
+        const _doStartSession = () => {
+          const startPayload = {
+            tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
+            asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
+            dialog:{bot_name:'助理',system_role:sanitize(DW_SYS_PROMPT),speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+          };
+          if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
+          // ★ 注入员工报告数据作为dialog_context（仅全新会话，续话服务端已有历史）
+          // 构造一个QA对：user问→assistant回答（答案就是原始报告数据）
+          // LLM启动时已有完整数据，用户询问时走正常闲聊路径，无需502/RAG
+          if(!_pendingDialogId && _dwCtxData){
+            const baseTs = Date.now() - 2000;
+            startPayload.dialog.dialog_context = [
+              { role:'user',      text:'这周所有员工的工作情况怎么样？', timestamp: baseTs },
+              { role:'assistant', text:_dwCtxData,                        timestamp: baseTs + 1000 }
+            ];
+            dwLog('[ctx] ✅ dialog_context注入 字符数='+_dwCtxData.length);
+          } else if(!_pendingDialogId && !_dwCtxData){
+            dwLog('[ctx] ⚠️ 无报告数据，不注入dialog_context（降级为纯闲聊）');
+          } else {
+            dwLog('[ctx] ℹ️ 续话模式(dialog_id='+_pendingDialogId.substring(0,8)+'…)，不注入dialog_context');
+          }
+          ws.send(encode(100,JSON.stringify(startPayload),sid));
+          dwLog('[ctx] StartSession已发送');
         };
-        if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
-        // ★ 修复：初始上下文用 StartSession 的 dialog_context 字段注入，而不是事后发510
-        // dialog_context 是一次性初始状态，每次新会话覆盖，不会像510一样叠加累积
-        // 只在全新会话（无旧dialog_id）时注入，续话会话服务端已有历史无需重注入
-        // ★ 必须加递增时间戳：文档要求时间戳策略一致，否则和dialog_id历史混用报错
-        const ctxItems = window._dwDialogContext || [];
-        if(!_pendingDialogId && ctxItems.length >= 2 && ctxItems.length % 2 === 0){
-          const baseTs = Date.now() - ctxItems.length * 1000;
-          startPayload.dialog.dialog_context = ctxItems.map((item, i) => ({
-            role: item.role, text: item.text, timestamp: baseTs + i * 1000
-          }));
+        // 如果查库已完成直接发，否则等Promise（通常WS握手比Supabase慢，基本不等）
+        if(_dwCtxReady){
+          _doStartSession();
+        } else {
+          dwLog('[ctx] 等待Supabase数据就绪…');
+          (_dwCtxPromise || Promise.resolve()).finally(()=>{ _doStartSession(); });
         }
-        ws.send(encode(100,JSON.stringify(startPayload),sid));
       }else if(eid===150){
         // SessionStarted：保存服务端返回的 dialog_id
         const returnedDialogId = j.dialog_id || '';
         if(window._dwMemoryEnabled && returnedDialogId){
           localStorage.setItem('dw_dialog_id', returnedDialogId);
         }
-        // ★ 510已移除：初始上下文已在StartSession的dialog_context里一次性设好
         state='listening';setStatus('点击下方开始说话');$('dw-tapbtn').style.display='flex';
       }else if(eid===350){
         const t=j.text||'';
         dwLog('[350] TTSSentenceStart tts_type='+(j.tts_type||'?')+' text="'+t.substring(0,30)+'" q='+j.question_id+' r='+j.reply_id);
         if(t){setSub(t);_dwLogAiReply+=t;}
         state='speaking';setStatus('助理正在说话…');setListening(false);setWave(true,false);_ringActive=false;
-        // ★ 兜底：350到达后若800ms内没收到351，强制flush（515掐断后服务端可能不再发351）
-        if(window._dw351Timer) clearTimeout(window._dw351Timer);
-        window._dw351Timer = setTimeout(()=>{
-          if(chunks.length){
-            dwLog('[350-兜底] 800ms未收到351，强制flushAudio chunks='+chunks.length);
-            flushAudio();
-          }
-          window._dw351Timer = null;
-        }, 800);
       }else if(eid===351){
-        if(window._dw351Timer){clearTimeout(window._dw351Timer);window._dw351Timer=null;}
         dwLog('[351] TTSSentenceEnd → flushAudio');flushAudio();
       }else if(eid===359){
         dwLog('[359] TTSEnded → flushAudio chunks='+chunks.length+' queue='+queue.length);
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
-        // ★ RAG 502已在451/Supabase完成回调中发送，此处不再处理
-        // 正常写库（非RAG路径或RAG已处理）
-        if(_dwLogQuestion && !_dwPendingRAG){
+        if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
-          const _waitPhrases=['正在为您查询','稍等','查询中','请稍等'];
-          const _isWaitOnly = _a && _waitPhrases.some(p=>_a.includes(p)) && (_a||'').length < 30;
-          if(_isWaitOnly){ dwLog('[359] 跳过写库（等待话术）A='+(_a||'')); }
-          else {
-            dwLog('[359] 准备写库 Q='+_q+' A='+(_a||'(空)'));
-            const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
-            if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
-              if(error) dwLog('[359] ❌写库失败: '+error.message);
-              else dwLog('[359] ✅写库成功 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
-            });
-          }
+          dwLog('[359] 写库 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
+          const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
+          if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
+            if(error) dwLog('[359] ❌写库失败: '+error.message);
+            else dwLog('[359] ✅写库成功');
+          });
         }
       }else if(eid===450){stopAudio();
       }else if(eid===451){
         const t=(j.results||[]).map(r=>r.text).join('');
         if(t){
           setStatus('我听到：'+t);setSub(t);
-          // ★ 对话记录：取最终识别结果（非interim）作为用户问题
           const finals=(j.results||[]).filter(r=>!r.is_interim);
           if(finals.length){
             _dwLogQuestion=finals.map(r=>r.text).join('');
             dwLog('[451] 用户问题锁定: '+_dwLogQuestion);
-            // ★ ChatRAGText: 检测overview/single意图 → 掐断LLM → 后台查Supabase → 数据回来发502
-            const intent = detectQueryIntent(_dwLogQuestion);
-            if(intent.intent !== 'chat'){
-              const label = intent.intent === 'single' ? '单人('+intent.name+')' : 'overview';
-              dwLog('[RAG-1] 🎯 451检测到'+label+'意图，发515掐断LLM');
-              ws.send(encode(515, JSON.stringify({}), sid));
-              dwLog('[RAG-2] 515 ClientInterrupt 已发送');
-              _dwPendingRAG  = true;
-              _dwRAGQuestion = _dwLogQuestion;
-              _dwRAGEmpName  = intent.name;
-              _dwRAGResult   = null;
-              _dwRAGPromise  = lookupOverview(7, intent.name);
-              dwLog('[RAG-4] lookupOverview(7'+(intent.name?' 员工='+intent.name:'')+') 后台查询已启动');
-              // ★ 查询完成后立刻发502（不等待任何359）
-              const _qSave = _dwLogQuestion;
-              _dwRAGPromise.then(result => {
-                _dwRAGResult = result;
-                if(result && _dwPendingRAG){
-                  dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符→立刻发502');
-                  if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
-                  _dwPendingRAG = false;
-                  sendChatRAG_dw(result, '(keepalive-overview)');
-                  dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+result.length);
-                  // 写库
-                  const _sb = typeof sbClient !== 'undefined' ? sbClient : (typeof window.supabase !== 'undefined' ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
-                  if(_sb) _sb.from('query_logs').insert({ question: _qSave, ai_response: '', source: 'keepalive_rag' }).then(({ error }) => {
-                    if(error) dwLog('[RAG-6] ❌写库失败: ' + error.message);
-                    else dwLog('[RAG-6] ✅ 写库成功 Q=' + _qSave.substring(0, 20) + ' source=keepalive_rag');
-                  });
-                  _dwRAGResult = null; _dwRAGPromise = null; _dwRAGQuestion = '';
-                } else if(!result){
-                  dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
-                  _dwPendingRAG = false; _dwRAGQuestion = '';
-                }
-              }).catch(e => {
-                dwLog('[RAG-4] ❌ 查询异常: '+e.message);
-                _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = '';
-              });
-            }
           }
         }
       }else if(eid===459){
-        // ★ ChatRAGText: 459兜底（451 finals没触发时在这里补）
-        const question = _dwLogQuestion;
-        dwLog('[RAG-0] 459 ASREnded question="'+question+'"');
-        const intent = detectQueryIntent(question);
-        if(intent.intent !== 'chat'){
-          if(!_dwPendingRAG){
-            const label = intent.intent === 'single' ? '单人('+intent.name+')' : 'overview';
-            dwLog('[RAG-1] 🎯 459兜底检测'+label+'意图，发515掐断LLM');
-            ws.send(encode(515, JSON.stringify({}), sid));
-            dwLog('[RAG-2] 515 ClientInterrupt 已发送');
-            _dwPendingRAG  = true;
-            _dwRAGQuestion = question;
-            _dwRAGEmpName  = intent.name;
-            _dwRAGResult   = null;
-            _dwRAGPromise  = lookupOverview(7, intent.name);
-            dwLog('[RAG-4] lookupOverview(7'+(intent.name?' 员工='+intent.name:'')+') 后台查询已启动');
-            const _qSave = question;
-            _dwRAGPromise.then(result => {
-              _dwRAGResult = result;
-              if(result && _dwPendingRAG){
-                dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符→立刻发502');
-                if(_dwRAGTimer){ clearTimeout(_dwRAGTimer); _dwRAGTimer = null; }
-                _dwPendingRAG = false;
-                sendChatRAG_dw(result, '(keepalive-overview)');
-                dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+result.length);
-                const _sb = typeof sbClient !== 'undefined' ? sbClient : (typeof window.supabase !== 'undefined' ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
-                if(_sb) _sb.from('query_logs').insert({ question: _qSave, ai_response: '', source: 'keepalive_rag' }).then(({ error }) => {
-                  if(error) dwLog('[RAG-6] ❌写库失败: ' + error.message);
-                  else dwLog('[RAG-6] ✅ 写库成功 Q=' + _qSave.substring(0, 20) + ' source=keepalive_rag');
-                });
-                _dwRAGResult = null; _dwRAGPromise = null; _dwRAGQuestion = '';
-              } else if(!result){
-                dwLog('[RAG-4] ⚠️ 查询无结果，放弃502');
-                _dwPendingRAG = false; _dwRAGQuestion = '';
-              }
-            }).catch(e => {
-              dwLog('[RAG-4] ❌ 查询异常: '+e.message);
-              _dwPendingRAG = false; _dwRAGResult = null; _dwRAGQuestion = '';
-            });
-          } else {
-            dwLog('[RAG-1] 451已触发，跳过 → 等待Supabase完成发502');
-          }
-          // 超时兜底：10秒后还没发502就强制发（Supabase挂了的情况）
-          if(_dwRAGTimer) clearTimeout(_dwRAGTimer);
-          _dwRAGTimer = setTimeout(() => {
-            if(!_dwPendingRAG) return;
-            dwLog('[RAG-TIMEOUT] ⏰ 10秒未收到数据，放弃');
-            _dwPendingRAG = false; _dwRAGQuestion = '';
-            _dwRAGResult = null; _dwRAGPromise = null;
-          }, 10000);
-        }
+        dwLog('[459] ASREnded question="'+_dwLogQuestion+'"');
       }else if(eid===550){
-        // ★ keepalive模式550 ChatResponse，累积AI回复
-        if(j.content){_dwLogAiReply+=j.content;dwLog('[550] content='+j.content.substring(0,50));}
+        if(j.content){_dwLogAiReply+=j.content;}
       }else if(eid===153||eid===599){setStatus('连接出错，请重试');}
     }
     if(msgType===11&&payload){chunks.push(payload);dwLog('[352] 音频帧 '+payload.byteLength+'bytes chunks累计='+chunks.length);}
@@ -4169,8 +4057,26 @@ const DW = (() => {
     setSub('');setStatus('正在连接…');setDot(false);setWave(false,false);
     $('dw-tapbtn').style.display='none';
     sid=uuid();seq=2;chunks=[];
-    // 读取保存的 dialog_id（多轮记忆）
     _pendingDialogId = (window._dwMemoryEnabled && localStorage.getItem('dw_dialog_id')) || '';
+    // ★ 并行：建WS + 查Supabase员工报告数据（互不阻塞）
+    // ConnectionStarted(50)收到后等_dwCtxReady再发StartSession
+    _dwCtxData = null; _dwCtxReady = false;
+    if(!_pendingDialogId){
+      // 全新会话才预查，续话(有dialog_id)服务端已有历史
+      dwLog('[ctx] 开始预查报告数据…');
+      _dwCtxPromise = lookupOverview(7).then(result => {
+        _dwCtxData = result || null;
+        _dwCtxReady = true;
+        dwLog('[ctx] 预查完成 字符数='+(result?result.length:0));
+      }).catch(e => {
+        _dwCtxData = null; _dwCtxReady = true;
+        dwLog('[ctx] ❌ 预查失败: '+e.message+'，降级无上下文');
+      });
+    } else {
+      // 续话不查库，直接就绪
+      _dwCtxReady = true; _dwCtxPromise = Promise.resolve();
+      dwLog('[ctx] 续话模式，跳过预查');
+    }
     const u=new URL(DW_WS_URL);u.searchParams.set('session_id','dw_'+Date.now());
     ws=new WebSocket(u.toString());ws.binaryType='arraybuffer';
     ws.onopen=()=>{ws.send(encode(1,'{}',null));};
