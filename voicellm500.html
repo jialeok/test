@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-8 -->
+<!-- v=20260603-9 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-8'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-9'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -4241,6 +4241,8 @@ const DW = (() => {
 
 // ══ 悬浮按钮初始化（在 DW 定义之后，DW.open() 才可调用）══
 (()=>{
+  // ★执行标记
+  window._dwBtnInitRan = true;
   const _dwToast = msg => {
     let t = document.getElementById('_dw_toast');
     if(!t){ t=document.createElement('div'); t.id='_dw_toast';
@@ -4387,10 +4389,19 @@ window.addEventListener('load', function(){
     // 显示
     var div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:10px;left:10px;right:10px;z-index:999999;background:rgba(0,0,0,.92);color:#0f0;font-size:11px;font-family:monospace;padding:10px;border-radius:8px;white-space:pre-wrap;word-break:break-all;line-height:1.6;max-height:60vh;overflow-y:auto';
+    out.push('btnInitRan: ' + (window._dwBtnInitRan ? 'YES' : 'NO'));
+    out.push('DW defined: ' + (typeof DW !== 'undefined' ? 'YES' : 'NO'));
+    // 直接测试点击
+    if(btn){
+      btn.addEventListener('touchstart', function diagTS(e){
+        out.push('DIAG touchstart fired!');
+        btn.removeEventListener('touchstart', diagTS);
+        div.textContent = out.join('\n');
+      }, {passive:false, once:true});
+    }
     div.textContent = out.join('\n');
     document.body.appendChild(div);
-    // 5秒后消失
-    setTimeout(function(){ div.remove(); }, 8000);
+    setTimeout(function(){ div.remove(); }, 15000);
   }, 1500);
 });
 </script>
