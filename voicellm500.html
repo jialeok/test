@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-17fix -->
+<!-- v=20260603-16 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-17fix'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-16'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -941,11 +941,7 @@ window._speakerStr = SPEAKER;     // 默认 vv 音色
 // ══ Supabase 配置 ═════════════════════════════════════════
 const SUPABASE_URL      = 'https://cgtrlucacjrbtazidixn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndHJsdWNhY2pyYnRhemlkaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NDI1NDcsImV4cCI6MjA5NDExODU0N30.PX_IncuHZfsLl23OHt00XXyswycFtkmcUI3Su7BWkWY';
-const { createClient: _sbCreateClient } = window.supabase || {};
-if (!_sbCreateClient) {
-  console.error('[Supabase] CDN未加载，window.supabase 不可用');
-}
-const sbClient = _sbCreateClient ? _sbCreateClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ══ 日期工具 ══════════════════════════════════════════════
 function getDateStr(offsetDays=0){
@@ -3542,7 +3538,7 @@ function _capStart(fullText){
       showCaptionOverlay();
     }, 0);
   };
-})()
+})();
 
 // ── wrap closeDetailBoard：关看板时同步关字幕层 ──
 (function(){
@@ -4070,7 +4066,7 @@ const DW = (() => {
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
           dwLog('[359] 写库 Q='+_q.substring(0,20)+' A='+(_a||'').substring(0,20));
-          const _sb=typeof sbClient!=='undefined'&&sbClient?sbClient:((window.supabase&&window.supabase.createClient)?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
+          const _sb=typeof sbClient!=='undefined'?sbClient:(typeof window.supabase!=='undefined'?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null);
           if(_sb) _sb.from('query_logs').insert({question:_q,ai_response:_a,matched_count:0,source:'keepalive'}).then(({error})=>{
             if(error) dwLog('[359] ❌写库失败: '+error.message);
             else dwLog('[359] ✅写库成功');
