@@ -1476,7 +1476,7 @@ function renderQueryLogs(){
   const start = new Date(todayStr + 'T00:00:00').toISOString();
   const end   = new Date(todayStr + 'T23:59:59').toISOString();
   sbClient.from('query_logs')
-    .select('id,question,ai_response,rag_content,matched_count,created_at')
+    .select('id,question,ai_response,rag_content,matched_count,source,created_at')
     .in('source', ['chip', 'ptt', 'keepalive'])
     .gte('created_at', start)
     .lte('created_at', end)
@@ -1518,8 +1518,8 @@ function renderQueryLogs(){
             </div>
             ${dateStr ? `<div class="kb-date">${dateStr}</div>` : ''}
             ${fieldsHtml}`;
-        } else {
-          // 对话卡
+        } else if(row.source !== 'ptt') {
+          // 对话卡（只显示 keepalive，ptt无结果不渲染）
           div.className = 'ql-chat-card';
           div.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
