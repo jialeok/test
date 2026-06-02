@@ -899,10 +899,25 @@
       <pre id="dbg-diagnose-result" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:#374151;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto">等待诊断…</pre>
     </div>
 
+    <!-- ChatRAGText 流程调试 -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-family:var(--mono);font-size:10px;color:#f59e0b;margin-bottom:8px;letter-spacing:.1em">🤖 ChatRAGText(502) 流程调试</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">测试overview意图识别 → Supabase查询 → 502发送全流程</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <input id="dbg-rag-input" placeholder="输入测试问题，如：团队整体进展"
+          style="flex:1;min-width:140px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none">
+        <button onclick="dbgTestChatRAG()" style="font-family:var(--mono);font-size:10px;padding:6px 12px;border-radius:6px;border:none;background:var(--warn);color:#000;cursor:pointer;font-weight:700">▶ 测试全流程</button>
+        <button onclick="dbgTestChatRAG_step1()" style="font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">1️⃣意图</button>
+        <button onclick="dbgTestChatRAG_step2()" style="font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">2️⃣查库</button>
+        <button onclick="dbgCopy('dbg-rag-result',this)" style="font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">📋</button>
+      </div>
+      <pre id="dbg-rag-result" style="font-family:var(--mono);font-size:11px;color:#374151;line-height:1.8;white-space:pre-wrap;word-break:break-all;max-height:350px;overflow-y:auto">点击按钮测试…</pre>
+    </div>
+
     <!-- DW 聊天助理调试日志 -->
     <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px">
       <div style="font-family:var(--mono);font-size:10px;color:#8b5cf6;margin-bottom:8px;letter-spacing:.1em">💬 聊天助理(DW)事件日志</div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">记录keepalive模式的350/451/550/359事件，用于排查AI回复写库问题</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">RAG步骤: [RAG-0]ASREnded → [RAG-1]意图识别 → [RAG-2]515掐断 → [RAG-3]500安抚 → [RAG-4]查库 → [RAG-5]359播完 → [RAG-6]502发送</div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <button onclick="document.getElementById('dbg-dw-log').textContent=''" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">🗑️ 清空</button>
         <button onclick="dbgCopy('dbg-dw-log',this)" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer">📋 复制</button>
@@ -3122,6 +3137,111 @@ async function dbgDiagnose(){
   }catch(err){ el.textContent='❌ 诊断异常: '+err.message; }
 }
 
+// ══ ChatRAGText(502) 流程调试函数 ═════════════════════════════
+// 写调试日志到 dbg-rag-result 面板
+const dbgRAGLog = (msg, color) => {
+  const el = document.getElementById('dbg-rag-result');
+  if(!el) return;
+  const ts = new Date().toISOString().slice(11,23);
+  const prefix = color ? '<span style="color:'+color+'">' : '';
+  const suffix = color ? '</span>' : '';
+  if(el.textContent === '点击按钮测试…') el.innerHTML = '';
+  el.innerHTML = prefix + ts + ' ' + msg + suffix + '\n' + el.innerHTML;
+};
+
+// 步骤1: 意图识别测试
+async function dbgTestChatRAG_step1(){
+  const input = document.getElementById('dbg-rag-input').value.trim();
+  const el = document.getElementById('dbg-rag-result');
+  if(!el) return;
+  el.innerHTML = '';
+  if(!input){ el.innerHTML = '❌ 请输入测试问题'; return; }
+  dbgRAGLog('══════ 步骤1: 意图识别 ══════', '#8b5cf6');
+  dbgRAGLog('输入文本: "' + input + '"');
+  const intent = typeof DW !== 'undefined' && DW._detectIntent ? DW._detectIntent(input) : null;
+  // 如果无法访问闭包内函数，直接内联检测
+  const kwMatch = input.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部/);
+  dbgRAGLog('关键词匹配: ' + (kwMatch ? '✅ 命中 [' + kwMatch[0] + ']' : '❌ 未命中'));
+  const result = kwMatch ? 'overview' : 'chat';
+  if(result === 'overview'){
+    dbgRAGLog('✅ 意图: overview → 触发 ChatRAGText(502) 路径', '#059669');
+    dbgRAGLog('下一步: 将发送515掐断LLM → 500安抚话术 → 查Supabase → 502喂数据');
+  } else {
+    dbgRAGLog('ℹ️ 意图: chat → 走普通闲聊，不触发RAG', '#6b7280');
+  }
+}
+
+// 步骤2: Supabase查询测试
+async function dbgTestChatRAG_step2(){
+  const el = document.getElementById('dbg-rag-result');
+  if(!el) return;
+  el.innerHTML = '';
+  dbgRAGLog('══════ 步骤2: 查Supabase ══════', '#f59e0b');
+  dbgRAGLog('启动 lookupOverview(7) 查询近7天数据…');
+  try{
+    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    dbgRAGLog('查询条件: record_date >= ' + since);
+    const { data, error } = await sbClient
+      .from('work_records')
+      .select('record_date, raw_text, formatted_text, employees(name)')
+      .gte('record_date', since)
+      .order('record_date', { ascending: false })
+      .limit(100);
+    if(error){ dbgRAGLog('❌ 查询失败: ' + error.message, '#dc2626'); return; }
+    if(!data || data.length === 0){
+      dbgRAGLog('⚠️ 近7天无日报记录', '#f59e0b');
+      dbgRAGLog('→ 502将不会发送，LLM继续正常闲聊');
+      return;
+    }
+    dbgRAGLog('✅ 查询成功: 共' + data.length + '条记录');
+    data.forEach(r => {
+      const name = (r.employees && r.employees.name) ? r.employees.name : '未知';
+      const date = (r.record_date || '').substring(0, 10);
+      dbgRAGLog('  📄 ' + name + ' ' + date + ' | raw=' + (r.raw_text||'').substring(0, 40) + '…');
+    });
+    const lines = data.map(r => {
+      const name = (r.employees && r.employees.name) ? r.employees.name : '未知';
+      let content = r.raw_text || '';
+      if(r.formatted_text){
+        try{
+          const f = typeof r.formatted_text === 'string' ? JSON.parse(r.formatted_text) : r.formatted_text;
+          content = Object.entries(f).map(([k,v]) => k + '：' + v).join(' / ');
+        }catch(_){}
+      }
+      return '【' + name + ' ' + (r.record_date||'').substring(0,10) + '】' + content;
+    });
+    const result = lines.join('\n');
+    dbgRAGLog('拼装后字符数: ' + result.length + (result.length > 4000 ? ' ⚠️超4K将截断' : ' ✅'));
+    dbgRAGLog('', '');
+    dbgRAGLog('══════ 502 external_rag 内容预览 ══════', '#059669');
+    const preview = result.length > 500 ? result.substring(0, 500) + '\n…(截断，共' + result.length + '字符)' : result;
+    dbgRAGLog(preview);
+    dbgRAGLog('', '');
+    dbgRAGLog('下一步: 安抚话术播完后，发502将上述内容喂给豆包', '#8b5cf6');
+  }catch(e){
+    dbgRAGLog('❌ 异常: ' + e.message, '#dc2626');
+  }
+}
+
+// 全流程测试（步骤1+2）
+async function dbgTestChatRAG(){
+  const el = document.getElementById('dbg-rag-result');
+  if(!el) return;
+  el.innerHTML = '';
+  dbgRAGLog('🚀 ChatRAGText(502) 全流程测试', '#f59e0b');
+  await dbgTestChatRAG_step1();
+  dbgRAGLog('', '');
+  await dbgTestChatRAG_step2();
+  dbgRAGLog('', '');
+  dbgRAGLog('══════ 流程总结 ══════', '#8b5cf6');
+  dbgRAGLog('1. 459 ASREnded → detectQueryIntent() → overview');
+  dbgRAGLog('2. 发515(ClientInterrupt) 掐断LLM闲聊');
+  dbgRAGLog('3. 发500(ChatTTSText) 安抚话术: "好的，稍等我查一下团队情况～"');
+  dbgRAGLog('4. 后台查Supabase(与安抚话术并行)');
+  dbgRAGLog('5. 359 TTSEnded → 发502(ChatRAGText) 喂数据');
+  dbgRAGLog('6. 豆包用external_rag生成口语化总结 → 播报');
+}
+
 // ══ 初始化 ════════════════════════════════════════════════
 loadEmployeeNames(); // 启动时从数据库加载员工名单
 // ★ 先等后台配置（含热词）加载完，再建 WS，确保 StartSession 时 _asrHotwords 已就绪
@@ -3797,6 +3917,11 @@ const DW = (() => {
   // ★ 对话记录：累积本轮用户问题和AI回复，359时写库
   let _dwLogQuestion = '';
   let _dwLogAiReply  = '';
+  // ★ ChatRAGText(502) 路径变量：freechat中检测到overview意图时触发
+  let _dwPendingRAG   = false;   // 是否在等待RAG结果（安抚话术播完后发502）
+  let _dwRAGPromise   = null;    // lookupOverview 的 Promise
+  let _dwRAGQuestion  = '';      // 触发RAG的用户问题文本
+  let _dwRAGResult    = null;    // lookupOverview 返回的文本结果
   // ★ 调试面板日志函数
   const dwLog = msg => {
     const el = document.getElementById('dbg-dw-log');
@@ -3805,6 +3930,72 @@ const DW = (() => {
     if(el.textContent === '等待DW事件…') el.textContent = '';
     el.textContent = ts + ' ' + msg + '\n' + el.textContent;
   };
+
+  // ★ ChatRAGText 意图识别：简单关键词匹配
+  //   返回 'overview'（大方向查询）或 'chat'（普通闲聊）
+  const detectQueryIntent = (text) => {
+    if(!text) return 'chat';
+    // 大方向/整体类关键词
+    if(text.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部/)) return 'overview';
+    return 'chat';
+  };
+
+  // ★ ChatRAGText overview查询：拉近期所有人的汇报，拼成文本
+  const lookupOverview = async (days = 7) => {
+    try{
+      const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      const { data, error } = await sbClient
+        .from('work_records')
+        .select('record_date, raw_text, formatted_text, employees(name)')
+        .gte('record_date', since)
+        .order('record_date', { ascending: false })
+        .limit(100);
+      if(error){ dwLog('❌ lookupOverview查询失败: '+error.message); return null; }
+      if(!data || data.length === 0){ dwLog('⚠️ lookupOverview: 近'+days+'天无汇报记录'); return null; }
+      const lines = data.map(r => {
+        const name = (r.employees && r.employees.name) ? r.employees.name : '未知';
+        let content = r.raw_text || '';
+        if(r.formatted_text){
+          try{
+            const f = typeof r.formatted_text === 'string' ? JSON.parse(r.formatted_text) : r.formatted_text;
+            content = Object.entries(f).map(([k,v]) => k + '：' + v).join(' / ');
+          }catch(_){}
+        }
+        return '【' + name + ' ' + (r.record_date||'').substring(0,10) + '】' + content;
+      });
+      const result = lines.join('\n');
+      dwLog('✅ lookupOverview: 近'+days+'天共'+data.length+'条记录，字符数='+result.length);
+      // 4K字符限制（官方文档要求 external_rag 不超过4K字符）
+      if(result.length > 4000){
+        dwLog('⚠️ 超4K字符('+result.length+')，截断到4000');
+        return result.substring(0, 4000);
+      }
+      return result;
+    }catch(e){
+      dwLog('❌ lookupOverview异常: '+e.message);
+      return null;
+    }
+  };
+
+  // ★ DW路径专用：发送 ChatTTSText(500)
+  const sendChatTTS_dw = (ttsText, note) => {
+    if(!ws || ws.readyState !== WebSocket.OPEN) return;
+    dwLog('[500] ChatTTSText '+note+': '+ttsText.substring(0,40)+'…');
+    ws.send(encode(500, JSON.stringify({start:true, content:ttsText, end:false}), sid));
+    ws.send(encode(500, JSON.stringify({start:false, content:'', end:true}), sid));
+  };
+
+  // ★ DW路径专用：发送 ChatRAGText(502)
+  const sendChatRAG_dw = (ragText, note) => {
+    if(!ws || ws.readyState !== WebSocket.OPEN) return;
+    if(!ragText){ dwLog('❌ sendChatRAG_dw: ragText为空，跳过'); return; }
+    const payload = {
+      external_rag: JSON.stringify([{ title: '员工工作日报', content: ragText }])
+    };
+    dwLog('[502] ChatRAGText '+note+' 字符数='+ragText.length);
+    ws.send(encode(502, JSON.stringify(payload), sid));
+  };
+
   const onMsg=evt=>{
     if(!(evt.data instanceof ArrayBuffer))return;
     const{msgType,eid,payload}=parseFrame(evt.data);
@@ -3847,8 +4038,47 @@ const DW = (() => {
       }else if(eid===351){flushAudio();
       }else if(eid===359){
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
-        // ★ 对话记录：本轮播报结束，把问答写入 query_logs
-        if(_dwLogQuestion){
+        // ★ ChatRAGText: 安抚话术播完，发502喂数据
+        if(_dwPendingRAG){
+          dwLog('[RAG-5] 🔔 359 TTSEnded: 安抚话术播完，准备发502');
+          _dwPendingRAG = false;
+          const _q = _dwRAGQuestion;
+          _dwRAGQuestion = '';
+          // 清除本轮累积的AI回复（安抚话术不算真实回复）
+          _dwLogQuestion = ''; _dwLogAiReply = '';
+          const doSendRAG = (ragText) => {
+            if(ragText){
+              sendChatRAG_dw(ragText, '(keepalive-overview)');
+              dwLog('[RAG-6] 📤 502 ChatRAGText 已发送，字符数='+ragText.length);
+              // 写库：记录overview查询
+              const _sb = typeof sbClient !== 'undefined' ? sbClient : (typeof window.supabase !== 'undefined' ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null);
+              if(_sb) _sb.from('query_logs').insert({question:_q, ai_response:null, rag_content:ragText, matched_count:1, source:'keepalive_rag'}).then(({error})=>{
+                if(error) dwLog('[RAG-6] ❌ 写库失败: '+error.message);
+                else dwLog('[RAG-6] ✅ 写库成功 Q='+(_q||'').substring(0,20)+' source=keepalive_rag');
+              });
+            } else {
+              // RAG无结果，不发502，LLM会继续正常闲聊（未掐断的话）
+              dwLog('[RAG-6] ⚠️ RAG无结果，不发502');
+            }
+          };
+          if(_dwRAGResult !== null){
+            // Promise已完成，直接发
+            doSendRAG(_dwRAGResult);
+            _dwRAGResult = null; _dwRAGPromise = null;
+          } else if(_dwRAGPromise){
+            // Promise还在飞，等它完成
+            dwLog('[RAG-5] ⏳ RAG查询未完成，等待Promise…');
+            _dwRAGPromise.then(result => {
+              doSendRAG(result);
+              _dwRAGResult = null; _dwRAGPromise = null;
+            }).catch(e => {
+              dwLog('[RAG-5] ❌ Promise异常: '+e.message);
+              _dwRAGResult = null; _dwRAGPromise = null;
+            });
+          }
+        }
+        // ★ 对话记录：本轮播报结束，把问答写入 query_logs（非RAG路径）
+        else if(_dwLogQuestion){
           const _q=_dwLogQuestion, _a=_dwLogAiReply||null;
           _dwLogQuestion=''; _dwLogAiReply='';
           // ★ 过滤等待话术：AI只说了"正在为您查询"类的占位回复时不写库，避免与ptt结果重复
@@ -3873,6 +4103,37 @@ const DW = (() => {
           const finals=(j.results||[]).filter(r=>!r.is_interim);
           if(finals.length){ _dwLogQuestion=finals.map(r=>r.text).join(''); dwLog('[451] 用户问题锁定: '+_dwLogQuestion); }
         }
+      }else if(eid===459){
+        // ★ ChatRAGText: ASREnded 到来时判断是否需要走RAG路径
+        const question = _dwLogQuestion;
+        dwLog('[RAG-0] 459 ASREnded question="'+question+'"');
+        if(question && detectQueryIntent(question) === 'overview'){
+          dwLog('[RAG-1] 🎯 意图识别: overview → 触发ChatRAGText(502)路径');
+          // 1. 立即发515掐断LLM当前闲聊
+          ws.send(encode(515, JSON.stringify({}), sid));
+          dwLog('[RAG-2] 515 ClientInterrupt 已发送（掐断LLM闲聊）');
+          // 2. 立即发500安抚话术（抢占播报槽，买时间）
+          sendChatTTS_dw('好的，稍等我查一下团队情况～', '(overview安抚)');
+          dwLog('[RAG-3] 500 ChatTTSText 安抚话术已发送');
+          // 3. 后台查Supabase（和安抚话术并行跑）
+          _dwPendingRAG  = true;
+          _dwRAGQuestion = question;
+          _dwRAGResult   = null;
+          _dwRAGPromise  = lookupOverview(7);
+          dwLog('[RAG-4] lookupOverview(7) 后台查询已启动');
+          _dwRAGPromise.then(result => {
+            _dwRAGResult = result;
+            if(result){
+              dwLog('[RAG-4] ✅ 查询完成: '+result.length+'字符');
+            } else {
+              dwLog('[RAG-4] ⚠️ 查询无结果');
+            }
+          }).catch(e => {
+            dwLog('[RAG-4] ❌ 查询异常: '+e.message);
+            _dwRAGResult = null;
+          });
+        }
+        // 非overview意图：不干预，让LLM正常闲聊
       }else if(eid===550){
         // ★ keepalive模式550 ChatResponse，累积AI回复
         if(j.content){_dwLogAiReply+=j.content;dwLog('[550] content='+j.content.substring(0,50));}
