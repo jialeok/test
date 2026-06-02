@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-20 -->
+<!-- v=20260603-17fix -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-20'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-17fix'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -2090,7 +2090,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:asrExtra},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false,enable_user_query_exit:true}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -2153,28 +2153,6 @@ const onMsg=evt=>{
       // ★ 正常TTS结束，清除截断检测
       if(_tts352CutoffTimer){ clearTimeout(_tts352CutoffTimer); _tts352CutoffTimer = null; }
       dbgLog('📌 359 TTSEnded 到达 chip='+_chipTTSActive);
-      // ★ 用户退出意图检测：status_code==="20000002" 表示豆包识别到退出意图
-      if(j.status_code === '20000002'){
-        dbgLog('🚪 [359] 检测到用户退出意图 (status_code=20000002)，本轮结束');
-        logEvt('←退出意图',359,'用户说了退出相关词汇，本轮对话结束');
-        flushAudio();
-        setWave(false,false);
-        resetFlow();
-        state='listening';   // 保持可用，下次还能按按钮说话
-        activeMode='idle';
-        // 显示退出提示条（3秒后隐藏）
-        setSub('本次查询结束，可继续按住🎤发起新查询',false);
-        clearTimeout(window._subHideTimer);
-        window._subHideTimer = setTimeout(()=>setSub('',false), 3000);
-        setStatus('按住🎤说话…');
-        // FinishSession → 152 → 重新 StartSession，保持WS和麦克风正常待机
-        if(ws && ws.readyState===WebSocket.OPEN){
-          _refreshPending = true;
-          logEvt('→客户端',102,'FinishSession (退出意图，刷新session)');
-          ws.send(encode(102,JSON.stringify({}),sid));
-        }
-        return;
-      }
       // ★ chip模式：LLM等待语("正在为您查询请稍等")播完 → 立刻发500
       if(_chipTTSActive && _pendingChipTTSText){
         if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
@@ -2356,7 +2334,7 @@ const onMsg=evt=>{
         const sessionPayload={
           tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:_asrExtraRefresh},
-          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false,enable_user_query_exit:true}}
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
         };
         logEvt('→客户端',100,'StartSession (静默刷新)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -3882,7 +3860,6 @@ const DW = (() => {
       srcNode.connect(processor);
       processor.onaudioprocess=e=>{
         if(!ws||ws.readyState!==WebSocket.OPEN)return;
-        if(state==='speaking')return; // 播报期间不发音频，防回声触发VAD
         const raw=e.inputBuffer.getChannelData(0);
         // ★ 重采样到16kHz（复用主页面的 resampleTo16k 函数）
         const resampled=resampleTo16k(raw,nativeRate);
