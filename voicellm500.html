@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-16 -->
+<!-- v=20260603-17 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-16'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-17'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -2090,7 +2090,7 @@ const onMsg=evt=>{
       const sessionPayload={
         tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
         asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:asrExtra},
-        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
+        dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false,enable_user_query_exit:true}}
       };
       logEvt('→客户端',100,'StartSession');
       ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -2153,6 +2153,28 @@ const onMsg=evt=>{
       // ★ 正常TTS结束，清除截断检测
       if(_tts352CutoffTimer){ clearTimeout(_tts352CutoffTimer); _tts352CutoffTimer = null; }
       dbgLog('📌 359 TTSEnded 到达 chip='+_chipTTSActive);
+      // ★ 用户退出意图检测：status_code==="20000002" 表示豆包识别到退出意图
+      if(j.status_code === '20000002'){
+        dbgLog('🚪 [359] 检测到用户退出意图 (status_code=20000002)，执行退出');
+        logEvt('←退出意图',359,'用户说了退出相关词汇，自动关闭语音');
+        flushAudio();
+        stopMic();
+        setStatus('已退出语音查询');
+        setWave(false,false);
+        resetFlow();
+        state='idle';
+        activeMode='idle';
+        // 显示退出提示条（2秒后隐藏）
+        setSub('您已退出语音查询，点击按钮可重新开始',false);
+        clearTimeout(window._subHideTimer);
+        window._subHideTimer = setTimeout(()=>setSub('',false), 3000);
+        // 发 FinishSession + 重新 StartSession（静默刷新），保持WS连通
+        if(ws && ws.readyState===WebSocket.OPEN){
+          logEvt('→客户端',102,'FinishSession (退出意图触发)');
+          ws.send(encode(102,JSON.stringify({}),sid));
+        }
+        return;
+      }
       // ★ chip模式：LLM等待语("正在为您查询请稍等")播完 → 立刻发500
       if(_chipTTSActive && _pendingChipTTSText){
         if(_chipTTSTimer){ clearTimeout(_chipTTSTimer); _chipTTSTimer = null; }
@@ -2334,7 +2356,7 @@ const onMsg=evt=>{
         const sessionPayload={
           tts:{speaker:window._speakerStr,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
           asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1},extra:_asrExtraRefresh},
-          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false}}
+          dialog:{bot_name:'小勤',system_role:sanitize(SYSTEM_PROMPT),speaking_style:'口语化、简短，每次1句话，每句不超10字。当用户说查+人名+的日报时，只回复正在为您查询请稍等，不加其他字',extra:{model:window._modelStr,input_mod:'push_to_talk',strict_audit:false,enable_user_query_exit:true}}
         };
         logEvt('→客户端',100,'StartSession (静默刷新)');
         ws.send(encode(100,JSON.stringify(sessionPayload),sid));
@@ -4016,7 +4038,7 @@ const DW = (() => {
           const startPayload = {
             tts:{speaker:DW_SPEAKER,audio_config:{channel:1,format:'ogg_opus',sample_rate:24000},extra:{}},
             asr:{audio_info:{format:'pcm',sample_rate:16000,channel:1}},
-            dialog:{bot_name:'助理',system_role:_sysRole,speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false}}
+            dialog:{bot_name:'助理',system_role:_sysRole,speaking_style:'口语化、简短，每次不超过3句话',extra:{model:window._modelStr||'1.2.1.1',input_mod:'keep_alive',strict_audit:false,enable_user_query_exit:true}}
           };
           if(_pendingDialogId) startPayload.dialog.dialog_id = _pendingDialogId;
           // dialog_context 已改为 510 动态注入方案（TTSEnded后追加），此处不再注入
@@ -4046,6 +4068,14 @@ const DW = (() => {
         dwLog('[351] TTSSentenceEnd → flushAudio');flushAudio();
       }else if(eid===359){
         dwLog('[359] TTSEnded → flushAudio chunks='+chunks.length+' queue='+queue.length);
+        // ★ 用户退出意图检测：status_code==="20000002"
+        if(j.status_code === '20000002'){
+          dwLog('[359] 🚪 检测到退出意图 (status_code=20000002)，关闭聊天助理');
+          flushAudio();
+          // 短暂延迟让最后一句话播完再关闭
+          setTimeout(()=>{ try{ close(); }catch(_){} }, 600);
+          return;
+        }
         flushAudio();state='listening';setStatus('正在聆听…');setListening(true);_ringActive=true;
         // ★ TTSEnded后发510：等查库完成再追加上下文
         if(_dw510Promise){
