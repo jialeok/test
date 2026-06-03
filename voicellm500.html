@@ -7,11 +7,11 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>语音智询 VoiQ</title>
-<!-- v=20260603-16 -->
+<!-- v=20260603-17 -->
 <script>
 // ── 自动清缓存：每次部署只需更新上方注释里的版本号 ──
 (function(){
-  var VER = '20260603-16'; // ← 与上方注释保持一致，每次部署改这里
+  var VER = '20260603-17'; // ← 与上方注释保持一致，每次部署改这里
   var stored = localStorage.getItem('_voiq_ver');
   if(stored && stored !== VER){
     localStorage.setItem('_voiq_ver', VER);
@@ -3908,15 +3908,27 @@ const DW = (() => {
     return { intent: 'chat', name: '' };
   };
 
-  // ★ 构造dialog_context数组（全文注入用）
-  //   ctxText: lookupOverview返回的全文字符串
-  const _buildDialogContext = (ctxText) => {
-    if(!ctxText) return null;
+  // ★ 构造dialog_context数组（合并手动初始上下文 + 全文自动注入）
+  //   manualCtx: window._dwDialogContext（后台手动设置的对话轮）
+  //   autoCtxText: lookupOverview返回的全文字符串
+  //   两者都有时：先放手动轮次，再追加全文轮次，AI同时具备两份知识
+  const _buildDialogContext = (autoCtxText) => {
+    const manual = (Array.isArray(window._dwDialogContext) && window._dwDialogContext.length > 0)
+      ? window._dwDialogContext : [];
     const baseTs = Date.now() - 2000;
-    return [
+    const autoRounds = autoCtxText ? [
       { role:'user',      text:'这周所有员工的工作情况怎么样？', timestamp: baseTs },
-      { role:'assistant', text: ctxText,                          timestamp: baseTs + 1000 }
-    ];
+      { role:'assistant', text: autoCtxText,                     timestamp: baseTs + 1000 }
+    ] : [];
+    // 手动轮次补上timestamp（若没有），确保时间顺序早于autoRounds
+    const tsBase = baseTs - (manual.length + 2) * 2000;
+    const manualWithTs = manual.map((item, i) => ({
+      role: item.role,
+      text: item.text || item.content || '',
+      timestamp: item.timestamp || (tsBase + i * 1000)
+    }));
+    const merged = [...manualWithTs, ...autoRounds];
+    return merged.length > 0 ? merged : null;
   };
 
   // ★ ChatRAGText 查询：overview查全员，single查单人
@@ -3993,9 +4005,11 @@ const DW = (() => {
           const _ctx = _buildDialogContext(_dwCtxData);
           if(_ctx){
             startPayload.dialog.dialog_context = _ctx;
-            dwLog('[ctx] ✅ dialog_context注入 字符数='+_dwCtxData.length+(_pendingDialogId?' (续话+全文)':'(全文)'));
+            const _manualLen = (Array.isArray(window._dwDialogContext) ? window._dwDialogContext.length : 0);
+            const _autoLen   = _dwCtxData ? _dwCtxData.length : 0;
+            dwLog('[ctx] ✅ dialog_context注入 手动轮次='+_manualLen+' 全文字符='+_autoLen+' 总条数='+_ctx.length+(_pendingDialogId?' (续话)':''));
           } else {
-            dwLog('[ctx] ⚠️ 无报告数据，不注入dialog_context（降级为纯闲聊）');
+            dwLog('[ctx] ⚠️ 无上下文数据（手动0条+全文0字），降级为纯闲聊');
           }
           ws.send(encode(100,JSON.stringify(startPayload),sid));
           dwLog('[ctx] StartSession已发送');
