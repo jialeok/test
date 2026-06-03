@@ -413,6 +413,18 @@
             font-size: 12px; color: var(--ink-soft); flex-shrink: 0;
         }
 
+        /* ── Widget ctx pair grouping ── */
+        .widget-ctx-row + .widget-ctx-row[data-role="assistant"] {
+            margin-top: -2px !important;
+            border-top-left-radius: 0 !important;
+            border-top-right-radius: 0 !important;
+        }
+        .widget-ctx-row:has(+ .widget-ctx-row[data-role="assistant"]) {
+            border-bottom-left-radius: 0 !important;
+            border-bottom-right-radius: 0 !important;
+            border-bottom-color: transparent !important;
+        }
+
         @media (max-width: 600px) {
             .main { padding: 16px 12px 80px; }
             .toast { left: 16px; right: 16px; transform: translateY(20px); white-space: normal; width: auto; }
@@ -791,71 +803,76 @@
 
         <!-- ASR 热词 & 替换词 -->
         <div class="card" style="margin-bottom:20px">
-            <div class="card-header">
+            <div class="card-header" style="cursor:pointer;user-select:none" onclick="asrCardToggle()">
                 <div class="card-title"><span class="material-icons-round">record_voice_over</span>ASR 热词 &amp; 替换词</div>
-            </div>
-            <div class="card-body" style="display:flex;flex-direction:column;gap:16px">
-                <div style="font-size:11px;color:var(--ink-soft);line-height:1.6;padding:10px 12px;background:rgba(91,79,255,.06);border-radius:10px">
-                    <strong>热词</strong>：让Voiq ASR 更容易识别员工姓名（需开启二遍识别，会启用 enable_asr_twopass）。<br>
-                    <strong>替换词</strong>：识别后自动纠正错字，支持正则。格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词</code> → <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">正确词</code>，每行一条。
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span id="asr-card-badge" style="font-size:11px;color:var(--ink-soft);background:var(--surface);padding:2px 8px;border-radius:10px"></span>
+                    <span class="material-icons-round" id="asr-card-chevron" style="font-size:18px!important;color:var(--ink-soft);transition:transform .2s">expand_more</span>
                 </div>
-                <!-- 热词列表 -->
+            </div>
+            <div id="asr-card-body" style="display:none">
+            <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+
+                <!-- 热词区 -->
                 <div>
-                    <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
-                        <span style="font-weight:600">热词列表</span>
-                        <div style="display:flex;gap:6px">
-                            <button onclick="asrHwImportEmployees(this)" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(0,196,140,.4);background:rgba(0,196,140,.07);color:var(--success);font-size:12px;font-weight:600;cursor:pointer">
-                                <span class="material-icons-round" style="font-size:14px!important">group</span>导入员工名
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                        <span style="font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:5px">
+                            <span class="material-icons-round" style="font-size:14px!important;color:var(--success)">tag</span>
+                            热词
+                            <span style="font-size:10px;font-weight:400;color:var(--ink-soft)">帮助ASR识别员工名</span>
+                        </span>
+                        <div style="display:flex;gap:5px">
+                            <button onclick="asrHwImportEmployees(this)" style="display:flex;align-items:center;gap:3px;padding:4px 10px;border-radius:7px;border:1.5px solid rgba(0,196,140,.4);background:rgba(0,196,140,.07);color:var(--success);font-size:11px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:13px!important">group</span>导入员工名
                             </button>
-                            <button onclick="asrHwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
-                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                            <button onclick="asrHwAdd()" style="display:flex;align-items:center;gap:3px;padding:4px 10px;border-radius:7px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:13px!important">add</span>新增
                             </button>
                         </div>
                     </div>
-                    <div id="asr-hw-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:10px;width:100%;overflow:hidden"></div>
-                    <div id="asr-hw-import-tip" style="display:none;margin-top:6px;font-size:11px;color:var(--success)"></div>
+                    <!-- Tag-chip layout -->
+                    <div id="asr-hw-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:10px;padding:8px 10px;background:var(--surface);border-radius:10px;align-items:center"></div>
+                    <div id="asr-hw-import-tip" style="display:none;margin-top:5px;font-size:11px;color:var(--success)"></div>
                 </div>
-                <!-- 替换词 -->
+
+                <div style="height:1px;background:var(--border)"></div>
+
+                <!-- 替换词区 -->
                 <div>
-                    <div style="font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
-                        <span>替换词列表</span>
-                        <div style="display:flex;gap:6px">
-                            <button onclick="asrCwToggleBatch(this)" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
-                                <span class="material-icons-round" style="font-size:14px!important">content_paste</span>批量导入
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                        <span style="font-size:12px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:5px">
+                            <span class="material-icons-round" style="font-size:14px!important;color:var(--accent)">find_replace</span>
+                            替换词
+                            <span style="font-size:10px;font-weight:400;color:var(--ink-soft)">ASR识错自动纠正</span>
+                        </span>
+                        <div style="display:flex;gap:5px">
+                            <button onclick="asrCwToggleBatch(this)" id="asr-cw-batch-btn" style="display:flex;align-items:center;gap:3px;padding:4px 10px;border-radius:7px;border:1.5px solid rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:13px!important">content_paste</span>批量导入
                             </button>
-                            <button onclick="asrCwAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
-                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增
+                            <button onclick="asrCwAdd()" style="display:flex;align-items:center;gap:3px;padding:4px 10px;border-radius:7px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:11px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:13px!important">add</span>新增
                             </button>
                         </div>
                     </div>
                     <!-- 批量导入面板 -->
-                    <div id="asr-cw-batch-panel" style="display:none;margin-bottom:10px;padding:10px 12px;background:rgba(91,79,255,.04);border:1.5px solid rgba(91,79,255,.2);border-radius:10px">
-                        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;line-height:1.6">
-                            每行一条，格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词→正确词</code> 或 <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词 正确词</code>（空格分隔也可）
+                    <div id="asr-cw-batch-panel" style="display:none;margin-bottom:8px;padding:10px 12px;background:rgba(91,79,255,.04);border:1.5px solid rgba(91,79,255,.2);border-radius:10px">
+                        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;line-height:1.5">
+                            每行一条，格式：<code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px">错误词→正确词</code> 或空格分隔
                         </div>
-                        <textarea id="asr-cw-batch-input" rows="5" placeholder="张靓颖→张量平&#10;黄涵漫→黄韩漫&#10;李在鸣 李在明" style="width:100%;box-sizing:border-box;border:1.5px solid var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;font-family:monospace;outline:none;resize:vertical;color:var(--ink);background:#fff"></textarea>
-                        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                        <textarea id="asr-cw-batch-input" rows="4" placeholder="张靓颖→张量平&#10;黄涵漫→黄韩漫&#10;李在鸣 李在明" style="width:100%;box-sizing:border-box;border:1.5px solid var(--surface2);border-radius:8px;padding:7px 10px;font-size:12px;font-family:monospace;outline:none;resize:vertical;color:var(--ink);background:#fff"></textarea>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
                             <button onclick="asrCwImportBatch()" style="display:flex;align-items:center;gap:4px;padding:5px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer">
                                 <span class="material-icons-round" style="font-size:14px!important">check</span>确认导入
                             </button>
                             <span id="asr-cw-batch-tip" style="font-size:11px;color:var(--success)"></span>
                         </div>
                     </div>
-                    <!-- 表头 -->
-                    <div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center;padding:0 2px;margin-bottom:4px">
-                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">错误词（ASR识别出的）</span>
-                        <span></span>
-                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">正确词（替换成）</span>
-                        <span></span>
-                    </div>
-                    <div id="asr-cw-list" style="display:flex;flex-direction:column;gap:7px;min-height:10px"></div>
-                    <!-- 隐藏textarea保持原有读写兼容 -->
+                    <!-- 紧凑替换词列表 -->
+                    <div id="asr-cw-list" style="display:flex;flex-direction:column;gap:5px;min-height:10px"></div>
                     <textarea id="asr-cw-textarea" style="display:none"></textarea>
                 </div>
-                <div style="padding:8px 10px;background:rgba(91,79,255,.06);border-radius:8px;font-size:11px;color:var(--accent);display:flex;align-items:center;gap:6px">
-                    <span class="material-icons-round" style="font-size:13px!important">info</span>
-                    保存后，前台刷新即可生效。
-                </div>
+
+            </div>
             </div>
         </div>
 
@@ -887,30 +904,63 @@
                     </label>
                 </div>
 
+                <!-- ★ 全文注入预览卡片（只读，展示lookupOverview会注入的内容） -->
+                <div id="auto-ctx-card" style="border:1.5px solid rgba(14,168,122,.25);border-radius:10px;background:rgba(14,168,122,.04);overflow:hidden;margin-bottom:4px">
+                    <div onclick="toggleAutoCtxPreview()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;user-select:none">
+                        <div style="display:flex;align-items:center;gap:7px;min-width:0">
+                            <span class="material-icons-round" style="font-size:15px!important;color:var(--accent);flex-shrink:0">auto_awesome</span>
+                            <span style="font-size:12px;font-weight:700;color:var(--accent)">全文自动注入预览</span>
+                            <span id="auto-ctx-badge" style="font-size:10px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:2px 7px;border-radius:10px;flex-shrink:0">加载中…</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <button onclick="event.stopPropagation();refreshAutoCtxPreview()" title="刷新" style="width:24px;height:24px;border-radius:6px;border:none;background:rgba(14,168,122,.1);color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">
+                                <span class="material-icons-round" style="font-size:14px!important">refresh</span>
+                            </button>
+                            <span class="material-icons-round" id="auto-ctx-chevron" style="font-size:16px!important;color:var(--ink-soft);transition:transform .2s">expand_more</span>
+                        </div>
+                    </div>
+                    <div id="auto-ctx-body" style="display:none;border-top:1px solid rgba(14,168,122,.15);padding:10px 12px">
+                        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;line-height:1.5">
+                            Widget 打开时会自动查询近 <strong>7天</strong> 所有员工日报，拼成以下文本注入 <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px">dialog_context</code>（最多4000字）。此内容<strong>只读</strong>，由数据库实时生成。
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <span style="font-size:11px;color:var(--ink-soft)">查询天数：</span>
+                            <select id="auto-ctx-days" onchange="refreshAutoCtxPreview()" style="font-size:12px;padding:3px 8px;border-radius:6px;border:1.5px solid var(--surface2);outline:none;color:var(--ink)">
+                                <option value="3">3天</option>
+                                <option value="7" selected>7天（默认）</option>
+                                <option value="14">14天</option>
+                                <option value="30">30天</option>
+                            </select>
+                            <span id="auto-ctx-count" style="font-size:11px;color:var(--ink-soft)"></span>
+                        </div>
+                        <pre id="auto-ctx-text" style="font-size:11px;line-height:1.6;color:var(--ink);background:rgba(0,0,0,.03);border-radius:8px;padding:10px 12px;white-space:pre-wrap;word-break:break-all;max-height:320px;overflow-y:auto;margin:0;font-family:inherit">加载中…</pre>
+                        <div id="auto-ctx-warn" style="display:none;margin-top:6px;font-size:11px;color:var(--warn);display:flex;align-items:center;gap:4px">
+                            <span class="material-icons-round" style="font-size:13px!important">warning</span>
+                            <span id="auto-ctx-warn-text"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 初始上下文 -->
                 <div>
                     <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
-                        <span>初始上下文（dialog_context）</span>
+                        <span style="display:flex;align-items:center;gap:5px">
+                            <span class="material-icons-round" style="font-size:14px!important;color:var(--accent)">forum</span>
+                            初始上下文（dialog_context）
+                        </span>
                         <div style="display:flex;gap:6px">
                             <button onclick="widgetCtxAdd()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px dashed rgba(91,79,255,.35);background:rgba(91,79,255,.05);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">
-                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增一轮
+                                <span class="material-icons-round" style="font-size:14px!important">add</span>新增一对
                             </button>
                             <button onclick="widgetCtxClear()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:1.5px solid rgba(220,38,38,.3);background:rgba(220,38,38,.05);color:var(--danger);font-size:12px;font-weight:600;cursor:pointer">
                                 <span class="material-icons-round" style="font-size:14px!important">delete_sweep</span>清空
                             </button>
                         </div>
                     </div>
-                    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;line-height:1.6;padding:8px 10px;background:rgba(0,0,0,.03);border-radius:8px">
-                        每行一个"用户问/助理答"的完整对，顺序必须是 <strong>user → assistant → user → assistant…</strong>，总数必须为偶数。<br>
-                        Widget 打开时这些内容会作为初始背景注入模型，使用 <strong>ConversationCreate（eid 510）</strong>注入。
+                    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:10px;line-height:1.5;padding:7px 10px;background:rgba(0,0,0,.03);border-radius:8px">
+                        顺序必须是 <strong>user → assistant…</strong>，总数为偶数。Widget 打开时作为初始背景注入模型（eid 510）。
                     </div>
-                    <!-- 表头 -->
-                    <div style="display:grid;grid-template-columns:80px 1fr auto;gap:6px;align-items:center;padding:0 2px;margin-bottom:6px">
-                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">角色</span>
-                        <span style="font-size:11px;color:var(--ink-soft);font-weight:600">内容</span>
-                        <span></span>
-                    </div>
-                    <div id="widget-ctx-list" style="display:flex;flex-direction:column;gap:7px;min-height:10px"></div>
+                    <div id="widget-ctx-list" style="display:flex;flex-direction:column;gap:5px;min-height:10px"></div>
                     <div id="widget-ctx-tip" style="margin-top:8px;font-size:11px;color:var(--danger);display:none">⚠️ 上下文必须成对（偶数条），且必须以 user 开始、assistant 结束</div>
                 </div>
 
@@ -1342,6 +1392,8 @@
                 syncWidgetToggleUI('widget-memory');
             }
             widgetCtxRenderList(cfg.widget_dialog_context || []);
+            // ★ 配置加载后刷新全文注入徽章
+            setTimeout(_initAutoCtxBadge, 500);
         } catch(_) {
             fillDoubaoDefaults();
         }
@@ -1426,26 +1478,34 @@
         if (!list) return;
         list.innerHTML = '';
         (words || []).forEach(w => asrHwAddRow(w));
+        asrUpdateBadge();
     }
     function asrHwAdd() {
         asrHwAddRow('');
         const list = document.getElementById('asr-hw-list');
         list?.lastElementChild?.querySelector('input')?.focus();
+        asrUpdateBadge();
     }
     function asrHwAddRow(word) {
         const list = document.getElementById('asr-hw-list');
         if (!list) return;
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden';
-        row.innerHTML = `
+        const chip = document.createElement('div');
+        chip.className = 'asr-hw-chip';
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--surface2);border-radius:20px;padding:3px 6px 3px 10px;transition:border-color .15s';
+        chip.innerHTML = `
             <input class="asr-hw-input" type="text" value="${(word||'').replace(/"/g,'&quot;')}"
-                style="flex:1;min-width:0;width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
-                placeholder="如：黄韩漫">
-            <button onclick="this.closest('div').remove()" title="删除"
-                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
-                <span class="material-icons-round" style="font-size:15px!important">close</span>
+                style="width:${word ? Math.max(40, word.length * 14) : 60}px;min-width:40px;max-width:120px;border:none;outline:none;background:transparent;font-size:13px;color:var(--ink);padding:0;font-family:inherit"
+                placeholder="热词"
+                oninput="this.style.width=Math.max(40,Math.min(120,this.value.length*14||60))+'px'">
+            <button onclick="this.closest('.asr-hw-chip').remove();asrUpdateBadge()" title="删除"
+                style="width:18px;height:18px;flex-shrink:0;border-radius:50%;border:none;background:rgba(0,0,0,.08);color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s"
+                onmouseover="this.style.background='var(--danger-light)';this.style.color='var(--danger)'"
+                onmouseout="this.style.background='rgba(0,0,0,.08)';this.style.color='var(--ink-soft)'">
+                <span class="material-icons-round" style="font-size:12px!important">close</span>
             </button>`;
-        list.appendChild(row);
+        chip.querySelector('input')?.addEventListener('focus', () => chip.style.borderColor = 'var(--accent)');
+        chip.querySelector('input')?.addEventListener('blur', () => chip.style.borderColor = 'var(--surface2)');
+        list.appendChild(chip);
     }
 
     /* ── 替换词行编辑器 ── */
@@ -1454,30 +1514,55 @@
         if (!list) return;
         list.innerHTML = '';
         Object.entries(cwMap || {}).forEach(([k, v]) => asrCwAddRow(k, v));
+        asrUpdateBadge();
     }
     function asrCwAdd() {
         asrCwAddRow('', '');
         const list = document.getElementById('asr-cw-list');
         list?.lastElementChild?.querySelector('.asr-cw-from')?.focus();
+        asrUpdateBadge();
     }
     function asrCwAddRow(from, to) {
         const list = document.getElementById('asr-cw-list');
         if (!list) return;
         const row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center';
+        row.style.cssText = 'display:flex;align-items:center;gap:5px;background:var(--surface);border-radius:8px;padding:5px 8px';
         row.innerHTML = `
             <input class="asr-cw-from" type="text" value="${(from||'').replace(/"/g,'&quot;')}"
-                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
-                placeholder="黄汉漫">
-            <span style="font-size:14px;color:var(--ink-soft);font-weight:700;text-align:center;flex-shrink:0">→</span>
+                style="flex:1;min-width:0;border:1px solid var(--surface2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff;color:var(--ink);transition:border-color .15s"
+                placeholder="识别出的错误词"
+                onfocus="this.style.borderColor='var(--danger)'"
+                onblur="this.style.borderColor='var(--surface2)'">
+            <span style="font-size:13px;color:var(--ink-soft);font-weight:700;flex-shrink:0">→</span>
             <input class="asr-cw-to" type="text" value="${(to||'').replace(/"/g,'&quot;')}"
-                style="min-width:0;border:1.5px solid var(--surface2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink)"
-                placeholder="黄韩漫">
-            <button onclick="this.closest('div').remove()" title="删除"
-                style="width:28px;height:28px;flex-shrink:0;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center">
-                <span class="material-icons-round" style="font-size:15px!important">close</span>
+                style="flex:1;min-width:0;border:1px solid var(--surface2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff;color:var(--ink);transition:border-color .15s"
+                placeholder="替换成正确词"
+                onfocus="this.style.borderColor='var(--success)'"
+                onblur="this.style.borderColor='var(--surface2)'">
+            <button onclick="this.closest('div').remove();asrUpdateBadge()" title="删除"
+                style="width:22px;height:22px;flex-shrink:0;border-radius:5px;border:none;background:transparent;color:#ccc;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s"
+                onmouseover="this.style.background='var(--danger-light)';this.style.color='var(--danger)'"
+                onmouseout="this.style.background='transparent';this.style.color='#ccc'">
+                <span class="material-icons-round" style="font-size:14px!important">close</span>
             </button>`;
         list.appendChild(row);
+    }
+
+    /* ── ASR card collapse & badge ── */
+    let _asrCardOpen = false;
+    function asrCardToggle() {
+        _asrCardOpen = !_asrCardOpen;
+        const body = document.getElementById('asr-card-body');
+        const chevron = document.getElementById('asr-card-chevron');
+        if (body) body.style.display = _asrCardOpen ? '' : 'none';
+        if (chevron) chevron.style.transform = _asrCardOpen ? 'rotate(180deg)' : '';
+    }
+    function asrUpdateBadge() {
+        const badge = document.getElementById('asr-card-badge');
+        if (!badge) return;
+        const hwCount = document.querySelectorAll('#asr-hw-list .asr-hw-input').length;
+        const cwCount = document.querySelectorAll('#asr-cw-list > div').length;
+        badge.textContent = hwCount || cwCount ? `热词 ${hwCount} · 替换词 ${cwCount}` : '未配置';
     }
 
     /* ── 替换词批量导入 ── */
@@ -1486,7 +1571,8 @@
         if (!panel) return;
         const isOpen = panel.style.display !== 'none';
         panel.style.display = isOpen ? 'none' : '';
-        btn.style.background = isOpen ? 'rgba(91,79,255,.05)' : 'rgba(91,79,255,.15)';
+        const b = document.getElementById('asr-cw-batch-btn') || btn;
+        b.style.background = isOpen ? 'rgba(91,79,255,.05)' : 'rgba(91,79,255,.15)';
         if (!isOpen) document.getElementById('asr-cw-batch-input')?.focus();
     }
     function asrCwImportBatch() {
@@ -1721,42 +1807,173 @@
         if (label) label.textContent       = on ? '开启' : '关闭';
     }
 
+    /* ── 全文注入预览 ── */
+    let _autoCtxOpen = false;
+    function toggleAutoCtxPreview() {
+        _autoCtxOpen = !_autoCtxOpen;
+        const body = document.getElementById('auto-ctx-body');
+        const chevron = document.getElementById('auto-ctx-chevron');
+        if (body) body.style.display = _autoCtxOpen ? '' : 'none';
+        if (chevron) chevron.style.transform = _autoCtxOpen ? 'rotate(180deg)' : '';
+        if (_autoCtxOpen) refreshAutoCtxPreview();
+    }
+    async function refreshAutoCtxPreview() {
+        const textEl  = document.getElementById('auto-ctx-text');
+        const badgeEl = document.getElementById('auto-ctx-badge');
+        const countEl = document.getElementById('auto-ctx-count');
+        const warnEl  = document.getElementById('auto-ctx-warn');
+        const warnTxt = document.getElementById('auto-ctx-warn-text');
+        const days    = parseInt(document.getElementById('auto-ctx-days')?.value || '7', 10);
+        if (!sbClient) { if(textEl) textEl.textContent = '⚠️ 尚未登录，无法加载'; return; }
+        if (textEl) textEl.textContent = '查询中…';
+        if (badgeEl) badgeEl.textContent = '加载中…';
+        if (countEl) countEl.textContent = '';
+        if (warnEl) warnEl.style.display = 'none';
+        try {
+            const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+            const { data, error } = await sbClient
+                .from('work_records')
+                .select('record_date, raw_text, formatted_text, employees!inner(name)')
+                .gte('record_date', since)
+                .order('record_date', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            if (!data || data.length === 0) {
+                if (textEl) textEl.textContent = '（近' + days + '天暂无日报记录）';
+                if (badgeEl) badgeEl.textContent = '0 条';
+                if (countEl) countEl.textContent = '无数据';
+                return;
+            }
+            const lines = data.map(r => {
+                const name = (r.employees && r.employees.name) ? r.employees.name : '未知';
+                let content = r.raw_text || '';
+                if (r.formatted_text) {
+                    try {
+                        const f = typeof r.formatted_text === 'string' ? JSON.parse(r.formatted_text) : r.formatted_text;
+                        content = Object.entries(f).map(([k,v]) => k + '：' + v).join(' / ');
+                    } catch(_) {}
+                }
+                return '【' + name + ' ' + (r.record_date||'').substring(0,10) + '】' + content;
+            });
+            const fullText = lines.join('\n');
+            const truncated = fullText.length > 4000 ? fullText.substring(0, 4000) : fullText;
+            if (textEl) textEl.textContent = truncated;
+            if (badgeEl) badgeEl.textContent = data.length + ' 条 · ' + fullText.length + ' 字';
+            if (countEl) countEl.textContent = data.length + ' 条记录，共 ' + fullText.length + ' 字';
+            if (fullText.length > 4000) {
+                if (warnEl) warnEl.style.display = 'flex';
+                if (warnTxt) warnTxt.textContent = '超过4000字，已截断（实际注入前4000字）。建议缩短日报或减少天数。';
+            }
+        } catch(e) {
+            if (textEl) textEl.textContent = '❌ 加载失败: ' + e.message;
+            if (badgeEl) badgeEl.textContent = '出错';
+        }
+    }
+    // 页面加载后自动刷新一次徽章（不展开）
+    function _initAutoCtxBadge() {
+        const badgeEl = document.getElementById('auto-ctx-badge');
+        if (!sbClient || !badgeEl) return;
+        const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        sbClient.from('work_records')
+            .select('id, record_date', { count: 'exact', head: false })
+            .gte('record_date', since)
+            .limit(1)
+            .then(({ count, error }) => {
+                if (!error) badgeEl.textContent = (count || 0) + ' 条近7天';
+            });
+    }
+
     function widgetCtxAdd() {
         const list = document.getElementById('widget-ctx-list');
         if (!list) return;
-        // 推断下一个角色
-        const rows = list.querySelectorAll('.widget-ctx-row');
-        const lastRole = rows.length ? rows[rows.length - 1].querySelector('.widget-ctx-role')?.value : null;
-        const nextRole = (!lastRole || lastRole === 'assistant') ? 'user' : 'assistant';
-        widgetCtxAddRow(nextRole, '');
-        list.lastElementChild?.querySelector('textarea')?.focus();
+        // Generate a unique pair ID so both rows know they belong together
+        const pairId = 'pair-' + Date.now();
+        const assistantRow = _buildCtxRow('assistant', '', pairId);
+        const userRow      = _buildCtxRow('user',      '', pairId);
+        // Prepend: user first, then assistant below it
+        list.insertBefore(assistantRow, list.firstChild);
+        list.insertBefore(userRow,      list.firstChild);
+        // Expand user row and focus
+        const exp = userRow.querySelector('.wctx-expanded');
+        const chev = userRow.querySelector('.wctx-chevron');
+        if (exp)  exp.style.display = '';
+        if (chev) chev.style.transform = 'rotate(180deg)';
+        userRow.querySelector('textarea')?.focus();
+        widgetCtxValidate();
     }
-    function widgetCtxAddRow(role, text) {
+    function widgetCtxAddRow(role, text, pairId) {
         const list = document.getElementById('widget-ctx-list');
         if (!list) return;
-        const row = document.createElement('div');
-        row.className = 'widget-ctx-row';
-        row.style.cssText = 'display:grid;grid-template-columns:80px 1fr auto;gap:6px;align-items:start';
-        const roleColor = role === 'user' ? 'rgba(14,168,122,.15)' : 'rgba(91,79,255,.12)';
-        const roleLabel = role === 'user' ? '👤 用户' : '🤖 助理';
-        row.innerHTML = `
-            <select class="widget-ctx-role" onchange="widgetCtxRoleChange(this)" style="height:34px;border:1.5px solid var(--surface2);border-radius:8px;padding:0 8px;font-size:12px;font-weight:600;outline:none;background:${roleColor};color:var(--ink);cursor:pointer">
-                <option value="user" ${role==='user'?'selected':''}>👤 用户</option>
-                <option value="assistant" ${role==='assistant'?'selected':''}>🤖 助理</option>
-            </select>
-            <textarea class="widget-ctx-text" rows="2" placeholder="${role==='user'?'用户说的话':'助理的回复'}" style="border:1.5px solid var(--surface2);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;background:#fff;color:var(--ink);resize:vertical;font-family:inherit;line-height:1.5">${(text||'').replace(/</g,'&lt;')}</textarea>
-            <button onclick="this.closest('.widget-ctx-row').remove();widgetCtxValidate()" title="删除" style="width:28px;height:28px;margin-top:3px;border-radius:7px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                <span class="material-icons-round" style="font-size:15px!important">close</span>
-            </button>`;
+        const pid = pairId || ('pair-' + Date.now() + '-' + Math.random().toString(36).slice(2,6));
+        const row = _buildCtxRow(role, text, pid);
+        // Auto-expand if empty (used when loading saved data — keep collapsed)
         list.appendChild(row);
         widgetCtxValidate();
     }
-    function widgetCtxRoleChange(sel) {
-        const bg = sel.value === 'user' ? 'rgba(14,168,122,.15)' : 'rgba(91,79,255,.12)';
-        sel.style.background = bg;
-        const ta = sel.closest('.widget-ctx-row')?.querySelector('textarea');
-        if (ta) ta.placeholder = sel.value === 'user' ? '用户说的话' : '助理的回复';
+    function _buildCtxRow(role, text, pairId) {
+        const row = document.createElement('div');
+        row.className = 'widget-ctx-row';
+        row.dataset.pairId = pairId;
+        row.dataset.role = role;
+
+        const isUser = role === 'user';
+        const accentColor = isUser ? '#0ea87a' : 'var(--accent)';
+        const bgColor = isUser ? 'rgba(14,168,122,.07)' : 'rgba(91,79,255,.06)';
+        const borderColor = isUser ? 'rgba(14,168,122,.25)' : 'rgba(91,79,255,.2)';
+        const roleIcon = isUser ? '👤' : '🤖';
+        const roleLabel = isUser ? '用户' : '助理';
+        const placeholder = isUser ? '用户说的话…' : '助理的回复…';
+        const previewText = (text || '').trim();
+        const preview = previewText ? (previewText.length > 36 ? previewText.slice(0,36)+'…' : previewText) : placeholder;
+
+        row.style.cssText = `background:${bgColor};border:1px solid ${borderColor};border-radius:10px;overflow:hidden;transition:all .15s`;
+        row.innerHTML = `
+            <div class="wctx-collapsed" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer" onclick="widgetCtxToggleRow(this)">
+                <span style="font-size:12px;font-weight:700;color:${accentColor};white-space:nowrap;display:flex;align-items:center;gap:4px;flex-shrink:0;user-select:none">
+                    ${roleIcon} <span>${roleLabel}</span>
+                </span>
+                <span class="wctx-preview" style="flex:1;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:${previewText?'1':'.45'}">${preview}</span>
+                <span class="material-icons-round wctx-chevron" style="font-size:15px!important;color:var(--ink-soft);transition:transform .2s;flex-shrink:0">expand_more</span>
+                <button onclick="event.stopPropagation();widgetCtxDeletePair(this)" title="删除这一对"
+                    style="width:22px;height:22px;border-radius:5px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0">
+                    <span class="material-icons-round" style="font-size:13px!important">close</span>
+                </button>
+            </div>
+            <div class="wctx-expanded" style="display:none;padding:0 10px 8px">
+                <textarea class="widget-ctx-text" rows="2" placeholder="${placeholder}"
+                    oninput="widgetCtxSyncPreview(this)"
+                    style="width:100%;border:1px solid ${borderColor};border-radius:7px;padding:7px 9px;font-size:12px;outline:none;background:rgba(255,255,255,.8);color:var(--ink);resize:vertical;font-family:inherit;line-height:1.5;box-sizing:border-box"
+                >${(text||'').replace(/</g,'&lt;')}</textarea>
+            </div>`;
+        return row;
+    }
+    function widgetCtxDeletePair(btn) {
+        const row = btn.closest('.widget-ctx-row');
+        const pairId = row?.dataset.pairId;
+        const list = document.getElementById('widget-ctx-list');
+        if (!list || !pairId) { row?.remove(); widgetCtxValidate(); return; }
+        // Remove both rows with this pairId
+        list.querySelectorAll(`.widget-ctx-row[data-pair-id="${pairId}"]`).forEach(r => r.remove());
         widgetCtxValidate();
+    }
+    function widgetCtxToggleRow(headerEl) {
+        const row = headerEl.closest('.widget-ctx-row');
+        const expanded = row.querySelector('.wctx-expanded');
+        const chevron = row.querySelector('.wctx-chevron');
+        const isOpen = expanded.style.display !== 'none';
+        expanded.style.display = isOpen ? 'none' : '';
+        chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
+    function widgetCtxSyncPreview(ta) {
+        const row = ta.closest('.widget-ctx-row');
+        const preview = row.querySelector('.wctx-preview');
+        const val = ta.value.trim();
+        const role = row.querySelector('.widget-ctx-role')?.value;
+        const placeholder = role === 'user' ? '用户说的话…' : '助理的回复…';
+        if (preview) {
+            preview.textContent = val ? (val.length > 36 ? val.slice(0,36)+'…' : val) : placeholder;
+            preview.style.opacity = val ? '1' : '.45';
+        }
     }
     function widgetCtxClear() {
         const list = document.getElementById('widget-ctx-list');
@@ -1767,7 +1984,7 @@
         const rows = document.querySelectorAll('.widget-ctx-row');
         const tipEl = document.getElementById('widget-ctx-tip');
         if (!tipEl) return true;
-        const roles = Array.from(rows).map(r => r.querySelector('.widget-ctx-role')?.value);
+        const roles = Array.from(rows).map(r => r.dataset.role);
         const isEven = roles.length % 2 === 0;
         const isOrdered = roles.every((r, i) => i % 2 === 0 ? r === 'user' : r === 'assistant');
         const valid = roles.length === 0 || (isEven && isOrdered);
@@ -1778,12 +1995,18 @@
         const list = document.getElementById('widget-ctx-list');
         if (!list) return;
         list.innerHTML = '';
-        (items || []).forEach(item => widgetCtxAddRow(item.role, item.text));
+        // Pair up items (user+assistant = one pair)
+        const arr = items || [];
+        for (let i = 0; i < arr.length; i += 2) {
+            const pairId = 'pair-loaded-' + i;
+            widgetCtxAddRow(arr[i].role,   arr[i].text,   pairId);
+            if (arr[i+1]) widgetCtxAddRow(arr[i+1].role, arr[i+1].text, pairId);
+        }
     }
     function widgetCtxGetList() {
         const rows = document.querySelectorAll('.widget-ctx-row');
         return Array.from(rows).map(r => ({
-            role: r.querySelector('.widget-ctx-role')?.value || 'user',
+            role: r.dataset.role || 'user',
             text: r.querySelector('.widget-ctx-text')?.value?.trim() || ''
         })).filter(item => item.text);
     }
