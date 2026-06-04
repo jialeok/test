@@ -274,6 +274,30 @@
         .field-card-id { font-family: monospace; font-size: 11px; background: var(--surface); padding: 1px 6px; border-radius: 4px; color: var(--ink-soft); }
         .field-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+        /* ── Department management ── */
+        .dept-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px; border-radius: var(--r-sm);
+            background: var(--surface); transition: background .15s;
+            overflow: hidden;
+        }
+        .dept-row:hover { background: var(--surface2); }
+        .dept-icon { color: var(--accent); font-size: 18px !important; flex-shrink: 0; }
+        .dept-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--ink); }
+        .dept-actions { display: flex; gap: 5px; flex-shrink: 0; }
+        .dept-section { margin-bottom: 20px; }
+        .dept-section-header {
+            display: flex; align-items: center; gap: 7px;
+            padding: 6px 0 8px; margin-bottom: 8px;
+            border-bottom: 1.5px solid var(--border);
+        }
+        .dept-section-icon { font-size: 16px !important; color: var(--accent); }
+        .dept-section-name { font-size: 13px; font-weight: 700; color: var(--ink); }
+        .dept-section-count {
+            font-size: 11px; font-weight: 600; background: var(--accent-light);
+            color: var(--accent); padding: 1px 8px; border-radius: 12px;
+        }
+
         /* ── Employee card list ── */
         .emp-list { display: flex; flex-direction: column; gap: 10px; }
         .emp-card {
@@ -292,6 +316,12 @@
         .emp-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .emp-pin { background: var(--surface); padding: 1px 7px; border-radius: 5px; font-family: monospace; font-size: 12px; }
         .emp-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .emp-dept-select {
+            font-size: 11px; padding: 2px 6px; border-radius: 6px;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--ink-soft); font-family: inherit; cursor: pointer;
+            max-width: 90px;
+        }
 
         .data-table {
             width: 100%; border-collapse: collapse;
@@ -941,6 +971,49 @@
                     </div>
                 </div>
 
+                <!-- ★ 摘要管理卡片 -->
+                <div id="summary-mgmt-card" style="border:1.5px solid rgba(91,79,255,.25);border-radius:10px;background:rgba(91,79,255,.04);overflow:hidden;margin-bottom:4px">
+                    <div onclick="toggleSummaryCard()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;user-select:none">
+                        <div style="display:flex;align-items:center;gap:7px">
+                            <span class="material-icons-round" style="font-size:15px!important;color:var(--accent);flex-shrink:0">summarize</span>
+                            <span style="font-size:12px;font-weight:700;color:var(--accent)">摘要管理</span>
+                            <span id="summary-card-badge" style="font-size:10px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:2px 7px;border-radius:10px;flex-shrink:0">日/周/月/季</span>
+                        </div>
+                        <span class="material-icons-round" id="summary-card-chevron" style="font-size:16px!important;color:var(--ink-soft);transition:transform .2s">expand_more</span>
+                    </div>
+                    <div id="summary-card-body" style="display:none;border-top:1px solid rgba(91,79,255,.15);padding:12px">
+
+                        <!-- 操作行 -->
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                            <select id="summary-type-sel" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1.5px solid var(--surface2);outline:none;color:var(--ink)">
+                                <option value="day">今日摘要</option>
+                                <option value="week">本周摘要</option>
+                                <option value="month">本月摘要</option>
+                                <option value="quarter">本季摘要</option>
+                            </select>
+                            <button id="summary-gen-btn" onclick="generateSummary()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">auto_awesome</span>生成摘要
+                            </button>
+                            <button onclick="loadSummaryPreview()" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:1.5px solid var(--surface2);background:transparent;color:var(--ink-soft);font-size:12px;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">refresh</span>刷新
+                            </button>
+                            <span id="summary-meta" style="font-size:11px;color:var(--ink-soft)"></span>
+                        </div>
+
+                        <!-- 说明 -->
+                        <div style="font-size:11px;color:var(--ink-soft);margin-bottom:8px;line-height:1.5;padding:7px 10px;background:rgba(0,0,0,.03);border-radius:8px">
+                            手动触发AI生成摘要，写入 <code style="background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px">daily_summaries</code> 表。调试稳定后再接定时任务自动生成。
+                        </div>
+
+                        <!-- 摘要预览 -->
+                        <div style="font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:5px">当前已存摘要预览</div>
+                        <pre id="summary-preview-text" style="font-size:11px;line-height:1.6;color:var(--ink);background:rgba(0,0,0,.03);border-radius:8px;padding:10px 12px;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;margin:0;font-family:inherit">点击刷新加载…</pre>
+
+                        <!-- 生成日志 -->
+                        <div id="summary-log" style="display:none;margin-top:8px;font-size:11px;color:var(--ink-soft);background:rgba(0,0,0,.03);border-radius:8px;padding:8px 12px;white-space:pre-wrap;word-break:break-all;line-height:1.6;max-height:200px;overflow-y:auto"></div>
+                    </div>
+                </div>
+
                 <!-- 初始上下文 -->
                 <div>
                     <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
@@ -1002,33 +1075,35 @@
     <!-- ═══════════ Tab2: 员工管理 ═══════════ -->
     <div class="tab-panel" id="tab-employees">
 
-        <!-- 部门管理折叠卡片 -->
-        <div style="border:1.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
-            <div onclick="toggleDeptPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;background:var(--surface)">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <span class="material-icons-round" style="font-size:18px!important;color:var(--accent)">corporate_fare</span>
-                    <span style="font-size:14px;font-weight:700;color:var(--ink)">部门管理</span>
-                    <span id="dept-count-badge" style="font-size:11px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:2px 8px;border-radius:10px">-</span>
+        <!-- 部门管理 Card -->
+        <div class="card" style="margin-bottom:20px">
+            <div class="card-header" style="cursor:pointer;user-select:none" onclick="toggleDeptCard()">
+                <div class="card-title">
+                    <span class="material-icons-round">folder</span>
+                    部门管理
+                    <span id="dept-count-badge" style="font-size:11px;font-weight:600;background:var(--surface);color:var(--ink-soft);padding:2px 8px;border-radius:10px;margin-left:4px">0 个部门</span>
                 </div>
-                <span class="material-icons-round" id="dept-panel-chevron" style="font-size:18px!important;color:var(--ink-soft);transition:transform .2s">expand_more</span>
+                <span class="material-icons-round" id="dept-card-chevron" style="font-size:18px!important;color:var(--ink-soft);transition:transform .2s;transform:rotate(180deg)">expand_more</span>
             </div>
-            <div id="dept-panel-body" style="display:none;border-top:1px solid var(--border);background:var(--bg)">
-                <div style="display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
-                    <input id="dept-new-name" type="text" placeholder="输入新部门名称" maxlength="20"
-                        style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;color:var(--ink);background:var(--surface)"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                        onkeydown="if(event.key==='Enter') addDepartment()">
-                    <button onclick="addDepartment()" style="display:flex;align-items:center;gap:4px;padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
-                        <span class="material-icons-round" style="font-size:15px!important">add</span>添加
-                    </button>
-                </div>
-                <div id="dept-list" style="padding:8px 12px;min-height:40px">
-                    <div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">加载中…</div>
+            <div id="dept-card-body">
+                <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+                    <!-- Add dept input -->
+                    <div style="display:flex;gap:8px">
+                        <input id="new-dept-name" type="text" class="form-input" placeholder="输入新部门名称"
+                            style="flex:1" onkeydown="if(event.key==='Enter')addDepartment()">
+                        <button class="btn-primary" onclick="addDepartment()" style="white-space:nowrap;padding:10px 16px">
+                            <span class="material-icons-round">add</span>添加
+                        </button>
+                    </div>
+                    <!-- Dept list -->
+                    <div id="dept-list" style="display:flex;flex-direction:column;gap:6px">
+                        <div style="text-align:center;padding:16px;color:var(--ink-soft);font-size:13px">暂无部门</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 员工列表 -->
+        <!-- 员工管理 Header -->
         <div class="section-header">
             <div>
                 <div class="section-title">👥 员工管理</div>
@@ -1038,7 +1113,9 @@
                 <span class="material-icons-round">person_add</span>添加员工
             </button>
         </div>
-        <div class="emp-list" id="employee-tbody">
+
+        <!-- 员工列表（按部门分组） -->
+        <div id="employee-tbody">
             <div class="empty-state"><span class="material-icons-round">people_outline</span><p>暂无员工，点击上方按钮添加</p></div>
         </div>
     </div>
@@ -1212,8 +1289,8 @@
             </div>
             <div class="form-group">
                 <label class="form-label">部门</label>
-                <select class="form-input" id="emp-department" style="cursor:pointer">
-                    <option value="">-- 请选择部门 --</option>
+                <select class="form-input form-select" id="emp-department">
+                    <option value="">无部门</option>
                 </select>
             </div>
         </div>
@@ -1913,6 +1990,197 @@
             });
     }
 
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  摘要管理                                                      */
+    /* ══════════════════════════════════════════════════════════════ */
+    function toggleSummaryCard() {
+        const body = document.getElementById('summary-card-body');
+        const chev = document.getElementById('summary-card-chevron');
+        const open = body.style.display === 'none';
+        body.style.display = open ? '' : 'none';
+        if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+        if (open) loadSummaryPreview();
+    }
+
+    async function loadSummaryPreview() {
+        const textEl = document.getElementById('summary-preview-text');
+        const metaEl = document.getElementById('summary-meta');
+        const type   = document.getElementById('summary-type-sel')?.value || 'day';
+        if (!sbClient) { textEl.textContent = '⚠️ 尚未登录'; return; }
+        textEl.textContent = '加载中…';
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            // 根据类型决定查哪个日期范围内最新的一条
+            let query = sbClient.from('daily_summaries')
+                .select('summary_date, type, scope, department, content, meta, created_at')
+                .eq('type', type)
+                .order('summary_date', { ascending: false })
+                .limit(10);
+            const { data, error } = await query;
+            if (error) throw error;
+            if (!data || data.length === 0) {
+                textEl.textContent = '（暂无' + { day:'日', week:'周', month:'月', quarter:'季' }[type] + '摘要，点击「生成摘要」创建）';
+                if (metaEl) metaEl.textContent = '';
+                return;
+            }
+            const lines = data.map(r => {
+                const scopeLabel = r.scope === 'company' ? '【公司】' : '【' + (r.department || '部门') + '】';
+                const dateLabel  = r.summary_date || '';
+                return dateLabel + ' ' + scopeLabel + '\n' + (r.content || '（内容为空）') + (r.meta ? '\n' + r.meta : '');
+            });
+            textEl.textContent = lines.join('\n\n---\n\n');
+            if (metaEl) metaEl.textContent = '共 ' + data.length + ' 条';
+        } catch(e) {
+            textEl.textContent = '❌ 加载失败: ' + e.message;
+        }
+    }
+
+    async function generateSummary() {
+        const btn    = document.getElementById('summary-gen-btn');
+        const logEl  = document.getElementById('summary-log');
+        const type   = document.getElementById('summary-type-sel')?.value || 'day';
+        const SUPABASE_URL = window._supabaseUrl || document.querySelector('script[src*="supabase"]')?.src?.match(/https:\/\/[^/]+/)?.[0] || '';
+        // 从已知常量取
+        const sbUrl  = typeof SUPABASE_URL_CONST !== 'undefined' ? SUPABASE_URL_CONST : '';
+
+        if (!sbClient) { showToast('尚未登录', 'error'); return; }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:14px!important;animation:spin 1s linear infinite">refresh</span>生成中…';
+        logEl.style.display = '';
+        logEl.textContent = '开始生成 ' + type + ' 摘要…\n';
+
+        try {
+            // 1. 拉取原始数据
+            const today = new Date().toISOString().slice(0, 10);
+            let since = today;
+            if (type === 'week') {
+                since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+            } else if (type === 'month') {
+                since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+            } else if (type === 'quarter') {
+                since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+            }
+
+            logEl.textContent += '查询 ' + since + ' 至 ' + today + ' 的数据…\n';
+
+            let rawRecords = [];
+            if (type === 'day') {
+                // 日摘要：直接读 work_records
+                const { data, error } = await sbClient
+                    .from('work_records')
+                    .select('record_date, formatted_fields, raw_text, employees!inner(name, department)')
+                    .gte('record_date', since)
+                    .order('record_date', { ascending: false })
+                    .limit(200);
+                if (error) throw error;
+                rawRecords = (data || []).map(r => {
+                    let content = r.raw_text || '';
+                    if (r.formatted_fields) {
+                        try {
+                            const f = typeof r.formatted_fields === 'string' ? JSON.parse(r.formatted_fields) : r.formatted_fields;
+                            content = Object.entries(f).map(([k,v]) => k + '：' + v).join('；');
+                        } catch(_) {}
+                    }
+                    return {
+                        name: r.employees?.name || '未知',
+                        department: r.employees?.department || '未分配',
+                        date: (r.record_date || '').slice(0, 10),
+                        content
+                    };
+                });
+            } else {
+                // 周/月/季摘要：读上一层的 daily_summaries
+                const srcType = type === 'week' ? 'day' : type === 'month' ? 'week' : 'month';
+                const { data, error } = await sbClient
+                    .from('daily_summaries')
+                    .select('summary_date, scope, department, content, meta')
+                    .eq('type', srcType)
+                    .gte('summary_date', since)
+                    .order('summary_date', { ascending: false })
+                    .limit(50);
+                if (error) throw error;
+                rawRecords = (data || []).map(r => ({
+                    name: r.scope === 'company' ? '公司' : (r.department || '部门'),
+                    department: r.department || '',
+                    date: (r.summary_date || '').slice(0, 10),
+                    content: r.content || ''
+                }));
+            }
+
+            if (rawRecords.length === 0) {
+                logEl.textContent += '⚠️ 无数据，无法生成摘要\n';
+                showToast('无数据，无法生成', 'error');
+                return;
+            }
+
+            logEl.textContent += '共 ' + rawRecords.length + ' 条数据，调用AI生成摘要…\n';
+
+            // 2. 拼装prompt
+            const dataText = rawRecords.map(r =>
+                '【' + r.name + (r.department && r.department !== r.name ? '/' + r.department : '') + ' ' + r.date + '】' + r.content
+            ).join('\n');
+
+            const typeLabel = { day:'今日', week:'本周', month:'本月', quarter:'本季度' }[type];
+            const prompt = `以下是${typeLabel}各员工汇报数据，请根据这些数据生成摘要。
+
+要求：
+1. 只能总结原始数据中明确提到的内容，禁止推测、补充或美化任何未提及的信息
+2. 如果某项内容为空或没有相关记录，直接写"无"，不得编造
+3. 问题字段描述为"遇到的问题"，不要说"风险"
+4. 按以下JSON格式输出，不要输出任何其他内容：
+
+{
+  "company_summary": "公司整体摘要，100字以内",
+  "department_summaries": {
+    "部门名称": "该部门摘要，50字以内"
+  },
+  "problem_employees": [
+    {"name": "员工姓名", "problem": "该员工自己填写的问题原文"}
+  ]
+}
+
+原始数据：
+${dataText}`;
+
+            // 3. 调千问AI（通过 report-handler 的同一个supabase url）
+            const supabaseUrl = sbClient.supabaseUrl || '';
+            const res = await fetch(supabaseUrl + '/functions/v1/summarize-daily', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (sbClient.supabaseKey || '')
+                },
+                body: JSON.stringify({
+                    type,
+                    date: today,
+                    since,
+                    prompt,
+                    record_count: rawRecords.length
+                })
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error('Edge Function返回错误: ' + res.status + ' ' + errText);
+            }
+
+            const result = await res.json();
+            if (result.error) throw new Error(result.error);
+
+            logEl.textContent += '✅ 摘要生成成功，已写入数据库\n';
+            logEl.textContent += '元信息：' + (result.meta || '') + '\n';
+            showToast('摘要生成成功', 'success');
+            await loadSummaryPreview();
+
+        } catch(e) {
+            logEl.textContent += '❌ 失败: ' + e.message + '\n';
+            showToast('生成失败: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-icons-round" style="font-size:14px!important">auto_awesome</span>生成摘要';
+        }
+    }
+
     function widgetCtxAdd() {
         const list = document.getElementById('widget-ctx-list');
         if (!list) return;
@@ -2123,7 +2391,7 @@
         document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
         document.getElementById(tabId).classList.add('active');
 
-        if (tabId === 'tab-employees') { loadDepartments(); loadEmployees(); }
+        if (tabId === 'tab-employees') loadEmployees();
         if (tabId === 'tab-fields') loadFields();
         if (tabId === 'tab-prompts') loadPrompts();
         if (tabId === 'tab-records') { loadEmployeeFilter(); loadRecords(); }
@@ -2138,156 +2406,236 @@
     }
 
     /* ══════════════════════════════════════════════════════════════ */
-    /*  Tab2: 员工管理                                                */
+    /*  Tab2: 员工管理 + 部门管理                                     */
     /* ══════════════════════════════════════════════════════════════ */
-    /* ══════════════════════════════════════════════════════════════ */
-    /*  部门管理                                                      */
-    /* ══════════════════════════════════════════════════════════════ */
-    let _deptCache = []; // 缓存部门列表，供下拉使用
 
-    function toggleDeptPanel() {
-        const body = document.getElementById('dept-panel-body');
-        const chev = document.getElementById('dept-panel-chevron');
-        const open = body.style.display === 'none';
-        body.style.display = open ? '' : 'none';
-        if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
-        if (open) loadDepartments();
-    }
-
-    async function loadDepartments() {
-        const list = document.getElementById('dept-list');
-        const badge = document.getElementById('dept-count-badge');
-        if (!sbClient || !list) return;
-        list.innerHTML = '<div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">加载中…</div>';
-        try {
-            const { data, error } = await sbClient.from('departments').select('*').order('sort_order').order('created_at');
-            if (error) throw error;
-            _deptCache = data || [];
-            const enabled = _deptCache.filter(d => d.enabled);
-            if (badge) badge.textContent = enabled.length + ' 个部门';
-            if (!_deptCache.length) {
-                list.innerHTML = '<div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">暂无部门，请添加</div>';
-                return;
-            }
-            list.innerHTML = _deptCache.map(d => `
-                <div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border)">
-                    <span class="material-icons-round" style="font-size:16px!important;color:${d.enabled ? 'var(--accent)' : 'var(--ink-soft)'}">
-                        ${d.enabled ? 'folder' : 'folder_off'}
-                    </span>
-                    <span id="dept-name-${d.id}" style="flex:1;font-size:13px;color:${d.enabled ? 'var(--ink)' : 'var(--ink-soft)'};${d.enabled ? '' : 'text-decoration:line-through'}">
-                        ${esc(d.name)}
-                    </span>
-                    <div style="display:flex;gap:6px">
-                        <button onclick="renameDepartment('${d.id}','${esc(d.name)}')"
-                            title="改名"
-                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--accent)">
-                            <span class="material-icons-round" style="font-size:14px!important">edit</span>
-                        </button>
-                        <button onclick="toggleDepartment('${d.id}', ${!d.enabled})"
-                            title="${d.enabled ? '停用' : '启用'}"
-                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:${d.enabled ? '#d97706' : 'var(--accent)'}">
-                            <span class="material-icons-round" style="font-size:14px!important">${d.enabled ? 'pause_circle' : 'play_circle'}</span>
-                        </button>
-                        <button onclick="deleteDepartment('${d.id}','${esc(d.name)}')"
-                            title="删除"
-                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--danger)">
-                            <span class="material-icons-round" style="font-size:14px!important">delete</span>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-            // 同步更新员工编辑下拉
-            _fillDeptSelect();
-        } catch(e) {
-            list.innerHTML = `<div style="color:var(--danger);padding:16px;font-size:13px">加载失败：${esc(e.message)}</div>`;
+    // ── 部门 Card 折叠 ──
+    function toggleDeptCard() {
+        const body = document.getElementById('dept-card-body');
+        const chev = document.getElementById('dept-card-chevron');
+        const isOpen = body.dataset.open !== 'false';
+        if (isOpen) {
+            body.style.display = 'none';
+            body.dataset.open = 'false';
+            if (chev) chev.style.transform = '';
+        } else {
+            body.style.display = '';
+            body.dataset.open = 'true';
+            if (chev) chev.style.transform = 'rotate(180deg)';
         }
     }
 
-    function _fillDeptSelect(selectedValue) {
+    // 缓存部门列表供 select 使用
+    let _cachedDepts = [];
+
+    async function loadEmployees() {
+        const tbody = document.getElementById('employee-tbody');
+        if (!sbClient || !tbody) return;
+        try {
+            // 并行拉取部门 + 员工
+            const [deptRes, empRes] = await Promise.all([
+                sbClient.from('departments').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+                sbClient.from('employees').select('*').order('created_at', { ascending: true })
+            ]);
+            if (deptRes.error) throw deptRes.error;
+            if (empRes.error) throw empRes.error;
+
+            const depts = deptRes.data || [];
+            const emps  = empRes.data || [];
+            _cachedDepts = depts;
+
+            // 渲染部门管理区
+            renderDeptList(depts, emps);
+            // 更新 modal 下拉
+            populateDeptSelects(depts);
+
+            if (emps.length === 0) {
+                tbody.innerHTML = '<div class="empty-state"><span class="material-icons-round">people_outline</span><p>暂无员工，点击上方按钮添加</p></div>';
+                return;
+            }
+
+            // 按部门分组
+            const grouped = {};
+            emps.forEach(emp => {
+                const key = emp.department || '__none__';
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(emp);
+            });
+
+            // 渲染顺序：departments 表顺序 → 未匹配部门名 → 无部门
+            const sections = [];
+            depts.forEach(d => {
+                if (grouped[d.name]) sections.push({ label: d.name, emps: grouped[d.name] });
+            });
+            // 部门名不在 departments 表里的员工（兜底）
+            Object.keys(grouped).forEach(key => {
+                if (key !== '__none__' && !depts.find(d => d.name === key)) {
+                    sections.push({ label: key, emps: grouped[key] });
+                }
+            });
+            if (grouped['__none__']?.length) {
+                sections.push({ label: '未分配', emps: grouped['__none__'] });
+            }
+
+            tbody.innerHTML = sections.map(({ label, emps: list }) => `
+                <div class="dept-section">
+                    <div class="dept-section-header">
+                        <span class="material-icons-round dept-section-icon">folder</span>
+                        <span class="dept-section-name">${esc(label)}</span>
+                        <span class="dept-section-count">${list.length}人</span>
+                    </div>
+                    <div class="emp-list">${list.map(emp => _buildEmpCard(emp, depts)).join('')}</div>
+                </div>`).join('');
+
+        } catch(e) {
+            document.getElementById('employee-tbody').innerHTML =
+                `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function renderDeptList(depts, emps) {
+        const listEl  = document.getElementById('dept-list');
+        const badgeEl = document.getElementById('dept-count-badge');
+        if (!listEl) return;
+        if (badgeEl) badgeEl.textContent = depts.length + ' 个部门';
+        if (depts.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--ink-soft);font-size:13px">暂无部门，输入名称添加</div>';
+            return;
+        }
+        listEl.innerHTML = depts.map(dept => {
+            const count = (emps || []).filter(e => e.department === dept.name).length;
+            return `<div class="dept-row" id="dept-row-${dept.id}">
+                <span class="material-icons-round dept-icon">${dept.enabled ? 'folder' : 'folder_off'}</span>
+                <span class="dept-name">${esc(dept.name)}</span>
+                <span style="font-size:11px;color:var(--ink-soft);flex-shrink:0">${count}人</span>
+                <div class="dept-actions">
+                    <button class="btn-sm btn-sm-accent" onclick="startEditDept('${dept.id}','${esc(dept.name).replace(/'/g,"\\'")}')">
+                        <span class="material-icons-round">edit</span>
+                    </button>
+                    <button class="btn-sm btn-sm-danger" onclick="deleteDepartment('${dept.id}','${esc(dept.name).replace(/'/g,"\\'")}',${count})">
+                        <span class="material-icons-round">delete</span>
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function populateDeptSelects(depts) {
         const sel = document.getElementById('emp-department');
         if (!sel) return;
-        const enabledDepts = _deptCache.filter(d => d.enabled);
-        sel.innerHTML = '<option value="">-- 请选择部门 --</option>' +
-            enabledDepts.map(d => `<option value="${esc(d.name)}" ${selectedValue === d.name ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">无部门</option>' +
+            depts.filter(d => d.enabled !== false).map(d =>
+                `<option value="${esc(d.name)}" ${d.name === cur ? 'selected' : ''}>${esc(d.name)}</option>`
+            ).join('');
     }
 
     async function addDepartment() {
-        const input = document.getElementById('dept-new-name');
+        const input = document.getElementById('new-dept-name');
         const name = input?.value.trim();
         if (!name) { showToast('请输入部门名称', 'error'); return; }
         try {
-            const { error } = await sbClient.from('departments').insert({ name });
+            const maxOrder = _cachedDepts.reduce((m, d) => Math.max(m, d.sort_order || 0), 0);
+            const { error } = await sbClient.from('departments').insert({ name, enabled: true, sort_order: maxOrder + 1 });
             if (error) throw error;
-            input.value = '';
+            if (input) input.value = '';
             showToast('部门已添加', 'success');
-            loadDepartments();
-        } catch(e) {
-            showToast('添加失败: ' + (e.message.includes('unique') ? '部门名已存在' : e.message), 'error');
-        }
-    }
-
-    async function renameDepartment(id, oldName) {
-        const newName = prompt('修改部门名称：', oldName);
-        if (!newName || newName.trim() === oldName) return;
-        try {
-            // 同步更新该部门下的员工
-            const { error: empErr } = await sbClient.from('employees').update({ department: newName.trim() }).eq('department', oldName);
-            if (empErr) throw empErr;
-            const { error } = await sbClient.from('departments').update({ name: newName.trim() }).eq('id', id);
-            if (error) throw error;
-            showToast('部门已改名，员工信息同步更新', 'success');
-            loadDepartments();
             loadEmployees();
         } catch(e) {
-            showToast('改名失败: ' + e.message, 'error');
+            showToast('添加失败: ' + e.message, 'error');
         }
     }
 
-    async function toggleDepartment(id, enabled) {
+    function startEditDept(id, oldName) {
+        const rowEl = document.getElementById('dept-row-' + id);
+        if (!rowEl) return;
+        rowEl.innerHTML = `
+            <span class="material-icons-round dept-icon" style="flex-shrink:0">folder_open</span>
+            <input type="text" value="${esc(oldName)}" id="dept-edit-input-${id}"
+                style="flex:1;min-width:0;padding:5px 9px;border:1.5px solid var(--accent);border-radius:8px;font-size:13px;font-family:inherit;outline:none;color:var(--ink);width:0"
+                onkeydown="if(event.key==='Enter')confirmEditDept('${id}','${esc(oldName).replace(/'/g,"\\'")}');if(event.key==='Escape')loadEmployees()">
+            <button class="btn-sm btn-sm-accent" style="flex-shrink:0" onclick="confirmEditDept('${id}','${esc(oldName).replace(/'/g,"\\'")}')">
+                <span class="material-icons-round">check</span>
+            </button>
+            <button class="btn-sm btn-sm-ghost" style="flex-shrink:0" onclick="loadEmployees()">
+                <span class="material-icons-round">close</span>
+            </button>`;
+        document.getElementById('dept-edit-input-' + id)?.focus();
+    }
+
+    async function confirmEditDept(id, oldName) {
+        const input = document.getElementById('dept-edit-input-' + id);
+        const newName = input?.value.trim();
+        if (!newName) { showToast('部门名称不能为空', 'error'); return; }
+        if (newName === oldName) { loadEmployees(); return; }
         try {
-            const { error } = await sbClient.from('departments').update({ enabled }).eq('id', id);
-            if (error) throw error;
-            showToast(enabled ? '已启用' : '已停用', 'success');
-            loadDepartments();
+            // 更新 departments 表
+            const { error: e1 } = await sbClient.from('departments').update({ name: newName }).eq('id', id);
+            if (e1) throw e1;
+            // 同步更新 employees.department
+            const { error: e2 } = await sbClient.from('employees').update({ department: newName }).eq('department', oldName);
+            if (e2) throw e2;
+            showToast('部门已更新', 'success');
+            loadEmployees();
         } catch(e) {
-            showToast('操作失败: ' + e.message, 'error');
+            showToast('更新失败: ' + e.message, 'error');
         }
     }
 
-    async function deleteDepartment(id, name) {
-        // 检查该部门下有没有员工
+    async function deleteDepartment(id, name, empCount) {
+        const msg = empCount > 0
+            ? `部门「${name}」下有 ${empCount} 名员工，删除后这些员工将变为无部门。确定删除？`
+            : `确定删除部门「${name}」？`;
+        if (!confirm(msg)) return;
         try {
-            const { data, error } = await sbClient.from('employees').select('id', { count: 'exact', head: true }).eq('department', name);
-            if (error) throw error;
-            const count = data?.length || 0;
-            // Supabase head:true 用 count
-            const { count: empCount } = await sbClient.from('employees').select('*', { count: 'exact', head: true }).eq('department', name);
             if (empCount > 0) {
-                showToast(`「${name}」下还有 ${empCount} 名员工，请先将员工移至其他部门`, 'error');
-                return;
+                await sbClient.from('employees').update({ department: '' }).eq('department', name);
             }
-            if (!confirm(`确定删除部门「${name}」吗？`)) return;
-            const { error: delErr } = await sbClient.from('departments').delete().eq('id', id);
-            if (delErr) throw delErr;
+            const { error } = await sbClient.from('departments').delete().eq('id', id);
+            if (error) throw error;
             showToast('部门已删除', 'success');
-            loadDepartments();
+            loadEmployees();
         } catch(e) {
             showToast('删除失败: ' + e.message, 'error');
         }
     }
 
-    async function _ensureDeptCache() {
-        if (_deptCache.length) return;
-        try {
-            const { data } = await sbClient.from('departments').select('*').eq('enabled', true).order('sort_order');
-            _deptCache = data || [];
-        } catch(_) {}
+    function _buildEmpCard(emp, depts) {
+        const deptOptions = ['<option value="">无部门</option>',
+            ...depts.filter(d => d.enabled !== false).map(d =>
+                `<option value="${esc(d.name)}" ${d.name === emp.department ? 'selected' : ''}>${esc(d.name)}</option>`)
+        ].join('');
+        return `<div class="emp-card">
+            <div class="emp-avatar">${esc(emp.name).charAt(0)}</div>
+            <div class="emp-info">
+                <div class="emp-name">${esc(emp.name)}
+                    <span class="badge ${emp.enabled ? 'badge-success' : 'badge-danger'}" style="margin-left:6px;font-size:10px">${emp.enabled ? '启用' : '禁用'}</span>
+                </div>
+                <div class="emp-meta">
+                    <span class="emp-pin">PIN: ${esc(emp.pin)}</span>
+                    <select class="emp-dept-select" onchange="changeEmpDept('${emp.id}', this.value)" title="更改部门">
+                        ${deptOptions}
+                    </select>
+                    <span style="font-size:10px;color:var(--ink-soft)">ID:${esc((emp.id||'').slice(-4))}</span>
+                </div>
+            </div>
+            <div class="emp-actions">
+                <button class="btn-sm ${emp.enabled ? 'btn-sm-warning' : 'btn-sm-success'}" onclick="toggleEmployee('${emp.id}', ${!emp.enabled})" title="${emp.enabled ? '禁用' : '启用'}">
+                    <span class="material-icons-round">${emp.enabled ? 'visibility_off' : 'visibility'}</span>
+                </button>
+                <button class="btn-sm btn-sm-accent" onclick="editEmployee('${emp.id}')" title="编辑">
+                    <span class="material-icons-round">edit</span>
+                </button>
+                <button class="btn-sm btn-sm-danger" onclick="deleteEmployee('${emp.id}', '${esc(emp.name).replace(/'/g,"\\'")}')">
+                    <span class="material-icons-round">delete</span>
+                </button>
+            </div>
+        </div>`;
     }
 
-    // 快速换部门（员工卡片上直接选）
-    async function quickChangeDept(empId, newDept) {
+    async function changeEmpDept(id, dept) {
         try {
-            const { error } = await sbClient.from('employees').update({ department: newDept || null }).eq('id', empId);
+            const { error } = await sbClient.from('employees').update({ department: dept }).eq('id', id);
             if (error) throw error;
             showToast('部门已更新', 'success');
             loadEmployees();
@@ -2296,110 +2644,16 @@
         }
     }
 
-    async function loadEmployees() {
-        const tbody = document.getElementById('employee-tbody');
-        if (!sbClient || !tbody) return;
-        try {
-            await _ensureDeptCache();
-            const { data, error } = await sbClient
-                .from('employees')
-                .select('*')
-                .order('created_at', { ascending: true });
-            if (error) throw error;
-
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<div class="empty-state"><span class="material-icons-round">people_outline</span><p>暂无员工，点击上方按钮添加</p></div>';
-                return;
-            }
-
-            // 统计重名
-            const nameCounts = {};
-            data.forEach(e => { nameCounts[e.name] = (nameCounts[e.name] || 0) + 1; });
-
-            // 按部门分组
-            const groups = {};
-            data.forEach(emp => {
-                const key = emp.department || '__none__';
-                if (!groups[key]) groups[key] = [];
-                groups[key].push(emp);
-            });
-
-            // 排序：按departments表顺序，未分配放最后
-            const deptOrder = _deptCache.map(d => d.name);
-            const sortedKeys = [
-                ...deptOrder.filter(k => groups[k]),
-                ...Object.keys(groups).filter(k => k !== '__none__' && !deptOrder.includes(k)),
-                ...(groups['__none__'] ? ['__none__'] : [])
-            ];
-
-            // 部门下拉选项
-            const deptOptions = '<option value="">未分配</option>' +
-                _deptCache.filter(d => d.enabled).map(d => `<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');
-
-            const renderEmp = emp => {
-                const selOpts = deptOptions.replace(
-                    `value="${esc(emp.department || '')}"`,
-                    `value="${esc(emp.department || '')}" selected`
-                );
-                return `
-                <div class="emp-card" style="margin-bottom:8px">
-                    <div class="emp-avatar" style="flex-shrink:0">${esc(emp.name).charAt(0)}</div>
-                    <div class="emp-info" style="flex:1;min-width:0">
-                        <div class="emp-name">${esc(emp.name)}
-                            <span class="badge ${emp.enabled ? 'badge-success' : 'badge-danger'}" style="margin-left:6px;font-size:10px">${emp.enabled ? '启用' : '禁用'}</span>
-                            ${nameCounts[emp.name] > 1 ? '<span title="存在同名员工，请核查" style="margin-left:4px;font-size:10px;background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:6px;cursor:help">⚠️ 重名</span>' : ''}
-                        </div>
-                        <div class="emp-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
-                            <span class="emp-pin">PIN: ${esc(emp.pin)}</span>
-                            <select onchange="quickChangeDept('${emp.id}', this.value)"
-                                style="font-size:11px;padding:2px 6px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer;max-width:90px">
-                                ${selOpts}
-                            </select>
-                            <span style="font-size:10px;color:var(--ink-soft);opacity:.5">ID:${emp.id.slice(-4)}</span>
-                        </div>
-                    </div>
-                    <div class="emp-actions" style="flex-shrink:0">
-                        <button class="btn-sm ${emp.enabled ? 'btn-sm-warning' : 'btn-sm-success'}" onclick="toggleEmployee('${emp.id}', ${!emp.enabled})" title="${emp.enabled ? '禁用' : '启用'}">
-                            <span class="material-icons-round">${emp.enabled ? 'visibility_off' : 'visibility'}</span>
-                        </button>
-                        <button class="btn-sm btn-sm-accent" onclick="editEmployee('${emp.id}')" title="编辑">
-                            <span class="material-icons-round">edit</span>
-                        </button>
-                        <button class="btn-sm btn-sm-danger" onclick="deleteEmployee('${emp.id}', '${esc(emp.name)}')" title="删除">
-                            <span class="material-icons-round">delete</span>
-                        </button>
-                    </div>
-                </div>`;
-            };
-
-            tbody.innerHTML = sortedKeys.map(key => {
-                const emps = groups[key];
-                const label = key === '__none__' ? '未分配' : key;
-                const icon  = key === '__none__' ? 'person_off' : 'folder';
-                const color = key === '__none__' ? 'var(--ink-soft)' : 'var(--accent)';
-                return `
-                <div style="margin-bottom:18px">
-                    <div style="display:flex;align-items:center;gap:6px;padding:6px 2px;margin-bottom:8px;border-bottom:2px solid var(--border)">
-                        <span class="material-icons-round" style="font-size:16px!important;color:${color}">${icon}</span>
-                        <span style="font-size:13px;font-weight:700;color:${color}">${esc(label)}</span>
-                        <span style="font-size:11px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:1px 7px;border-radius:10px">${emps.length}人</span>
-                    </div>
-                    ${emps.map(renderEmp).join('')}
-                </div>`;
-            }).join('');
-
-        } catch(e) {
-            tbody.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
-        }
-    }
-
     function openEmployeeModal(id) {
         document.getElementById('emp-edit-id').value = '';
         document.getElementById('emp-name').value = '';
-        document.getElementById('emp-nickname').value = '';
+        const nickEl = document.getElementById('emp-nickname');
+        if (nickEl) { nickEl.value = ''; nickEl.dataset.userEdited = ''; }
         document.getElementById('emp-pin').value = '';
+        populateDeptSelects(_cachedDepts);
+        const sel = document.getElementById('emp-department');
+        if (sel) sel.value = '';
         document.getElementById('employee-modal-title').textContent = id ? '编辑员工' : '添加员工';
-        _ensureDeptCache().then(() => _fillDeptSelect(''));
         document.getElementById('employee-modal').classList.add('show');
     }
 
@@ -2436,13 +2690,14 @@
             document.getElementById('emp-name').value = data.name || '';
             const nickEl = document.getElementById('emp-nickname');
             if (nickEl) {
-                // If nickname stored, use it; otherwise derive from name
                 nickEl.value = data.nickname || (data.name ? data.name.slice(-1) : '');
                 nickEl.dataset.userEdited = data.nickname ? '1' : '';
             }
             document.getElementById('emp-pin').value = data.pin || '';
+            populateDeptSelects(_cachedDepts);
+            const sel = document.getElementById('emp-department');
+            if (sel) sel.value = data.department || '';
             document.getElementById('employee-modal-title').textContent = '编辑员工';
-            _ensureDeptCache().then(() => _fillDeptSelect(data.department || ''));
             document.getElementById('employee-modal').classList.add('show');
         } catch(e) {
             showToast('加载员工信息失败: ' + e.message, 'error');
