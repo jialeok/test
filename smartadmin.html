@@ -994,6 +994,9 @@
                             <button id="summary-gen-btn" onclick="generateSummary()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer">
                                 <span class="material-icons-round" style="font-size:14px!important">auto_awesome</span>生成摘要
                             </button>
+                            <button id="summary-gen-all-btn" onclick="generateAllSummaries()" style="display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-size:12px;font-weight:600;cursor:pointer">
+                                <span class="material-icons-round" style="font-size:14px!important">auto_fix_high</span>一键全部
+                            </button>
                             <button onclick="loadSummaryPreview()" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;border:1.5px solid var(--surface2);background:transparent;color:var(--ink-soft);font-size:12px;cursor:pointer">
                                 <span class="material-icons-round" style="font-size:14px!important">refresh</span>刷新
                             </button>
@@ -2009,26 +2012,42 @@
         if (!sbClient) { textEl.textContent = '⚠️ 尚未登录'; return; }
         textEl.textContent = '加载中…';
         try {
-            const today = new Date().toISOString().slice(0, 10);
-            // 根据类型决定查哪个日期范围内最新的一条
-            let query = sbClient.from('daily_summaries')
+            const { data, error } = await sbClient.from('daily_summaries')
                 .select('summary_date, type, scope, department, content, meta, created_at')
                 .eq('type', type)
                 .order('summary_date', { ascending: false })
-                .limit(10);
-            const { data, error } = await query;
+                .limit(20);
             if (error) throw error;
             if (!data || data.length === 0) {
                 textEl.textContent = '（暂无' + { day:'日', week:'周', month:'月', quarter:'季' }[type] + '摘要，点击「生成摘要」创建）';
                 if (metaEl) metaEl.textContent = '';
                 return;
             }
-            const lines = data.map(r => {
-                const scopeLabel = r.scope === 'company' ? '【公司】' : '【' + (r.department || '部门') + '】';
-                const dateLabel  = r.summary_date || '';
-                return dateLabel + ' ' + scopeLabel + '\n' + (r.content || '（内容为空）') + (r.meta ? '\n' + r.meta : '');
+            // 按日期分组，公司摘要在前，部门摘要在后
+            const grouped = {};
+            data.forEach(r => {
+                const d = r.summary_date || '';
+                if (!grouped[d]) grouped[d] = { company: null, depts: [] };
+                if (r.scope === 'company') grouped[d].company = r;
+                else grouped[d].depts.push(r);
             });
-            textEl.textContent = lines.join('\n\n---\n\n');
+            const blocks = Object.keys(grouped).sort().reverse().map(d => {
+                const g = grouped[d];
+                const lines = [];
+                if (g.company) {
+                    lines.push(d + ' 【公司概况】');
+                    lines.push(g.company.content || '（内容为空）');
+                    if (g.company.meta) lines.push(g.company.meta);
+                }
+                g.depts.forEach(r => {
+                    lines.push('');
+                    lines.push(d + ' 【' + (r.department || '部门') + '】');
+                    lines.push(r.content || '（内容为空）');
+                    if (r.meta) lines.push(r.meta);
+                });
+                return lines.join('\n');
+            });
+            textEl.textContent = blocks.join('\n\n---\n\n');
             if (metaEl) metaEl.textContent = '共 ' + data.length + ' 条';
         } catch(e) {
             textEl.textContent = '❌ 加载失败: ' + e.message;
@@ -2179,6 +2198,85 @@ ${dataText}`;
             btn.disabled = false;
             btn.innerHTML = '<span class="material-icons-round" style="font-size:14px!important">auto_awesome</span>生成摘要';
         }
+    }
+
+    async function generateAllSummaries() {
+        const btn    = document.getElementById('summary-gen-all-btn');
+        const logEl  = document.getElementById('summary-log');
+        const sel    = document.getElementById('summary-type-sel');
+        if (!btn || !logEl) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:14px!important;animation:spin 1s linear infinite">refresh</span>生成中…';
+        logEl.style.display = '';
+        logEl.textContent = '开始一键生成全部摘要（日→周→月→季）…\n';
+
+        const types = ['day', 'week', 'month', 'quarter'];
+        const typeLabels = { day:'今日', week:'本周', month:'本月', quarter:'本季' };
+        let successCount = 0;
+
+        for (const type of types) {
+            logEl.textContent += `\n▶ 生成${typeLabels[type]}摘要…\n`;
+            // 切换下拉选中状态（视觉反馈）
+            if (sel) sel.value = type;
+            try {
+                // 复用 generateSummary 的核心逻辑，直接调 Edge Function
+                const today = new Date().toISOString().slice(0, 10);
+                let since = today;
+                if (type === 'week')    since = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
+                if (type === 'month')   since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+                if (type === 'quarter') since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+
+                const supabaseUrl = sbClient.supabaseUrl || '';
+
+                // 先查数据量
+                let recordCount = 0;
+                if (type === 'day') {
+                    const { data } = await sbClient.from('work_records').select('id').gte('record_date', since).limit(200);
+                    recordCount = data?.length || 0;
+                } else {
+                    const srcType = type === 'week' ? 'day' : type === 'month' ? 'week' : 'month';
+                    const { data } = await sbClient.from('daily_summaries').select('id').eq('type', srcType).gte('summary_date', since).limit(50);
+                    recordCount = data?.length || 0;
+                }
+
+                if (recordCount === 0) {
+                    logEl.textContent += `  ⚠️ 无数据，跳过\n`;
+                    continue;
+                }
+
+                logEl.textContent += `  共 ${recordCount} 条数据，调用AI…\n`;
+
+                const res = await fetch(supabaseUrl + '/functions/v1/summarize-daily', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (sbClient.supabaseKey || '')
+                    },
+                    body: JSON.stringify({ type, date: today, since, from_cron: false, record_count: recordCount })
+                });
+
+                if (!res.ok) {
+                    const err = await res.text();
+                    throw new Error(res.status + ' ' + err);
+                }
+
+                const result = await res.json();
+                if (result.error) throw new Error(result.error);
+
+                logEl.textContent += `  ✅ ${typeLabels[type]}摘要生成成功，写入 ${result.rows_written || '-'} 条\n`;
+                successCount++;
+
+            } catch(e) {
+                logEl.textContent += `  ❌ 失败: ${e.message}\n`;
+            }
+        }
+
+        logEl.textContent += `\n完成！共成功 ${successCount}/4 个摘要。\n`;
+        showToast(successCount === 4 ? '全部摘要生成成功' : `完成 ${successCount}/4`, successCount > 0 ? 'success' : 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:14px!important">auto_fix_high</span>一键全部';
+        await loadSummaryPreview();
     }
 
     function widgetCtxAdd() {
