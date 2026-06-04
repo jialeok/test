@@ -3898,20 +3898,35 @@ const DW = (() => {
     el.textContent = ts + ' ' + msg + '\n' + el.textContent;
   };
 
-  // ★ ChatRAGText 意图识别：关键词匹配 + 员工姓名匹配
-  //   返回 { intent: 'overview'|'single'|'chat', name: '员工名'(仅single时) }
+  // ★ ChatRAGText 意图识别：关键词匹配 + 员工姓名匹配 + 时间槽识别
+  //   返回 { intent: 'overview'|'single'|'chat', name: '员工名'(仅single时), timespan: 'today'|'week'|'month'|'quarter'|'default' }
   //   ★ keepalive模式下dialog_context已在StartSession时注入全文，此函数供调试面板和
   //     续话刷新时判断是否需要追加单人数据
   const detectQueryIntent = (text) => {
-    if(!text) return { intent: 'chat', name: '' };
-    // 大方向/整体类关键词
-    if(text.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部|所有|员工|工作|这周|上周|本周|日报|周报|情况|查一下|查看|了解|汇报|完成|安排|计划|进度/)) return { intent: 'overview', name: '' };
-    // 员工姓名匹配：查数据库里的员工名是否出现在问题中
+    if(!text) return { intent: 'chat', name: '', timespan: 'default' };
+
+    // ── 时间槽识别 ──
+    let timespan = 'default';
+    if(text.match(/今天|今日|当天|本日/))                                         timespan = 'today';
+    else if(text.match(/这周|本周|上周|这个星期|上个星期|最近一周|近一周|7天|七天/)) timespan = 'week';
+    else if(text.match(/这个月|本月|上个月|这月|最近一个月|近一个月|30天|三十天/))   timespan = 'month';
+    else if(text.match(/三个月|这个季度|本季度|上个季度|最近三个月|近三个月|90天/))  timespan = 'quarter';
+
+    // ── 员工姓名匹配（优先判断，姓名+时间组合走single） ──
     const names = (typeof employeeNames !== 'undefined') ? employeeNames : [];
     for(const name of names){
-      if(name && text.includes(name)) return { intent: 'single', name: name };
+      if(name && text.includes(name)) return { intent: 'single', name, timespan };
     }
-    return { intent: 'chat', name: '' };
+
+    // ── 大方向/整体类关键词 ──
+    if(text.match(/整体|全员|大家|项目|进展|团队|多少人|谁在|汇总|总结|概况|全部|所有|员工|工作|日报|周报|情况|查一下|查看|了解|汇报|完成|安排|计划|进度/)) {
+      return { intent: 'overview', name: '', timespan };
+    }
+
+    // ── 有时间词但没命中上面两类，也当overview处理 ──
+    if(timespan !== 'default') return { intent: 'overview', name: '', timespan };
+
+    return { intent: 'chat', name: '', timespan: 'default' };
   };
 
   // ★ 构造dialog_context数组（合并手动初始上下文 + 全文自动注入）
@@ -3937,38 +3952,115 @@ const DW = (() => {
     return merged.length > 0 ? merged : null;
   };
 
-  // ★ ChatRAGText 查询：overview查全员，single查单人
-  //   参数 empName: 可选，员工姓名过滤
-  const lookupOverview = async (days = 7, empName = '') => {
+  // ★ ChatRAGText 查询：根据 intent + timespan 路由到正确数据源
+  //   timespan: today/default → work_records原始明细
+  //             week          → daily_summaries(type=week) + 降级day
+  //             month         → daily_summaries(type=month) + 降级week
+  //             quarter       → daily_summaries(type=quarter) + 降级month
+  //   empName不为空时：short timespan查work_records，long timespan查employee_summaries
+  const lookupOverview = async (days = 7, empName = '', timespan = 'default') => {
     try{
-      const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+
+      // ══ 单人 + 长时间段：查 employee_summaries ══
+      if(empName && (timespan === 'month' || timespan === 'quarter')){
+        dwLog('🔍 lookupOverview: 单人长期 employee_summaries 员工='+empName+' timespan='+timespan);
+        // 找员工ID
+        const { data: empData } = await sbClient.from('employees').select('id').ilike('name','%'+empName+'%').limit(1).single();
+        if(!empData){ dwLog('⚠️ 找不到员工: '+empName); return null; }
+        const monthCount = timespan === 'quarter' ? 3 : 1;
+        const sinceMonth = new Date(Date.now() - monthCount * 30 * 86400000).toISOString().slice(0, 7) + '-01';
+        const { data, error } = await sbClient
+          .from('employee_summaries')
+          .select('summary_month, content')
+          .eq('employee_id', empData.id)
+          .gte('summary_month', sinceMonth)
+          .order('summary_month', { ascending: false })
+          .limit(monthCount);
+        if(error){ dwLog('❌ employee_summaries查询失败: '+error.message); }
+        if(data && data.length > 0){
+          const lines = data.map(r => '【'+empName+' '+(r.summary_month||'').slice(0,7)+'月摘要】'+r.content);
+          const result = lines.join('\n');
+          dwLog('✅ employee_summaries: '+data.length+'条月摘要，字符='+result.length);
+          return result;
+        }
+        dwLog('⚠️ employee_summaries无数据，降级查work_records');
+        // 降级到原始明细
+      }
+
+      // ══ 整体 + 长时间段：查 daily_summaries ══
+      if(!empName && (timespan === 'week' || timespan === 'month' || timespan === 'quarter')){
+        const typeMap = { week:'week', month:'month', quarter:'quarter' };
+        const srcType = typeMap[timespan];
+        dwLog('🔍 lookupOverview: 整体摘要 daily_summaries type='+srcType);
+        const sinceDate = new Date(Date.now() - (timespan==='week'?7:timespan==='month'?30:90) * 86400000).toISOString().slice(0,10);
+        const { data, error } = await sbClient
+          .from('daily_summaries')
+          .select('summary_date, scope, department, content, meta')
+          .eq('type', srcType)
+          .gte('summary_date', sinceDate)
+          .order('summary_date', { ascending: false })
+          .limit(20);
+        if(error){ dwLog('❌ daily_summaries查询失败: '+error.message); }
+        if(data && data.length > 0){
+          // 按日期分组，每个日期先公司再部门
+          const grouped = {};
+          data.forEach(r => {
+            const d = r.summary_date || '';
+            if(!grouped[d]) grouped[d] = [];
+            grouped[d].push(r);
+          });
+          const blocks = Object.keys(grouped).sort().reverse().map(d => {
+            const rows = grouped[d];
+            const company = rows.find(r => r.scope === 'company');
+            const depts   = rows.filter(r => r.scope === 'dept');
+            let block = '【' + d + '】\n';
+            if(company) block += '===公司概况===\n' + company.content + '\n';
+            if(depts.length > 0){
+              block += '===部门摘要===\n';
+              depts.forEach(r => { block += (r.department||'部门') + '：' + r.content + '\n'; });
+            }
+            return block;
+          });
+          const result = blocks.join('\n');
+          dwLog('✅ daily_summaries: '+data.length+'条，字符='+result.length);
+          if(result.length > 4000) return result.substring(0, 4000);
+          return result;
+        }
+        dwLog('⚠️ daily_summaries('+srcType+')无数据，降级查work_records');
+        // 降级到原始明细
+      }
+
+      // ══ 默认：查 work_records 原始明细（today/default/降级兜底）══
+      const daysMap = { today:1, default:7, week:7, month:30, quarter:90 };
+      const actualDays = daysMap[timespan] || days;
+      const since = new Date(Date.now() - actualDays * 86400000).toISOString().slice(0, 10);
+      dwLog('🔍 lookupOverview: work_records 近'+actualDays+'天'+(empName?' 员工='+empName:''));
       let query = sbClient
         .from('work_records')
-        .select('record_date, raw_text, formatted_text, employees!inner(name)')
+        .select('record_date, raw_text, formatted_text, formatted_fields, employees!inner(name, department)')
         .gte('record_date', since)
         .order('record_date', { ascending: false })
         .limit(100);
-      // 单人查询：过滤员工名
-      if(empName){
-        query = query.eq('employees.name', empName);
-        dwLog('🔍 lookupOverview: 过滤员工='+empName);
-      }
+      if(empName) query = query.ilike('employees.name', '%'+empName+'%');
       const { data, error } = await query;
       if(error){ dwLog('❌ lookupOverview查询失败: '+error.message); return null; }
-      if(!data || data.length === 0){ dwLog('⚠️ lookupOverview: 近'+days+'天无'+(empName||'')+'汇报记录'); return null; }
+      if(!data || data.length === 0){ dwLog('⚠️ lookupOverview: 近'+actualDays+'天无'+(empName||'')+'汇报记录'); return null; }
       const lines = data.map(r => {
-        const name = (r.employees && r.employees.name) ? r.employees.name : '未知';
+        const name = r.employees?.name || '未知';
+        const dept = r.employees?.department ? '('+r.employees.department+')' : '';
         let content = r.raw_text || '';
-        if(r.formatted_text){
+        const ff = r.formatted_fields || r.formatted_text;
+        if(ff){
           try{
-            const f = typeof r.formatted_text === 'string' ? JSON.parse(r.formatted_text) : r.formatted_text;
-            content = Object.entries(f).map(([k,v]) => k + '：' + v).join(' / ');
+            const f = typeof ff === 'string' ? JSON.parse(ff) : ff;
+            content = Object.entries(f).map(([k,v]) => k+'：'+v).join('；');
           }catch(_){}
         }
-        return '【' + name + ' ' + (r.record_date||'').substring(0,10) + '】' + content;
+        return '【'+name+dept+' '+(r.record_date||'').substring(0,10)+'】'+content;
       });
       const result = lines.join('\n');
-      dwLog('✅ lookupOverview: 近'+days+'天共'+data.length+'条记录，字符数='+result.length);
+      dwLog('✅ lookupOverview: 近'+actualDays+'天共'+data.length+'条，字符='+result.length);
       if(result.length > 4000){
         dwLog('⚠️ 超4K字符('+result.length+')，截断到4000');
         return result.substring(0, 4000);
@@ -4133,9 +4225,9 @@ const DW = (() => {
             _dwRagIntent = _intent;
             _dwRagData = null;
             _dwRagReady = false;
-            dwLog('[459] 查询意图，开始并行查库…');
+            dwLog('[459] 查询意图，开始并行查库… timespan='+_intent.timespan);
             const _days = _intent.intent === 'single' ? 30 : 7;
-            lookupOverview(_days, _intent.name || '').then(result => {
+            lookupOverview(_days, _intent.name || '', _intent.timespan || 'default').then(result => {
               _dwRagData = result || null;
               _dwRagReady = true;
               dwLog('[459] 查库完成 字符='+(result?result.length:0));
