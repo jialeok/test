@@ -1001,6 +1001,34 @@
 
     <!-- ═══════════ Tab2: 员工管理 ═══════════ -->
     <div class="tab-panel" id="tab-employees">
+
+        <!-- 部门管理折叠卡片 -->
+        <div style="border:1.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
+            <div onclick="toggleDeptPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;background:var(--surface)">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="material-icons-round" style="font-size:18px!important;color:var(--accent)">corporate_fare</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--ink)">部门管理</span>
+                    <span id="dept-count-badge" style="font-size:11px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:2px 8px;border-radius:10px">-</span>
+                </div>
+                <span class="material-icons-round" id="dept-panel-chevron" style="font-size:18px!important;color:var(--ink-soft);transition:transform .2s">expand_more</span>
+            </div>
+            <div id="dept-panel-body" style="display:none;border-top:1px solid var(--border);background:var(--bg)">
+                <div style="display:flex;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+                    <input id="dept-new-name" type="text" placeholder="输入新部门名称" maxlength="20"
+                        style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;color:var(--ink);background:var(--surface)"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                        onkeydown="if(event.key==='Enter') addDepartment()">
+                    <button onclick="addDepartment()" style="display:flex;align-items:center;gap:4px;padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">
+                        <span class="material-icons-round" style="font-size:15px!important">add</span>添加
+                    </button>
+                </div>
+                <div id="dept-list" style="padding:8px 12px;min-height:40px">
+                    <div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">加载中…</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 员工列表 -->
         <div class="section-header">
             <div>
                 <div class="section-title">👥 员工管理</div>
@@ -1184,7 +1212,9 @@
             </div>
             <div class="form-group">
                 <label class="form-label">部门</label>
-                <input type="text" class="form-input" id="emp-department" placeholder="请输入部门名称">
+                <select class="form-input" id="emp-department" style="cursor:pointer">
+                    <option value="">-- 请选择部门 --</option>
+                </select>
             </div>
         </div>
         <div class="modal-footer">
@@ -2093,7 +2123,7 @@
         document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
         document.getElementById(tabId).classList.add('active');
 
-        if (tabId === 'tab-employees') loadEmployees();
+        if (tabId === 'tab-employees') { loadDepartments(); loadEmployees(); }
         if (tabId === 'tab-fields') loadFields();
         if (tabId === 'tab-prompts') loadPrompts();
         if (tabId === 'tab-records') { loadEmployeeFilter(); loadRecords(); }
@@ -2110,10 +2140,167 @@
     /* ══════════════════════════════════════════════════════════════ */
     /*  Tab2: 员工管理                                                */
     /* ══════════════════════════════════════════════════════════════ */
+    /* ══════════════════════════════════════════════════════════════ */
+    /*  部门管理                                                      */
+    /* ══════════════════════════════════════════════════════════════ */
+    let _deptCache = []; // 缓存部门列表，供下拉使用
+
+    function toggleDeptPanel() {
+        const body = document.getElementById('dept-panel-body');
+        const chev = document.getElementById('dept-panel-chevron');
+        const open = body.style.display === 'none';
+        body.style.display = open ? '' : 'none';
+        if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+        if (open) loadDepartments();
+    }
+
+    async function loadDepartments() {
+        const list = document.getElementById('dept-list');
+        const badge = document.getElementById('dept-count-badge');
+        if (!sbClient || !list) return;
+        list.innerHTML = '<div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">加载中…</div>';
+        try {
+            const { data, error } = await sbClient.from('departments').select('*').order('sort_order').order('created_at');
+            if (error) throw error;
+            _deptCache = data || [];
+            const enabled = _deptCache.filter(d => d.enabled);
+            if (badge) badge.textContent = enabled.length + ' 个部门';
+            if (!_deptCache.length) {
+                list.innerHTML = '<div style="text-align:center;color:var(--ink-soft);font-size:13px;padding:16px">暂无部门，请添加</div>';
+                return;
+            }
+            list.innerHTML = _deptCache.map(d => `
+                <div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border)">
+                    <span class="material-icons-round" style="font-size:16px!important;color:${d.enabled ? 'var(--accent)' : 'var(--ink-soft)'}">
+                        ${d.enabled ? 'folder' : 'folder_off'}
+                    </span>
+                    <span id="dept-name-${d.id}" style="flex:1;font-size:13px;color:${d.enabled ? 'var(--ink)' : 'var(--ink-soft)'};${d.enabled ? '' : 'text-decoration:line-through'}">
+                        ${esc(d.name)}
+                    </span>
+                    <div style="display:flex;gap:6px">
+                        <button onclick="renameDepartment('${d.id}','${esc(d.name)}')"
+                            title="改名"
+                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--accent)">
+                            <span class="material-icons-round" style="font-size:14px!important">edit</span>
+                        </button>
+                        <button onclick="toggleDepartment('${d.id}', ${!d.enabled})"
+                            title="${d.enabled ? '停用' : '启用'}"
+                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:${d.enabled ? '#d97706' : 'var(--accent)'}">
+                            <span class="material-icons-round" style="font-size:14px!important">${d.enabled ? 'pause_circle' : 'play_circle'}</span>
+                        </button>
+                        <button onclick="deleteDepartment('${d.id}','${esc(d.name)}')"
+                            title="删除"
+                            style="display:flex;align-items:center;padding:4px 8px;border-radius:6px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--danger)">
+                            <span class="material-icons-round" style="font-size:14px!important">delete</span>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            // 同步更新员工编辑下拉
+            _fillDeptSelect();
+        } catch(e) {
+            list.innerHTML = `<div style="color:var(--danger);padding:16px;font-size:13px">加载失败：${esc(e.message)}</div>`;
+        }
+    }
+
+    function _fillDeptSelect(selectedValue) {
+        const sel = document.getElementById('emp-department');
+        if (!sel) return;
+        const enabledDepts = _deptCache.filter(d => d.enabled);
+        sel.innerHTML = '<option value="">-- 请选择部门 --</option>' +
+            enabledDepts.map(d => `<option value="${esc(d.name)}" ${selectedValue === d.name ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+    }
+
+    async function addDepartment() {
+        const input = document.getElementById('dept-new-name');
+        const name = input?.value.trim();
+        if (!name) { showToast('请输入部门名称', 'error'); return; }
+        try {
+            const { error } = await sbClient.from('departments').insert({ name });
+            if (error) throw error;
+            input.value = '';
+            showToast('部门已添加', 'success');
+            loadDepartments();
+        } catch(e) {
+            showToast('添加失败: ' + (e.message.includes('unique') ? '部门名已存在' : e.message), 'error');
+        }
+    }
+
+    async function renameDepartment(id, oldName) {
+        const newName = prompt('修改部门名称：', oldName);
+        if (!newName || newName.trim() === oldName) return;
+        try {
+            // 同步更新该部门下的员工
+            const { error: empErr } = await sbClient.from('employees').update({ department: newName.trim() }).eq('department', oldName);
+            if (empErr) throw empErr;
+            const { error } = await sbClient.from('departments').update({ name: newName.trim() }).eq('id', id);
+            if (error) throw error;
+            showToast('部门已改名，员工信息同步更新', 'success');
+            loadDepartments();
+            loadEmployees();
+        } catch(e) {
+            showToast('改名失败: ' + e.message, 'error');
+        }
+    }
+
+    async function toggleDepartment(id, enabled) {
+        try {
+            const { error } = await sbClient.from('departments').update({ enabled }).eq('id', id);
+            if (error) throw error;
+            showToast(enabled ? '已启用' : '已停用', 'success');
+            loadDepartments();
+        } catch(e) {
+            showToast('操作失败: ' + e.message, 'error');
+        }
+    }
+
+    async function deleteDepartment(id, name) {
+        // 检查该部门下有没有员工
+        try {
+            const { data, error } = await sbClient.from('employees').select('id', { count: 'exact', head: true }).eq('department', name);
+            if (error) throw error;
+            const count = data?.length || 0;
+            // Supabase head:true 用 count
+            const { count: empCount } = await sbClient.from('employees').select('*', { count: 'exact', head: true }).eq('department', name);
+            if (empCount > 0) {
+                showToast(`「${name}」下还有 ${empCount} 名员工，请先将员工移至其他部门`, 'error');
+                return;
+            }
+            if (!confirm(`确定删除部门「${name}」吗？`)) return;
+            const { error: delErr } = await sbClient.from('departments').delete().eq('id', id);
+            if (delErr) throw delErr;
+            showToast('部门已删除', 'success');
+            loadDepartments();
+        } catch(e) {
+            showToast('删除失败: ' + e.message, 'error');
+        }
+    }
+
+    async function _ensureDeptCache() {
+        if (_deptCache.length) return;
+        try {
+            const { data } = await sbClient.from('departments').select('*').eq('enabled', true).order('sort_order');
+            _deptCache = data || [];
+        } catch(_) {}
+    }
+
+    // 快速换部门（员工卡片上直接选）
+    async function quickChangeDept(empId, newDept) {
+        try {
+            const { error } = await sbClient.from('employees').update({ department: newDept || null }).eq('id', empId);
+            if (error) throw error;
+            showToast('部门已更新', 'success');
+            loadEmployees();
+        } catch(e) {
+            showToast('更新失败: ' + e.message, 'error');
+        }
+    }
+
     async function loadEmployees() {
         const tbody = document.getElementById('employee-tbody');
         if (!sbClient || !tbody) return;
         try {
+            await _ensureDeptCache();
             const { data, error } = await sbClient
                 .from('employees')
                 .select('*')
@@ -2125,19 +2312,53 @@
                 return;
             }
 
-            tbody.innerHTML = data.map(emp => `
-                <div class="emp-card">
-                    <div class="emp-avatar">${esc(emp.name).charAt(0)}</div>
-                    <div class="emp-info">
+            // 统计重名
+            const nameCounts = {};
+            data.forEach(e => { nameCounts[e.name] = (nameCounts[e.name] || 0) + 1; });
+
+            // 按部门分组
+            const groups = {};
+            data.forEach(emp => {
+                const key = emp.department || '__none__';
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(emp);
+            });
+
+            // 排序：按departments表顺序，未分配放最后
+            const deptOrder = _deptCache.map(d => d.name);
+            const sortedKeys = [
+                ...deptOrder.filter(k => groups[k]),
+                ...Object.keys(groups).filter(k => k !== '__none__' && !deptOrder.includes(k)),
+                ...(groups['__none__'] ? ['__none__'] : [])
+            ];
+
+            // 部门下拉选项
+            const deptOptions = '<option value="">未分配</option>' +
+                _deptCache.filter(d => d.enabled).map(d => `<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('');
+
+            const renderEmp = emp => {
+                const selOpts = deptOptions.replace(
+                    `value="${esc(emp.department || '')}"`,
+                    `value="${esc(emp.department || '')}" selected`
+                );
+                return `
+                <div class="emp-card" style="margin-bottom:8px">
+                    <div class="emp-avatar" style="flex-shrink:0">${esc(emp.name).charAt(0)}</div>
+                    <div class="emp-info" style="flex:1;min-width:0">
                         <div class="emp-name">${esc(emp.name)}
                             <span class="badge ${emp.enabled ? 'badge-success' : 'badge-danger'}" style="margin-left:6px;font-size:10px">${emp.enabled ? '启用' : '禁用'}</span>
+                            ${nameCounts[emp.name] > 1 ? '<span title="存在同名员工，请核查" style="margin-left:4px;font-size:10px;background:#fef3c7;color:#d97706;padding:1px 6px;border-radius:6px;cursor:help">⚠️ 重名</span>' : ''}
                         </div>
-                        <div class="emp-meta">
+                        <div class="emp-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
                             <span class="emp-pin">PIN: ${esc(emp.pin)}</span>
-                            ${emp.department ? `<span>${esc(emp.department)}</span>` : ''}
+                            <select onchange="quickChangeDept('${emp.id}', this.value)"
+                                style="font-size:11px;padding:2px 6px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer;max-width:90px">
+                                ${selOpts}
+                            </select>
+                            <span style="font-size:10px;color:var(--ink-soft);opacity:.5">ID:${emp.id.slice(-4)}</span>
                         </div>
                     </div>
-                    <div class="emp-actions">
+                    <div class="emp-actions" style="flex-shrink:0">
                         <button class="btn-sm ${emp.enabled ? 'btn-sm-warning' : 'btn-sm-success'}" onclick="toggleEmployee('${emp.id}', ${!emp.enabled})" title="${emp.enabled ? '禁用' : '启用'}">
                             <span class="material-icons-round">${emp.enabled ? 'visibility_off' : 'visibility'}</span>
                         </button>
@@ -2148,8 +2369,25 @@
                             <span class="material-icons-round">delete</span>
                         </button>
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            };
+
+            tbody.innerHTML = sortedKeys.map(key => {
+                const emps = groups[key];
+                const label = key === '__none__' ? '未分配' : key;
+                const icon  = key === '__none__' ? 'person_off' : 'folder';
+                const color = key === '__none__' ? 'var(--ink-soft)' : 'var(--accent)';
+                return `
+                <div style="margin-bottom:18px">
+                    <div style="display:flex;align-items:center;gap:6px;padding:6px 2px;margin-bottom:8px;border-bottom:2px solid var(--border)">
+                        <span class="material-icons-round" style="font-size:16px!important;color:${color}">${icon}</span>
+                        <span style="font-size:13px;font-weight:700;color:${color}">${esc(label)}</span>
+                        <span style="font-size:11px;color:var(--ink-soft);background:rgba(0,0,0,.06);padding:1px 7px;border-radius:10px">${emps.length}人</span>
+                    </div>
+                    ${emps.map(renderEmp).join('')}
+                </div>`;
+            }).join('');
+
         } catch(e) {
             tbody.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px">加载失败：${esc(e.message)}</div>`;
         }
@@ -2160,8 +2398,8 @@
         document.getElementById('emp-name').value = '';
         document.getElementById('emp-nickname').value = '';
         document.getElementById('emp-pin').value = '';
-        document.getElementById('emp-department').value = '';
         document.getElementById('employee-modal-title').textContent = id ? '编辑员工' : '添加员工';
+        _ensureDeptCache().then(() => _fillDeptSelect(''));
         document.getElementById('employee-modal').classList.add('show');
     }
 
@@ -2203,8 +2441,8 @@
                 nickEl.dataset.userEdited = data.nickname ? '1' : '';
             }
             document.getElementById('emp-pin').value = data.pin || '';
-            document.getElementById('emp-department').value = data.department || '';
             document.getElementById('employee-modal-title').textContent = '编辑员工';
+            _ensureDeptCache().then(() => _fillDeptSelect(data.department || ''));
             document.getElementById('employee-modal').classList.add('show');
         } catch(e) {
             showToast('加载员工信息失败: ' + e.message, 'error');
